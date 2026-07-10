@@ -1,0 +1,8 @@
+brand: VIPARSPECTRA
+model: LED light via Tapo P110
+connection: wifi-plug
+description: Grow light switched on/off through a TP-Link Tapo P110 smart plug. PWM dimming can be added later.
+provides:
+  - label: Grow light (on/off)
+    kind: light
+    entityDomain: switch

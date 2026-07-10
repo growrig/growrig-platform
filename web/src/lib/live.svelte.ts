@@ -1,6 +1,11 @@
-// Live connection to Grow Core over WebSocket, exposed as runes-based state.
-// Auto-reconnects and keeps the most recent snapshot.
-import { wsURL } from './api';
+// Live connection to Grow Core, exposed as runes-based state.
+//
+// Data flow: the initial snapshot is fetched over REST (`GET /api/state`) so
+// the UI paints immediately, even if the WebSocket is slow to connect or
+// unavailable. The WebSocket is then only responsible for *live updates* — it
+// pushes a fresh snapshot on every reconciliation tick. Auto-reconnects with
+// backoff and keeps the most recent snapshot across drops.
+import { getState, wsURL } from './api';
 import type { Snapshot } from './types';
 
 export type ConnStatus = 'connecting' | 'live' | 'offline';
@@ -8,6 +13,12 @@ export type ConnStatus = 'connecting' | 'live' | 'offline';
 class LiveState {
 	snapshot = $state<Snapshot | null>(null);
 	status = $state<ConnStatus>('connecting');
+	/** Epoch ms of the last snapshot applied (REST or WS), for diagnostics. */
+	lastMessageAt = $state<number | null>(null);
+	/** How the most recent snapshot arrived. */
+	lastSource = $state<'rest' | 'ws' | null>(null);
+	/** Last connection error text, surfaced on the debug page. */
+	lastError = $state<string | null>(null);
 
 	#ws: WebSocket | null = null;
 	#retry = 0;
@@ -16,6 +27,9 @@ class LiveState {
 
 	start() {
 		this.#stopped = false;
+		// Kick off the REST prime and the live socket in parallel; whichever
+		// arrives first paints, and WS frames win thereafter.
+		void this.#prime();
 		this.#connect();
 	}
 
@@ -24,6 +38,24 @@ class LiveState {
 		if (this.#timer) clearTimeout(this.#timer);
 		this.#ws?.close();
 		this.#ws = null;
+	}
+
+	/** One-shot REST fetch for the initial snapshot. */
+	async #prime() {
+		try {
+			const snap = await getState();
+			// Don't clobber a fresher WS frame that may have already landed.
+			if (this.#stopped || this.lastSource === 'ws') return;
+			this.#apply(snap, 'rest');
+		} catch (err) {
+			this.lastError = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	#apply(snap: Snapshot, source: 'rest' | 'ws') {
+		this.snapshot = snap;
+		this.lastMessageAt = Date.now();
+		this.lastSource = source;
 	}
 
 	#connect() {
@@ -35,10 +67,11 @@ class LiveState {
 		ws.onopen = () => {
 			this.#retry = 0;
 			this.status = 'live';
+			this.lastError = null;
 		};
 		ws.onmessage = (ev) => {
 			try {
-				this.snapshot = JSON.parse(ev.data) as Snapshot;
+				this.#apply(JSON.parse(ev.data) as Snapshot, 'ws');
 				this.status = 'live';
 			} catch {
 				/* ignore malformed frame */

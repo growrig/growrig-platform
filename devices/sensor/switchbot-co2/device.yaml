@@ -1,0 +1,10 @@
+brand: SwitchBot
+model: "CO₂ Sensor (Meter Pro)"
+connection: ble
+description: "Bluetooth CO₂ (with temperature & humidity) sensor."
+provides:
+  - label: "CO₂"
+    kind: sensor
+    measurement: co2
+    entityDomain: sensor
+    deviceClass: carbon_dioxide

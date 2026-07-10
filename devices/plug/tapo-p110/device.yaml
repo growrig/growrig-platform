@@ -1,0 +1,8 @@
+brand: TP-Link
+model: Tapo P110 smart plug
+connection: wifi
+description: Wi-Fi smart plug with energy monitoring, used to switch a device on/off.
+provides:
+  - label: On/off
+    kind: light
+    entityDomain: switch

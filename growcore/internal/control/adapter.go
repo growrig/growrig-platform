@@ -7,17 +7,21 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
+// DiscoveredEntity is a candidate device/sensor the adapter has found and that
+// the user can bind to an environment.
+type DiscoveredEntity struct {
+	Entity      string             `json:"entity"`
+	Name        string             `json:"name"`
+	Kind        domain.BindingKind `json:"kind"`
+	Measurement domain.Measurement `json:"measurement,omitempty"`
+}
+
 // Adapter is the boundary between the control engine and the physical world.
-// The simulator and Home Assistant adapters both implement it, so the engine
-// and control law are identical regardless of how devices are reached.
-//
-// Methods receive the domain device/channel so adapters can read their entity
-// bindings (populated from the database), keeping the adapters stateless with
-// respect to topology — devices can be added or re-bound at runtime.
+// It is entity-oriented: the engine reads and writes Home Assistant (or
+// simulator) entities by id, exactly as they are bound to environments in the
+// database. The simulator and Home Assistant adapters both implement it.
 type Adapter interface {
-	// Start establishes the connection (or initialises the simulator). It
-	// should return once initial state is available or fail fast on a fatal
-	// misconfiguration.
+	// Start establishes the connection (or initialises the simulator).
 	Start(ctx context.Context) error
 
 	// Tick advances internal state for one control cycle of duration dt. For
@@ -25,18 +29,24 @@ type Adapter interface {
 	// no-op (state arrives asynchronously over the WebSocket).
 	Tick(dt time.Duration)
 
-	// Climate returns the latest temperature (°C) and relative humidity (%)
-	// for a device, or ok=false if not yet available.
-	Climate(dev domain.Device) (tempC, humidity float64, ok bool)
+	// Value returns the latest numeric value of an entity (sensor reading,
+	// tachometer RPM, …), or ok=false if unavailable.
+	Value(entity string) (value float64, ok bool)
 
-	// SetSpeed commands a channel to a PWM speed in the range 0-100.
-	SetSpeed(dev domain.Device, ch domain.Channel, speed int) error
+	// SetFan commands a fan entity to a PWM speed in the range 0-100.
+	SetFan(entity string, speed int) error
 
-	// FanRPM returns the measured tachometer RPM for a channel, if available.
-	FanRPM(dev domain.Device, ch domain.Channel) (rpm int, ok bool)
+	// SetSwitch turns a switchable entity (e.g. a light) on or off.
+	SetSwitch(entity string, on bool) error
 
-	// Health reports controller/connection health for a device.
-	Health(dev domain.Device) domain.ControllerHealth
+	// SwitchState returns the on/off state of a switchable entity, if known.
+	SwitchState(entity string) (on bool, ok bool)
+
+	// Health reports overall adapter/connection health.
+	Health() domain.ControllerHealth
+
+	// Discover lists candidate entities that can be bound to environments.
+	Discover() []DiscoveredEntity
 
 	// Close releases resources.
 	Close() error

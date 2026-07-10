@@ -1,14 +1,12 @@
 // Package ha is a Home Assistant adapter for Grow Core.
 //
-// It reads climate sensors and commands fans through Home Assistant, so the
-// same Grow Core binary drives real ESPHome controllers (via the HA native API
-// path) using only configuration for the connection and per-device entity
-// bindings stored in the database. It implements control.Adapter.
+// It reads sensors and commands fans/lights through Home Assistant, and
+// discovers bindable entities from HA so users can add devices by picking from
+// what they already have. It implements control.Adapter.
 //
-// State arrives over the Home Assistant WebSocket API (authenticated, then a
-// subscription to state_changed events). Commands are issued over the REST API
-// (fan.set_percentage), which keeps writes simple and independent of the event
-// stream.
+// State (and entity metadata) arrives over the Home Assistant WebSocket API
+// (authenticate, then subscribe to state_changed). Commands are issued over the
+// REST API, which keeps writes simple and independent of the event stream.
 package ha
 
 import (
@@ -18,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,11 +26,16 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/growrig/growrig-platform/growcore/internal/config"
+	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
-// staleAfter marks a device offline if no state has arrived for this long.
 const staleAfter = 90 * time.Second
+
+type entityMeta struct {
+	name        string
+	deviceClass string
+}
 
 type Adapter struct {
 	restBase string
@@ -40,13 +44,13 @@ type Adapter struct {
 	client   *http.Client
 
 	mu        sync.RWMutex
-	values    map[string]float64 // entity_id -> numeric state
+	values    map[string]float64    // numeric states
+	states    map[string]string     // raw states (for on/off)
+	meta      map[string]entityMeta // for discovery
 	connected bool
 	lastState time.Time
 }
 
-// New builds the adapter from the connection configuration. Entity bindings
-// come from each device/channel at call time, not from config.
 func New(cfg *config.Config) (*Adapter, error) {
 	wsURL, err := websocketURL(cfg.HomeAssistant.URL)
 	if err != nil {
@@ -58,46 +62,37 @@ func New(cfg *config.Config) (*Adapter, error) {
 		token:    cfg.HomeAssistant.Token,
 		client:   &http.Client{Timeout: 10 * time.Second},
 		values:   map[string]float64{},
+		states:   map[string]string{},
+		meta:     map[string]entityMeta{},
 	}, nil
 }
 
-// Start launches the WebSocket manager. It does not block on connectivity:
-// Home Assistant may still be starting (e.g. during a HAOS boot), so the
-// adapter reports offline health until the first connection succeeds.
 func (a *Adapter) Start(ctx context.Context) error {
 	go a.manage(ctx)
 	return nil
 }
 
-func (a *Adapter) Close() error { return nil }
+func (a *Adapter) Close() error       { return nil }
+func (a *Adapter) Tick(time.Duration) {} // event-driven
 
-func (a *Adapter) Tick(time.Duration) {} // state is event-driven
-
-func (a *Adapter) Climate(dev domain.Device) (float64, float64, bool) {
-	if dev.TempEntity == "" {
-		return 0, 0, false
-	}
+func (a *Adapter) Value(entity string) (float64, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	temp, ok := a.values[dev.TempEntity]
+	v, ok := a.values[entity]
+	return v, ok
+}
+
+func (a *Adapter) SwitchState(entity string) (bool, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	s, ok := a.states[entity]
 	if !ok {
-		return 0, 0, false
+		return false, false
 	}
-	humidity := a.values[dev.HumidityEntity] // 0 if unbound/absent
-	return temp, humidity, true
+	return s == "on", true
 }
 
-func (a *Adapter) FanRPM(_ domain.Device, ch domain.Channel) (int, bool) {
-	if ch.RPMEntity == "" {
-		return 0, false
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	v, ok := a.values[ch.RPMEntity]
-	return int(v), ok
-}
-
-func (a *Adapter) Health(domain.Device) domain.ControllerHealth {
+func (a *Adapter) Health() domain.ControllerHealth {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if !a.connected {
@@ -109,13 +104,31 @@ func (a *Adapter) Health(domain.Device) domain.ControllerHealth {
 	return domain.HealthOnline
 }
 
-// SetSpeed commands a fan channel via the fan.set_percentage service.
-func (a *Adapter) SetSpeed(_ domain.Device, ch domain.Channel, speed int) error {
-	if ch.Entity == "" {
-		return nil // unbound channel (e.g. unassigned role)
+// SetFan commands a fan entity via fan.set_percentage.
+func (a *Adapter) SetFan(entity string, speed int) error {
+	if entity == "" {
+		return nil
 	}
-	body, _ := json.Marshal(map[string]any{"entity_id": ch.Entity, "percentage": speed})
-	req, err := http.NewRequest(http.MethodPost, a.restBase+"/services/fan/set_percentage", strings.NewReader(string(body)))
+	return a.callService("fan", "set_percentage",
+		map[string]any{"entity_id": entity, "percentage": speed})
+}
+
+// SetSwitch turns a switchable entity on or off using its own domain's service.
+func (a *Adapter) SetSwitch(entity string, on bool) error {
+	if entity == "" {
+		return nil
+	}
+	service := "turn_off"
+	if on {
+		service = "turn_on"
+	}
+	return a.callService(serviceDomain(entity), service, map[string]any{"entity_id": entity})
+}
+
+func (a *Adapter) callService(domainName, service string, body map[string]any) error {
+	payload, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost,
+		a.restBase+"/services/"+domainName+"/"+service, strings.NewReader(string(payload)))
 	if err != nil {
 		return err
 	}
@@ -127,9 +140,51 @@ func (a *Adapter) SetSpeed(_ domain.Device, ch domain.Channel, speed int) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("set_percentage %s: HTTP %d", ch.Entity, resp.StatusCode)
+		return fmt.Errorf("%s.%s: HTTP %d", domainName, service, resp.StatusCode)
 	}
 	return nil
+}
+
+// Discover classifies cached entities into bindable candidates.
+func (a *Adapter) Discover() []control.DiscoveredEntity {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	var out []control.DiscoveredEntity
+	for entity, m := range a.meta {
+		d := control.DiscoveredEntity{Entity: entity, Name: m.name}
+		if d.Name == "" {
+			d.Name = entity
+		}
+		switch serviceDomain(entity) {
+		case "sensor":
+			switch m.deviceClass {
+			case "temperature":
+				d.Kind, d.Measurement = domain.KindSensor, domain.MeasureTemperature
+			case "humidity":
+				d.Kind, d.Measurement = domain.KindSensor, domain.MeasureHumidity
+			case "carbon_dioxide":
+				d.Kind, d.Measurement = domain.KindSensor, domain.MeasureCO2
+			default:
+				continue // only climate sensors are bindable for now
+			}
+		case "fan":
+			d.Kind = domain.KindFan
+		case "light":
+			d.Kind = domain.KindLight
+		case "camera":
+			d.Kind = domain.KindCamera
+		default:
+			continue
+		}
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Kind != out[j].Kind {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
 }
 
 // --- WebSocket manager ---
@@ -152,7 +207,6 @@ func (a *Adapter) manage(ctx context.Context) {
 	}
 }
 
-// session runs one full connect → auth → subscribe → consume cycle.
 func (a *Adapter) session(ctx context.Context) error {
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	conn, _, err := websocket.Dial(dialCtx, a.wsURL, nil)
@@ -161,13 +215,11 @@ func (a *Adapter) session(ctx context.Context) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(8 << 20) // state dumps can be large
+	conn.SetReadLimit(16 << 20)
 
 	if err := a.authenticate(ctx, conn); err != nil {
 		return err
 	}
-
-	// Prime the cache with current states, then subscribe to changes.
 	if err := wsjson.Write(ctx, conn, map[string]any{"id": 1, "type": "get_states"}); err != nil {
 		return err
 	}
@@ -213,38 +265,33 @@ func (a *Adapter) authenticate(ctx context.Context, conn *websocket.Conn) error 
 func (a *Adapter) handle(msg *wsMessage) {
 	switch msg.Type {
 	case "result":
-		// Response to get_states: an array of state objects.
 		var states []haState
 		if len(msg.Result) > 0 && json.Unmarshal(msg.Result, &states) == nil {
-			for _, s := range states {
-				a.storeState(s.EntityID, s.State)
+			for _, st := range states {
+				a.storeState(st)
 			}
 		}
 	case "event":
 		var ev struct {
-			EventType string `json:"event_type"`
-			Data      struct {
-				EntityID string   `json:"entity_id"`
+			Data struct {
 				NewState *haState `json:"new_state"`
 			} `json:"data"`
 		}
 		if json.Unmarshal(msg.Event, &ev) == nil && ev.Data.NewState != nil {
-			a.storeState(ev.Data.EntityID, ev.Data.NewState.State)
+			a.storeState(*ev.Data.NewState)
 		}
 	}
 }
 
-// storeState caches an entity's numeric state, ignoring non-numeric values
-// (e.g. "unavailable", or a fan's on/off state, which Grow Core commands).
-func (a *Adapter) storeState(entityID, state string) {
-	v, err := strconv.ParseFloat(state, 64)
-	if err != nil {
-		return
-	}
+func (a *Adapter) storeState(st haState) {
 	a.mu.Lock()
-	a.values[entityID] = v
+	defer a.mu.Unlock()
+	a.states[st.EntityID] = st.State
+	a.meta[st.EntityID] = entityMeta{name: st.Attributes.FriendlyName, deviceClass: st.Attributes.DeviceClass}
+	if v, err := strconv.ParseFloat(st.State, 64); err == nil {
+		a.values[st.EntityID] = v
+	}
 	a.lastState = time.Now()
-	a.mu.Unlock()
 }
 
 func (a *Adapter) setConnected(v bool) {
@@ -255,7 +302,13 @@ func (a *Adapter) setConnected(v bool) {
 
 // --- helpers & wire types ---
 
-// websocketURL derives the HA WebSocket endpoint from the base HTTP URL.
+func serviceDomain(entity string) string {
+	if i := strings.IndexByte(entity, '.'); i > 0 {
+		return entity[:i]
+	}
+	return "homeassistant"
+}
+
 func websocketURL(base string) (string, error) {
 	u, err := url.Parse(strings.TrimRight(base, "/"))
 	if err != nil {
@@ -282,6 +335,10 @@ type wsMessage struct {
 }
 
 type haState struct {
-	EntityID string `json:"entity_id"`
-	State    string `json:"state"`
+	EntityID   string `json:"entity_id"`
+	State      string `json:"state"`
+	Attributes struct {
+		FriendlyName string `json:"friendly_name"`
+		DeviceClass  string `json:"device_class"`
+	} `json:"attributes"`
 }

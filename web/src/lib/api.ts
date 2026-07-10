@@ -1,7 +1,21 @@
 // REST client for Grow Core. When the web app is served by Grow Core itself
 // (embedded, single binary) the base is same-origin. For local development
 // against a separately-running Grow Core, set VITE_GROWCORE_URL.
-import type { Device, Environment, Info, Reading, Role } from './types';
+import type {
+	Binding,
+	BindingKind,
+	CatalogProduct,
+	Cycle,
+	DiscoveredEntity,
+	Environment,
+	EnvironmentKind,
+	Info,
+	Measurement,
+	Phase,
+	Reading,
+	Role,
+	Snapshot
+} from './types';
 
 export const CORE_URL: string = import.meta.env.VITE_GROWCORE_URL?.replace(/\/$/, '') ?? '';
 
@@ -35,9 +49,16 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 	return (await req(path, init)).json() as Promise<T>;
 }
 
-// --- info ---
+// --- info, catalog & discovery ---
 
 export const getInfo = () => json<Info>('/api/info');
+/** Current live snapshot over REST — used for the initial paint before the
+ *  WebSocket feed takes over. */
+export const getState = () => json<Snapshot>('/api/state');
+export const getDiscovery = () => json<DiscoveredEntity[]>('/api/discovery');
+export const getCatalog = () => json<CatalogProduct[]>('/api/catalog');
+export const getPhases = () => json<Phase[]>('/api/phases');
+export const loadDemo = () => req('/api/demo', { method: 'POST' });
 
 // --- environments ---
 
@@ -45,8 +66,15 @@ export const getEnvironments = () => json<Environment[]>('/api/environments');
 
 export interface EnvironmentInput {
 	name: string;
+	kind: EnvironmentKind;
+	airSourceId: string;
+	model?: string;
+	widthCm?: number;
+	depthCm?: number;
+	heightCm?: number;
 	targetTempC: number;
 	targetHumidity: number;
+	targetCO2: number;
 	emergencyTempC: number;
 }
 
@@ -62,62 +90,59 @@ export const updateEnvironment = (id: string, env: EnvironmentInput) =>
 export const deleteEnvironment = (id: string) =>
 	req(`/api/environments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
-export async function setTargets(
-	envID: string,
-	targetTempC: number,
-	targetHumidity: number
-): Promise<void> {
-	await req(`/api/environments/${encodeURIComponent(envID)}/targets`, {
-		method: 'PUT',
-		body: JSON.stringify({ targetTempC, targetHumidity })
-	});
-}
+// --- bindings ---
 
-// --- devices ---
+export const getBindings = () => json<Binding[]>('/api/bindings');
 
-export const getDevices = () => json<Device[]>('/api/devices');
-
-export interface ChannelInput {
-	id?: string;
-	name: string;
-	role: Role;
-	entity: string;
-	rpmEntity: string;
-}
-
-export interface DeviceInput {
-	name: string;
+export interface BindingInput {
 	environmentId: string;
-	tempEntity: string;
-	humidityEntity: string;
-	channels: ChannelInput[];
+	kind: BindingKind;
+	name: string;
+	entity: string;
+	measurement?: Measurement;
+	role?: Role;
+	rpmEntity?: string;
+	wattage?: number;
+	primary?: boolean;
 }
 
-export const createDevice = (dev: DeviceInput) =>
-	json<Device>('/api/devices', { method: 'POST', body: JSON.stringify(dev) });
+export const createBinding = (b: BindingInput) =>
+	json<Binding>('/api/bindings', { method: 'POST', body: JSON.stringify(b) });
 
-export const updateDevice = (id: string, dev: DeviceInput) =>
-	json<Device>(`/api/devices/${encodeURIComponent(id)}`, {
+export const updateBinding = (id: string, b: BindingInput) =>
+	json<Binding>(`/api/bindings/${encodeURIComponent(id)}`, {
 		method: 'PUT',
-		body: JSON.stringify(dev)
+		body: JSON.stringify(b)
 	});
 
-export const deleteDevice = (id: string) =>
-	req(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const deleteBinding = (id: string) =>
+	req(`/api/bindings/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
-export async function setChannelRole(
-	deviceID: string,
-	channelID: string,
-	role: Role
-): Promise<void> {
-	await req(
-		`/api/devices/${encodeURIComponent(deviceID)}/channels/${encodeURIComponent(channelID)}/role`,
-		{ method: 'PUT', body: JSON.stringify({ role }) }
-	);
+export const setSwitch = (bindingId: string, on: boolean) =>
+	req(`/api/bindings/${encodeURIComponent(bindingId)}/switch`, {
+		method: 'PUT',
+		body: JSON.stringify({ on })
+	});
+
+// --- cycles ---
+
+export interface CycleInput {
+	strain: string;
+	startedAt: string; // YYYY-MM-DD or RFC3339
+	phase: Phase;
+	notes: string;
 }
+
+export const setCycle = (envID: string, c: CycleInput) =>
+	json<Cycle>(`/api/environments/${encodeURIComponent(envID)}/cycle`, {
+		method: 'PUT',
+		body: JSON.stringify(c)
+	});
+
+export const clearCycle = (envID: string) =>
+	req(`/api/environments/${encodeURIComponent(envID)}/cycle`, { method: 'DELETE' });
 
 // --- history ---
 
-export async function history(envID: string, limit = 120): Promise<Reading[]> {
-	return json<Reading[]>(`/api/environments/${encodeURIComponent(envID)}/history?limit=${limit}`);
-}
+export const history = (envID: string, limit = 120) =>
+	json<Reading[]>(`/api/environments/${encodeURIComponent(envID)}/history?limit=${limit}`);

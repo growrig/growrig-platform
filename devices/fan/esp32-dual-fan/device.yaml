@@ -1,0 +1,13 @@
+brand: DIY
+model: ESP32 dual PC-fan controller
+connection: esphome
+description: ESP32 running ESPHome, driving two 4-pin PWM PC fans with tachometer feedback.
+provides:
+  - label: Fan 1 (exhaust)
+    kind: fan
+    role: exhaust
+    entityDomain: fan
+  - label: Fan 2 (circulation)
+    kind: fan
+    role: circulation
+    entityDomain: fan

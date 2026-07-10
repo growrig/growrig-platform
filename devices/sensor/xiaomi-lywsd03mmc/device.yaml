@@ -1,0 +1,15 @@
+brand: Xiaomi
+model: LYWSD03MMC (Mijia BLE)
+connection: ble
+description: Bluetooth temperature & humidity sensor.
+provides:
+  - label: Temperature
+    kind: sensor
+    measurement: temperature
+    entityDomain: sensor
+    deviceClass: temperature
+  - label: Humidity
+    kind: sensor
+    measurement: humidity
+    entityDomain: sensor
+    deviceClass: humidity

@@ -25,7 +25,6 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/api"
 	"github.com/growrig/growrig-platform/growcore/internal/config"
 	"github.com/growrig/growrig-platform/growcore/internal/control"
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
 	"github.com/growrig/growrig-platform/growcore/internal/ha"
 	"github.com/growrig/growrig-platform/growcore/internal/sim"
 	"github.com/growrig/growrig-platform/growcore/internal/store"
@@ -47,10 +46,6 @@ func main() {
 		log.Fatalf("open store: %v", err)
 	}
 	defer st.Close()
-
-	if err := seedDefaults(st, cfg.Adapter.Type); err != nil {
-		log.Fatalf("seed: %v", err)
-	}
 
 	adapter, err := buildAdapter(cfg)
 	if err != nil {
@@ -77,7 +72,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           api.NewServer(st, engine, hub, string(cfg.Adapter.Type), static).Handler(),
+		Handler:           api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
@@ -120,58 +115,4 @@ func buildAdapter(cfg *config.Config) (control.Adapter, error) {
 	default: // simulator
 		return sim.New(), nil
 	}
-}
-
-// seedDefaults gives a fresh database a usable starting point: one environment,
-// and — in simulator mode — the virtual controller so the platform works out of
-// the box. Real devices are added through the API/UI. Existing data is left
-// untouched so user edits persist across restarts.
-func seedDefaults(st *store.Store, adapter config.AdapterType) error {
-	envs, err := st.Environments()
-	if err != nil {
-		return err
-	}
-	if len(envs) == 0 {
-		env := domain.Environment{
-			ID: "env-main", Name: "Main Grow Box",
-			TargetTempC: 24, TargetHumidity: 55, EmergencyTempC: 35,
-		}
-		if err := st.SaveEnvironment(env); err != nil {
-			return err
-		}
-		envs = []domain.Environment{env}
-	}
-	if adapter != config.AdapterSimulator {
-		return nil
-	}
-	devs, err := st.Devices()
-	if err != nil {
-		return err
-	}
-	for _, d := range devs {
-		if d.ID == sim.DeviceID {
-			return nil // already provisioned
-		}
-	}
-	envID := "env-main"
-	if !containsEnv(envs, envID) {
-		envID = envs[0].ID
-	}
-	return st.SaveDevice(domain.Device{
-		ID: sim.DeviceID, Name: "Breadboard Fan Controller",
-		EnvironmentID: envID, Adapter: "simulator",
-		Channels: []domain.Channel{
-			{ID: "fan1", Name: "Fan 1", Role: domain.RoleExhaust},
-			{ID: "fan2", Name: "Fan 2", Role: domain.RoleCirculation},
-		},
-	})
-}
-
-func containsEnv(envs []domain.Environment, id string) bool {
-	for _, e := range envs {
-		if e.ID == id {
-			return true
-		}
-	}
-	return false
 }

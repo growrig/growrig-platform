@@ -13,6 +13,11 @@
 /growcore/internal/webui/dist/*
 !/growcore/internal/webui/dist/.gitkeep
 
+# Embedded device catalogue — synced from /devices by `make build`; the
+# authoritative source is /devices, only the placeholder is tracked here
+/growcore/internal/catalog/data/*
+!/growcore/internal/catalog/data/.gitkeep
+
 # Node / SvelteKit
 node_modules/
 /web/.svelte-kit/

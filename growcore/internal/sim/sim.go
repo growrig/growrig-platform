@@ -1,9 +1,9 @@
 // Package sim is a simulator adapter for Grow Core.
 //
-// It emulates a Grow Controller with a temperature/humidity sensor and PWM fan
-// channels, running a small physical model so the whole platform can be
-// exercised end-to-end without hardware. It implements control.Adapter and
-// stands in for the Home Assistant adapter.
+// It emulates Home Assistant entities for a grow tent (temperature, humidity,
+// CO2, two PWM fans, a light, a camera) plus a lung room (temperature,
+// humidity), running a small physical model so the whole platform can be
+// exercised end-to-end without hardware. It implements control.Adapter.
 package sim
 
 import (
@@ -13,73 +13,105 @@ import (
 	"sync"
 	"time"
 
+	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
-// DeviceID is the stable id of the simulated controller that Grow Core
-// auto-provisions when the simulator adapter is selected.
-const DeviceID = "sim-controller-1"
+// Simulated entity ids and the demo environment ids they belong to.
+const (
+	TentID = "env-main"
+	RoomID = "env-lung"
+
+	tentTemp   = "sim.tent_temperature"
+	tentHumid  = "sim.tent_humidity"
+	tentCO2    = "sim.tent_co2"
+	tentFan1   = "sim.tent_fan1"
+	tentFan1R  = "sim.tent_fan1_rpm"
+	tentFan2   = "sim.tent_fan2"
+	tentFan2R  = "sim.tent_fan2_rpm"
+	tentLight  = "sim.tent_light"
+	tentCamera = "sim.tent_camera"
+	roomTemp   = "sim.room_temperature"
+	roomHumid  = "sim.room_humidity"
+)
 
 const (
-	ambientTempC   = 22.0 // air pulled in by the exhaust
+	ambientTempC   = 22.0
 	ambientHumid   = 48.0
-	heatInputC     = 1.6 // °C/min added by lamp + gear at rest
-	moistureInput  = 3.0 // %RH/min plant transpiration
+	ambientCO2     = 450.0
+	heatInputC     = 1.6
+	lightHeatC     = 0.6
+	moistureInput  = 3.0
+	co2Input       = 55.0
 	baseCoolRate   = 0.04
 	exhaustCooling = 0.9
 )
 
 type fan struct {
-	speed int // commanded 0-100
-	rpm   int // measured
+	speed int
+	rpm   int
 }
 
-// Simulator holds the physical state of one virtual controller. Fan channels
-// are created lazily the first time they are commanded, so the simulator
-// tracks whatever channels the (database-owned) sim device defines.
 type Simulator struct {
-	mu       sync.Mutex
-	tempC    float64
-	humidity float64
-	fans     map[string]*fan
-	rng      *rand.Rand
+	mu sync.Mutex
+
+	tentTempC    float64
+	tentHumidity float64
+	tentCO2      float64
+	lightOn      bool
+	fans         map[string]*fan // by fan entity id
+	rpmOf        map[string]string
+
+	roomTempC    float64
+	roomHumidity float64
+
+	rng *rand.Rand
 }
 
 func New() *Simulator {
-	return &Simulator{
-		tempC:    26.5,
-		humidity: 60,
-		fans:     map[string]*fan{},
-		rng:      rand.New(rand.NewSource(time.Now().UnixNano())),
+	s := &Simulator{
+		tentTempC:    26.5,
+		tentHumidity: 60,
+		tentCO2:      800,
+		fans:         map[string]*fan{tentFan1: {speed: 40}, tentFan2: {speed: 30}},
+		rpmOf:        map[string]string{tentFan1R: tentFan1, tentFan2R: tentFan2},
+		roomTempC:    21,
+		roomHumidity: 45,
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
+	return s
 }
 
-func (s *Simulator) Start(context.Context) error { return nil }
-func (s *Simulator) Close() error                { return nil }
-
-func (s *Simulator) Health(domain.Device) domain.ControllerHealth { return domain.HealthOnline }
+func (s *Simulator) Start(context.Context) error     { return nil }
+func (s *Simulator) Close() error                    { return nil }
+func (s *Simulator) Health() domain.ControllerHealth { return domain.HealthOnline }
 
 // Tick advances the physical model by dt using the currently commanded speeds.
 func (s *Simulator) Tick(dt time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	minutes := dt.Minutes()
+	m := dt.Minutes()
 	ex := float64(s.dominantSpeed()) / 100.0
 
-	// Newtonian-ish cooling toward ambient, scaled by airflow.
+	heat := heatInputC
+	if s.lightOn {
+		heat += lightHeatC
+	}
 	coolRate := baseCoolRate + exhaustCooling*ex
-	dTemp := heatInputC*minutes - coolRate*(s.tempC-ambientTempC)*minutes
-	s.tempC += dTemp + s.noise(0.05)
-	s.tempC = clampF(s.tempC, ambientTempC-2, 45)
+	s.tentTempC += heat*m - coolRate*(s.tentTempC-ambientTempC)*m + s.noise(0.05)
+	s.tentTempC = clampF(s.tentTempC, ambientTempC-2, 45)
 
-	// Humidity rises from transpiration; airflow flushes it toward ambient.
-	dHum := moistureInput*minutes - (0.05+ex)*(s.humidity-ambientHumid)*minutes
-	s.humidity += dHum + s.noise(0.2)
-	s.humidity = clampF(s.humidity, 20, 95)
+	s.tentHumidity += moistureInput*m - (0.05+ex)*(s.tentHumidity-ambientHumid)*m + s.noise(0.2)
+	s.tentHumidity = clampF(s.tentHumidity, 20, 95)
 
-	// Tachometers track commanded speed with jitter; fans below a stall
-	// threshold report zero RPM.
+	s.tentCO2 += co2Input*m - (0.1+ex)*(s.tentCO2-ambientCO2)*m + s.noise(4)
+	s.tentCO2 = clampF(s.tentCO2, ambientCO2-30, 1600)
+
+	// Lung room drifts slowly and independently.
+	s.roomTempC = clampF(s.roomTempC+s.noise(0.03), 18, 26)
+	s.roomHumidity = clampF(s.roomHumidity+s.noise(0.15), 35, 65)
+
 	for _, f := range s.fans {
 		if f.speed < 8 {
 			f.rpm = 0
@@ -89,35 +121,117 @@ func (s *Simulator) Tick(dt time.Duration) {
 	}
 }
 
-func (s *Simulator) Climate(domain.Device) (float64, float64, bool) {
+func (s *Simulator) Value(entity string) (float64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.tempC, s.humidity, true
+	switch entity {
+	case tentTemp:
+		return s.tentTempC, true
+	case tentHumid:
+		return s.tentHumidity, true
+	case tentCO2:
+		return s.tentCO2, true
+	case roomTemp:
+		return s.roomTempC, true
+	case roomHumid:
+		return s.roomHumidity, true
+	}
+	if fanEntity, ok := s.rpmOf[entity]; ok {
+		if f := s.fans[fanEntity]; f != nil {
+			return float64(f.rpm), true
+		}
+	}
+	return 0, false
 }
 
-func (s *Simulator) SetSpeed(_ domain.Device, ch domain.Channel, speed int) error {
+func (s *Simulator) SetFan(entity string, speed int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	f := s.fans[ch.ID]
+	f := s.fans[entity]
 	if f == nil {
 		f = &fan{}
-		s.fans[ch.ID] = f
+		s.fans[entity] = f
 	}
 	f.speed = clampInt(speed, 0, 100)
 	return nil
 }
 
-func (s *Simulator) FanRPM(_ domain.Device, ch domain.Channel) (int, bool) {
+func (s *Simulator) SetSwitch(entity string, on bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if f, ok := s.fans[ch.ID]; ok {
-		return f.rpm, true
+	if entity == tentLight {
+		s.lightOn = on
 	}
-	return 0, false
+	return nil
 }
 
-// dominantSpeed is the highest commanded fan speed, used as the effective
-// airflow that drives cooling. Callers must hold s.mu.
+func (s *Simulator) SwitchState(entity string) (bool, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entity == tentLight {
+		return s.lightOn, true
+	}
+	return false, false
+}
+
+// Discover advertises the simulated entities so the add-device UI has content
+// even without Home Assistant.
+func (s *Simulator) Discover() []control.DiscoveredEntity {
+	return []control.DiscoveredEntity{
+		{Entity: tentTemp, Name: "Tent Temperature", Kind: domain.KindSensor, Measurement: domain.MeasureTemperature},
+		{Entity: tentHumid, Name: "Tent Humidity", Kind: domain.KindSensor, Measurement: domain.MeasureHumidity},
+		{Entity: tentCO2, Name: "Tent CO₂", Kind: domain.KindSensor, Measurement: domain.MeasureCO2},
+		{Entity: roomTemp, Name: "Lung Room Temperature", Kind: domain.KindSensor, Measurement: domain.MeasureTemperature},
+		{Entity: roomHumid, Name: "Lung Room Humidity", Kind: domain.KindSensor, Measurement: domain.MeasureHumidity},
+		{Entity: tentFan1, Name: "Tent Fan 1", Kind: domain.KindFan},
+		{Entity: tentFan2, Name: "Tent Fan 2", Kind: domain.KindFan},
+		{Entity: tentLight, Name: "Tent Light", Kind: domain.KindLight},
+		{Entity: tentCamera, Name: "Tent Camera", Kind: domain.KindCamera},
+	}
+}
+
+// SeedTopology returns the demo tent + lung room and their bindings, used to
+// populate a fresh database in simulator mode.
+func SeedTopology() ([]domain.Environment, []domain.Binding) {
+	envs := []domain.Environment{
+		{ID: TentID, Name: "Main Grow Tent", Kind: domain.KindTent, AirSourceID: RoomID,
+			TargetTempC: 24, TargetHumidity: 55, TargetCO2: 800, EmergencyTempC: 35},
+		{ID: RoomID, Name: "Lung Room", Kind: domain.KindRoom},
+	}
+	b := func(id, env string, kind domain.BindingKind, name, entity string) domain.Binding {
+		return domain.Binding{ID: id, EnvironmentID: env, Kind: kind, Name: name, Entity: entity}
+	}
+	sensor := func(id, env, name, entity string, m domain.Measurement) domain.Binding {
+		x := b(id, env, domain.KindSensor, name, entity)
+		x.Measurement = m
+		return x
+	}
+	fanB := func(id, env, name, entity, rpm string, role domain.Role) domain.Binding {
+		x := b(id, env, domain.KindFan, name, entity)
+		x.Role = role
+		x.RPMEntity = rpm
+		return x
+	}
+	lightB := func(id, env, name, entity string, watts float64, primary bool) domain.Binding {
+		x := b(id, env, domain.KindLight, name, entity)
+		x.Wattage = watts
+		x.Primary = primary
+		return x
+	}
+	bindings := []domain.Binding{
+		sensor("sim-t-temp", TentID, "Temperature", tentTemp, domain.MeasureTemperature),
+		sensor("sim-t-humid", TentID, "Humidity", tentHumid, domain.MeasureHumidity),
+		sensor("sim-t-co2", TentID, "CO₂", tentCO2, domain.MeasureCO2),
+		fanB("sim-t-fan1", TentID, "Fan 1", tentFan1, tentFan1R, domain.RoleExhaust),
+		fanB("sim-t-fan2", TentID, "Fan 2", tentFan2, tentFan2R, domain.RoleCirculation),
+		lightB("sim-t-light", TentID, "Grow Light", tentLight, 150, true),
+		b("sim-t-cam", TentID, domain.KindCamera, "Tent Camera", tentCamera),
+		sensor("sim-r-temp", RoomID, "Temperature", roomTemp, domain.MeasureTemperature),
+		sensor("sim-r-humid", RoomID, "Humidity", roomHumid, domain.MeasureHumidity),
+	}
+	return envs, bindings
+}
+
 func (s *Simulator) dominantSpeed() int {
 	max := 0
 	for _, f := range s.fans {
