@@ -34,17 +34,18 @@ import (
 type Category string
 
 const (
-	CatTent   Category = "tent"
-	CatFan    Category = "fan"
-	CatLight  Category = "light"
-	CatSensor Category = "sensor"
-	CatCamera Category = "camera"
-	CatPlug   Category = "plug"
-	CatCombo  Category = "combo" // provides several bindings
+	CatTent       Category = "tent"
+	CatFan        Category = "fan"
+	CatController Category = "controller"
+	CatLight      Category = "light"
+	CatSensor     Category = "sensor"
+	CatCamera     Category = "camera"
+	CatPlug       Category = "plug"
+	CatCombo      Category = "combo" // provides several bindings
 )
 
 // categoryOrder is the display order of categories in the catalog listing.
-var categoryOrder = []Category{CatTent, CatFan, CatSensor, CatLight, CatPlug, CatCamera, CatCombo}
+var categoryOrder = []Category{CatTent, CatController, CatFan, CatSensor, CatLight, CatPlug, CatCamera, CatCombo}
 
 // BindingTemplate describes one binding a product contributes.
 type BindingTemplate struct {
@@ -64,23 +65,31 @@ type BindingTemplate struct {
 
 // Product is a catalog entry.
 type Product struct {
-	ID          string            `json:"id"`
-	Brand       string            `json:"brand"`
-	Model       string            `json:"model"`
-	Category    Category          `json:"category"`
-	Connection  string            `json:"connection"`
-	Description string            `json:"description"`
-	Provides    []BindingTemplate `json:"provides,omitempty"`
+	ID            string            `json:"id"`
+	Brand         string            `json:"brand"`
+	Model         string            `json:"model"`
+	Category      Category          `json:"category"`
+	Connection    string            `json:"connection"`
+	Description   string            `json:"description"`
+	Version       string            `json:"version"`
+	Author        string            `json:"author"`
+	HAIntegration string            `json:"haIntegration,omitempty"`
+	Documentation string            `json:"documentation,omitempty"`
+	Provides      []BindingTemplate `json:"provides,omitempty"`
 }
 
 // deviceFile is the on-disk YAML schema for a single device. Category and id
 // come from the directory path, not the file.
 type deviceFile struct {
-	Brand       string            `yaml:"brand"`
-	Model       string            `yaml:"model"`
-	Connection  string            `yaml:"connection"`
-	Description string            `yaml:"description"`
-	Provides    []BindingTemplate `yaml:"provides"`
+	Brand         string            `yaml:"brand"`
+	Model         string            `yaml:"model"`
+	Connection    string            `yaml:"connection"`
+	Description   string            `yaml:"description"`
+	Version       string            `yaml:"version"`
+	Author        string            `yaml:"author"`
+	HAIntegration string            `yaml:"haIntegration"`
+	Documentation string            `yaml:"documentation"`
+	Provides      []BindingTemplate `yaml:"provides"`
 }
 
 // data holds the catalog tree synced from repo-root devices/ by `make build`.
@@ -215,13 +224,17 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 				return nil, fmt.Errorf("%s: %w", path, err)
 			}
 			out = append(out, Product{
-				ID:          dev.Name(),
-				Brand:       df.Brand,
-				Model:       df.Model,
-				Category:    category,
-				Connection:  df.Connection,
-				Description: df.Description,
-				Provides:    df.Provides,
+				ID:            dev.Name(),
+				Brand:         df.Brand,
+				Model:         df.Model,
+				Category:      category,
+				Connection:    df.Connection,
+				Description:   df.Description,
+				Version:       defaultString(df.Version, "1.0.0"),
+				Author:        defaultString(df.Author, "GrowRig"),
+				HAIntegration: df.HAIntegration,
+				Documentation: df.Documentation,
+				Provides:      df.Provides,
 			})
 		}
 	}
@@ -232,4 +245,11 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

@@ -10,10 +10,16 @@ import (
 // DiscoveredEntity is a candidate device/sensor the adapter has found and that
 // the user can bind to an environment.
 type DiscoveredEntity struct {
-	Entity      string             `json:"entity"`
-	Name        string             `json:"name"`
-	Kind        domain.BindingKind `json:"kind"`
-	Measurement domain.Measurement `json:"measurement,omitempty"`
+	Entity         string             `json:"entity"`
+	Name           string             `json:"name"`
+	Kind           domain.BindingKind `json:"kind"`
+	Measurement    domain.Measurement `json:"measurement,omitempty"`
+	HADeviceID     string             `json:"haDeviceId,omitempty"`
+	DeviceName     string             `json:"deviceName,omitempty"`
+	Integration    string             `json:"integration,omitempty"`
+	EntityCategory string             `json:"entityCategory,omitempty"`
+	Manufacturer   string             `json:"manufacturer,omitempty"`
+	Model          string             `json:"model,omitempty"`
 }
 
 // Adapter is the boundary between the control engine and the physical world.

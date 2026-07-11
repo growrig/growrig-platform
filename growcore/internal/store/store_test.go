@@ -1,7 +1,9 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
@@ -76,4 +78,65 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	st2.Close()
+}
+
+func TestEnvironmentYAMLExportAndImport(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "growcore.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := domain.Environment{ID: "box-a", Name: "Box A", Kind: domain.KindTent, Model: "Test Tent", TargetTempC: 24, TargetHumidity: 55, EmergencyTempC: 35}
+	if err := st.SaveEnvironment(env); err != nil {
+		t.Fatal(err)
+	}
+	b := domain.Binding{ID: "light-a", DeviceID: "fixture-a", DeviceName: "Test Light", EnvironmentID: env.ID, Kind: domain.KindLight, Name: "Test Light", Wattage: 100, Primary: true}
+	if err := st.SaveBinding(b); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	yamlPath := filepath.Join(dir, "environments", env.ID, "environment.yaml")
+	raw, err := os.ReadFile(yamlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "devices:") || !strings.Contains(string(raw), "wattage: 100") {
+		t.Fatalf("unexpected YAML:\n%s", raw)
+	}
+	updated := strings.Replace(string(raw), "name: Box A", "name: Box A edited", 1)
+	if err := os.WriteFile(yamlPath, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	envs, err := st.Environments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(envs) != 1 || envs[0].Name != "Box A edited" {
+		t.Fatalf("YAML edit not imported: %+v", envs)
+	}
+}
+
+func TestActivityLogFiltersByEnvironment(t *testing.T) {
+	st := open(t)
+	if err := st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "info", Type: "control", Message: "fan changed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddActivity(domain.Activity{EnvironmentID: "b", Level: "warning", Type: "warning", Message: "sensor offline"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := st.Activities("a", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Message != "fan changed" {
+		t.Fatalf("unexpected events: %+v", events)
+	}
 }

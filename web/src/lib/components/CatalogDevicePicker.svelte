@@ -1,8 +1,11 @@
 <script lang="ts">
-	import type { BindingKind, CatalogProduct, DiscoveredEntity, Measurement, Role } from '$lib/types';
+	import type { Binding, BindingKind, CatalogProduct, DiscoveredEntity, Measurement, Role } from '$lib/types';
 	import { Button, Select } from '$lib/components/ui';
 
 	export interface BindingDraft {
+		deviceId: string;
+		deviceName: string;
+		powerControllerId?: string;
 		kind: BindingKind;
 		name: string;
 		entity: string;
@@ -15,27 +18,35 @@
 	interface Props {
 		catalog: CatalogProduct[];
 		discovered: DiscoveredEntity[];
+		bindings?: Binding[];
 		usedEntities: Set<string>; // already bound or picked in this session
 		onAdd: (drafts: BindingDraft[]) => void;
+		onSelectProduct?: (product: CatalogProduct) => void;
+		initialCategory?: BindingKind;
 	}
-	let { catalog, discovered, usedEntities, onAdd }: Props = $props();
+	let { catalog, discovered, bindings = [], usedEntities, onAdd, onSelectProduct, initialCategory = 'sensor' }: Props = $props();
 
 	const categories: { key: BindingKind; label: string }[] = [
+		{ key: 'controller', label: 'Controllers' },
 		{ key: 'sensor', label: 'Sensors' },
 		{ key: 'fan', label: 'Fans' },
 		{ key: 'light', label: 'Lights' },
+		{ key: 'power', label: 'Power & Switching' },
 		{ key: 'camera', label: 'Cameras' }
 	];
 	// Catalog categories that yield each binding kind.
 	const catCategoriesFor: Record<BindingKind, string[]> = {
 		sensor: ['sensor'],
 		fan: ['fan'],
-		light: ['light', 'plug'],
+		controller: ['controller'],
+		light: ['light'],
+		power: ['plug'],
 		camera: ['camera']
 	};
 
 	let category = $state<BindingKind>('sensor');
 	let productId = $state('');
+	$effect(() => { category = initialCategory; productId = ''; });
 
 	const products = $derived(catalog.filter((p) => catCategoriesFor[category].includes(p.category)));
 	const product = $derived(catalog.find((p) => p.id === productId));
@@ -44,12 +55,20 @@
 	let rowEntity = $state<string[]>([]);
 	let rowName = $state<string[]>([]);
 	let rowWattage = $state<number[]>([]);
+	let powerControllerId = $state('');
+	const powerControllers = $derived.by(() => {
+		const seen = new Map<string, string>();
+		for (const b of bindings) if (b.kind === 'power') seen.set(b.deviceId, b.deviceName);
+		return [...seen.entries()].map(([value, label]) => ({ value, label }));
+	});
 
 	function selectProduct(id: string) {
 		productId = id;
 		const p = catalog.find((x) => x.id === id);
 		rowEntity = (p?.provides ?? []).map(() => '');
-		rowName = (p?.provides ?? []).map((t) => t.label);
+		rowName = (p?.provides ?? []).map((t) =>
+			t.kind === 'light' && p ? `${p.brand} ${p.model}` : t.label
+		);
 		rowWattage = (p?.provides ?? []).map((t) => t.wattage ?? 0);
 	}
 
@@ -66,12 +85,17 @@
 		const p = product;
 		if (!p?.provides) return;
 		const drafts: BindingDraft[] = [];
+		const deviceId = crypto.randomUUID();
+		const deviceName = `${p.brand} ${p.model}`;
 		p.provides.forEach((t, i) => {
 			const entity = rowEntity[i]?.trim();
-			if (!entity) return;
+			if (!entity && t.kind !== 'light') return;
 			drafts.push({
+				deviceId,
+				deviceName: t.kind === 'light' ? rowName[i]?.trim() || deviceName : deviceName,
+				powerControllerId: t.kind === 'light' ? powerControllerId || undefined : undefined,
 				kind: t.kind,
-				name: rowName[i] || t.label,
+				name: rowName[i] || (t.kind === 'light' ? deviceName : t.label),
 				entity,
 				measurement: t.measurement,
 				role: t.role,
@@ -84,6 +108,7 @@
 		rowEntity = [];
 		rowName = [];
 		rowWattage = [];
+		powerControllerId = '';
 	}
 
 	const field =
@@ -113,7 +138,7 @@
 		{#each products as p (p.id)}
 			<button
 				type="button"
-				onclick={() => selectProduct(p.id)}
+				onclick={() => onSelectProduct ? onSelectProduct(p) : selectProduct(p.id)}
 				class="rounded-lg border p-3 text-left transition-colors {productId === p.id
 					? 'border-rig-500 bg-rig-800/40'
 					: 'border-rig-800 bg-rig-950/40 hover:border-rig-600'}"
@@ -133,14 +158,18 @@
 			{#each product.provides as t, i (i)}
 				{@const opts = candidates(t.kind, t.measurement)}
 				<div class="grid items-center gap-2 sm:grid-cols-[1fr_1.4fr]">
-					<input bind:value={rowName[i]} placeholder={t.label} class={field} />
-					{#if opts.length}
+					{#if t.kind === 'light'}
+						<input bind:value={rowName[i]} placeholder="{product.brand} {product.model}" class={field} />
+						<div class="rounded-md border border-rig-800 bg-rig-900/50 px-3 py-2 text-xs text-rig-500">Fixture · no Home Assistant entity</div>
+					{:else if opts.length}
+						<input bind:value={rowName[i]} placeholder={t.label} class={field} />
 						<Select
 							bind:value={rowEntity[i]}
 							placeholder="— select {t.entityDomain} entity —"
 							items={opts.map((d) => ({ value: d.entity, label: `${d.name} (${d.entity})` }))}
 						/>
 					{:else}
+						<input bind:value={rowName[i]} placeholder={t.label} class={field} />
 						<input bind:value={rowEntity[i]} placeholder="{t.entityDomain}.entity_id" class={field} />
 					{/if}
 				</div>
@@ -159,6 +188,11 @@
 					</label>
 				{/if}
 			{/each}
+			{#if product.provides.some((t) => t.kind === 'light')}
+				<label class="block text-xs text-rig-400">Power controller <span class="text-rig-600">(optional)</span>
+					<Select bind:value={powerControllerId} placeholder="Assign later" items={powerControllers} class="mt-1" />
+				</label>
+			{/if}
 			<Button type="button" onclick={commit}>
 				Add {product.brand} {product.model}
 			</Button>

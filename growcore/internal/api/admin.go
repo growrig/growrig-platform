@@ -5,12 +5,38 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
+
+func (s *Server) getEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
+	raw, err := s.store.EnvironmentYAML(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
+}
+
+func (s *Server) putEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.SaveEnvironmentYAML(r.PathValue("id"), raw); err != nil {
+		writeJSON(w, http.StatusBadRequest, errBody(err.Error()))
+		return
+	}
+	s.activity(r.PathValue("id"), "", "info", "configuration", "Updated environment YAML configuration")
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // --- Environments ---
 
@@ -43,6 +69,7 @@ func (s *Server) createEnvironment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.activity(env.ID, "", "info", "configuration", "Created environment "+env.Name)
 	writeJSON(w, http.StatusCreated, env)
 }
 
@@ -61,14 +88,17 @@ func (s *Server) updateEnvironment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.activity(env.ID, "", "info", "configuration", "Updated environment settings")
 	writeJSON(w, http.StatusOK, env)
 }
 
 func (s *Server) deleteEnvironment(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteEnvironment(r.PathValue("id")); err != nil {
+	envID := r.PathValue("id")
+	if err := s.store.DeleteEnvironment(envID); err != nil {
 		writeErr(w, http.StatusConflict, err)
 		return
 	}
+	s.activity(envID, "", "info", "configuration", "Deleted environment")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -106,15 +136,19 @@ func (s *Server) buildEnvironment(envID string, b environmentBody) (domain.Envir
 // --- Bindings ---
 
 type bindingBody struct {
-	EnvironmentID string             `json:"environmentId"`
-	Kind          domain.BindingKind `json:"kind"`
-	Name          string             `json:"name"`
-	Entity        string             `json:"entity"`
-	Measurement   domain.Measurement `json:"measurement"`
-	Role          domain.Role        `json:"role"`
-	RPMEntity     string             `json:"rpmEntity"`
-	Wattage       float64            `json:"wattage"`
-	Primary       bool               `json:"primary"`
+	DeviceID            string             `json:"deviceId"`
+	DeviceName          string             `json:"deviceName"`
+	PowerControllerID   string             `json:"powerControllerId"`
+	ControllerChannelID string             `json:"controllerChannelId"`
+	EnvironmentID       string             `json:"environmentId"`
+	Kind                domain.BindingKind `json:"kind"`
+	Name                string             `json:"name"`
+	Entity              string             `json:"entity"`
+	Measurement         domain.Measurement `json:"measurement"`
+	Role                domain.Role        `json:"role"`
+	RPMEntity           string             `json:"rpmEntity"`
+	Wattage             float64            `json:"wattage"`
+	Primary             bool               `json:"primary"`
 }
 
 func (s *Server) createBinding(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +178,7 @@ func (s *Server) createBinding(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.activity(binding.EnvironmentID, binding.DeviceID, "info", "configuration", "Added "+binding.DeviceName+" capability "+binding.Name)
 	writeJSON(w, http.StatusCreated, binding)
 }
 
@@ -173,6 +208,7 @@ func (s *Server) updateBinding(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.activity(binding.EnvironmentID, binding.DeviceID, "info", "configuration", "Updated "+binding.DeviceName+" capability "+binding.Name)
 	writeJSON(w, http.StatusOK, binding)
 }
 
@@ -182,10 +218,14 @@ func (s *Server) deleteBinding(w http.ResponseWriter, r *http.Request) {
 	// Remember the environment of a light so we can promote a new primary
 	// after removal.
 	var lightEnv string
+	var removed domain.Binding
 	if all, err := s.store.Bindings(); err == nil {
 		for _, b := range all {
-			if b.ID == bindingID && b.Kind == domain.KindLight {
-				lightEnv = b.EnvironmentID
+			if b.ID == bindingID {
+				removed = b
+				if b.Kind == domain.KindLight {
+					lightEnv = b.EnvironmentID
+				}
 				break
 			}
 		}
@@ -201,14 +241,20 @@ func (s *Server) deleteBinding(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if removed.ID != "" {
+		s.activity(removed.EnvironmentID, removed.DeviceID, "info", "configuration", "Removed "+removed.DeviceName+" capability "+removed.Name)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, error) {
+	if strings.TrimSpace(b.DeviceID) == "" || strings.TrimSpace(b.DeviceName) == "" {
+		return domain.Binding{}, fmt.Errorf("deviceId and deviceName are required")
+	}
 	if strings.TrimSpace(b.Name) == "" {
 		return domain.Binding{}, fmt.Errorf("name is required")
 	}
-	if strings.TrimSpace(b.Entity) == "" {
+	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan {
 		return domain.Binding{}, fmt.Errorf("entity is required")
 	}
 	envs, err := s.store.Environments()
@@ -218,19 +264,50 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	if !containsEnv(envs, b.EnvironmentID) {
 		return domain.Binding{}, fmt.Errorf("unknown environment %q", b.EnvironmentID)
 	}
+	if b.Kind == domain.KindLight && b.PowerControllerID != "" {
+		bindings, err := s.store.Bindings()
+		if err != nil {
+			return domain.Binding{}, err
+		}
+		validController := false
+		for _, candidate := range bindings {
+			if candidate.EnvironmentID == b.EnvironmentID && candidate.DeviceID == b.PowerControllerID && candidate.Kind == domain.KindPower {
+				validController = true
+				break
+			}
+		}
+		if !validController {
+			return domain.Binding{}, fmt.Errorf("unknown power controller %q", b.PowerControllerID)
+		}
+	}
 
 	binding := domain.Binding{
-		ID: bindingID, EnvironmentID: b.EnvironmentID, Kind: b.Kind, Name: b.Name, Entity: b.Entity,
+		ID: bindingID, DeviceID: b.DeviceID, DeviceName: b.DeviceName,
+		PowerControllerID: b.PowerControllerID, ControllerChannelID: b.ControllerChannelID, EnvironmentID: b.EnvironmentID, Kind: b.Kind, Name: b.Name, Entity: b.Entity,
 	}
 	switch b.Kind {
 	case domain.KindSensor:
 		switch b.Measurement {
-		case domain.MeasureTemperature, domain.MeasureHumidity, domain.MeasureCO2:
+		case domain.MeasureTemperature, domain.MeasureHumidity, domain.MeasureCO2, domain.MeasurePower:
 			binding.Measurement = b.Measurement
 		default:
-			return domain.Binding{}, fmt.Errorf("sensor needs a measurement (temperature, humidity or co2)")
+			return domain.Binding{}, fmt.Errorf("sensor needs a measurement (temperature, humidity, co2 or power)")
 		}
 	case domain.KindFan:
+		binding.Entity = ""
+		if b.ControllerChannelID == "" {
+			return domain.Binding{}, fmt.Errorf("fan needs a controller channel")
+		}
+		binding.ControllerChannelID = b.ControllerChannelID
+		role := b.Role
+		if role == "" {
+			role = domain.RoleUnassigned
+		}
+		if !validRole(role) {
+			return domain.Binding{}, fmt.Errorf("unknown role %q", role)
+		}
+		binding.Role = role
+	case domain.KindController:
 		role := b.Role
 		if role == "" {
 			role = domain.RoleUnassigned
@@ -241,11 +318,14 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 		binding.Role = role
 		binding.RPMEntity = b.RPMEntity
 	case domain.KindLight:
+		binding.Entity = "" // fixtures never bind directly to Home Assistant
 		if b.Wattage < 0 || b.Wattage > 100000 {
 			return domain.Binding{}, fmt.Errorf("wattage must be between 0 and 100000")
 		}
 		binding.Wattage = b.Wattage
 		binding.Primary = b.Primary
+	case domain.KindPower:
+		// A switchable power controller capability.
 	case domain.KindCamera:
 		// no extra fields
 	default:

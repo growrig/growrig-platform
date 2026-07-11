@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { live } from '$lib/live.svelte';
 	import {
 		getEnvironments,
@@ -10,7 +11,7 @@
 		deleteBinding,
 		updateBinding
 	} from '$lib/api';
-	import type { Binding, CatalogProduct, DiscoveredEntity, Environment } from '$lib/types';
+	import type { Binding, BindingKind, CatalogProduct, DiscoveredEntity, Environment } from '$lib/types';
 	import { measurementUnit } from '$lib/format';
 	import KindIcon from '$lib/components/KindIcon.svelte';
 	import DeviceModal from '$lib/components/DeviceModal.svelte';
@@ -22,6 +23,8 @@
 	import Star from '@lucide/svelte/icons/star';
 
 	const id = $derived(page.params.id);
+	interface Props { embedded?: boolean }
+	let { embedded = false }: Props = $props();
 
 	let environments = $state<Environment[]>([]);
 	let bindings = $state<Binding[]>([]);
@@ -51,10 +54,35 @@
 			loading = false;
 		}
 	}
-	onMount(reload);
+	onMount(() => {
+		if (!embedded) {
+			goto(`/env/${id}/settings#devices`);
+			return;
+		}
+		reload();
+	});
 
 	const env = $derived(environments.find((e) => e.id === id));
 	const myBindings = $derived(bindings.filter((b) => b.environmentId === id));
+	type DeviceGroup = { id: string; name: string; bindings: Binding[] };
+	const devices = $derived.by(() => {
+		const grouped = new Map<string, DeviceGroup>();
+		for (const b of myBindings) {
+			const device = grouped.get(b.deviceId) ?? { id: b.deviceId, name: b.deviceName, bindings: [] };
+			device.bindings.push(b);
+			grouped.set(b.deviceId, device);
+		}
+		return [...grouped.values()];
+	});
+	const sections = $derived([
+		{ label: 'Controllers', kind: 'controller' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'controller')) },
+		{ label: 'Lights', kind: 'light' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'light')) },
+		{ label: 'Fans & Airflow', kind: 'fan' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'fan')) },
+		{ label: 'Sensors', kind: 'sensor' as BindingKind, devices: devices.filter((d) => d.bindings.every((b) => b.kind === 'sensor')) },
+		{ label: 'Cameras', kind: 'camera' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'camera')) },
+		{ label: 'Power & Switching', kind: 'power' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'power')) },
+		{ label: 'Climate Control', kind: 'controller' as BindingKind, devices: [] as DeviceGroup[], future: true }
+	]);
 	const usedEntities = $derived(new Set(bindings.map((b) => b.entity)));
 
 	// Live view for this environment, keyed by binding id.
@@ -76,9 +104,14 @@
 			return { value: `${c.desiredSpeed}%${c.rpm ? ` · ${c.rpm} rpm` : ''}`, online: onlineFromHealth() };
 		}
 		if (b.kind === 'light') {
+			if (!b.powerControllerId) return { value: 'Unassigned', online: null };
 			const c = controlById.get(b.id);
 			return { value: c ? (c.on ? 'On' : 'Off') : '—', online: onlineFromHealth() };
 		}
+		if (b.kind === 'power') {
+			return { value: '', online: onlineFromHealth() };
+		}
+		if (b.kind === 'controller') return { value: b.rpmEntity ? 'RPM connected' : 'No RPM', online: onlineFromHealth() };
 		return { value: '', online: onlineFromHealth() }; // camera
 	}
 
@@ -91,6 +124,8 @@
 		if (b.kind === 'sensor') return b.measurement ?? 'sensor';
 		if (b.kind === 'fan') return b.role ?? 'fan';
 		if (b.kind === 'light') return b.wattage ? `${b.wattage} W` : 'light';
+		if (b.kind === 'power') return 'switch';
+		if (b.kind === 'controller') return b.name;
 		return b.kind;
 	}
 
@@ -98,6 +133,9 @@
 	async function makePrimary(b: Binding) {
 		try {
 			await updateBinding(b.id, {
+				deviceId: b.deviceId,
+				deviceName: b.deviceName,
+				powerControllerId: b.powerControllerId,
 				environmentId: b.environmentId,
 				kind: b.kind,
 				name: b.name,
@@ -115,14 +153,20 @@
 	// --- add / edit modal ---
 	let modalOpen = $state(false);
 	let editTarget = $state<Binding | null>(null);
+	let addCategory = $state<BindingKind>('sensor');
 
-	function openAdd() {
+	function openAdd(category: BindingKind = 'sensor') {
+		addCategory = category;
 		editTarget = null;
 		modalOpen = true;
 	}
 	function openEdit(b: Binding) {
 		editTarget = b;
 		modalOpen = true;
+	}
+	function installProduct(product: CatalogProduct) {
+		modalOpen = false;
+		goto(`/env/${id}/devices/install/${product.id}`);
 	}
 
 	async function remove(b: Binding) {
@@ -135,11 +179,24 @@
 			flash('err', e instanceof Error ? e.message : 'Delete failed');
 		}
 	}
+
+	async function removeDevice(device: DeviceGroup) {
+		if (!confirm(`Remove "${device.name}" and all its capabilities?`)) return;
+		try {
+			for (const b of device.bindings) await deleteBinding(b.id);
+			flash('ok', 'Device removed');
+			reload();
+		} catch (e) {
+			flash('err', e instanceof Error ? e.message : 'Delete failed');
+		}
+	}
 </script>
 
-<a href="/env/{id}" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
-	<ArrowLeft size={15} /> Back to {env?.name ?? 'environment'}
-</a>
+{#if !embedded}
+	<a href="/env/{id}" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
+		<ArrowLeft size={15} /> Back to {env?.name ?? 'environment'}
+	</a>
+{/if}
 
 {#if loading}
 	<p class="text-rig-400">Loading…</p>
@@ -149,12 +206,12 @@
 	<p class="text-rig-400">Environment not found. <a href="/" class="text-leaf hover:underline">Go back</a></p>
 {:else}
 	<div class="space-y-5">
-		<div class="flex items-center justify-between">
+		<div class="flex items-center justify-between" id="devices">
 			<div>
-				<h1 class="text-2xl font-semibold">Devices</h1>
-				<p class="text-sm text-rig-400">{env.name} · {myBindings.length} device{myBindings.length === 1 ? '' : 's'}</p>
+				{#if embedded}<h2 class="text-xl font-semibold">Devices</h2>{:else}<h1 class="text-2xl font-semibold">Devices</h1>{/if}
+				<p class="text-sm text-rig-400">{env.name} · {devices.length} physical device{devices.length === 1 ? '' : 's'} · {myBindings.length} capabilities</p>
 			</div>
-			<Button onclick={openAdd}><Plus size={16} /> Add device</Button>
+			<Button onclick={() => openAdd()}><Plus size={16} /> Add device</Button>
 		</div>
 
 		{#if notice}
@@ -166,40 +223,39 @@
 		{#if myBindings.length === 0}
 			<div class="rounded-xl border border-dashed border-rig-800 p-10 text-center">
 				<p class="mb-4 text-sm text-rig-400">No devices yet.</p>
-				<Button onclick={openAdd}><Plus size={16} /> Add your first device</Button>
+				<Button onclick={() => openAdd()}><Plus size={16} /> Add your first device</Button>
 			</div>
 		{:else}
-			<div class="overflow-hidden rounded-xl border border-rig-800">
-				{#each myBindings as b, i (b.id)}
-					{@const st = status(b)}
-					<div
-						class="flex items-center gap-3 bg-rig-900/40 px-4 py-3 {i > 0 ? 'border-t border-rig-800' : ''}"
-					>
-						<KindIcon kind={b.kind} size={20} class="shrink-0 text-rig-400" />
-						<div class="min-w-0 flex-1">
-							<div class="truncate text-sm font-medium">{b.name}</div>
-							<div class="truncate font-mono text-xs text-rig-500">{b.entity}</div>
+			<div class="space-y-7">
+			{#each sections as section (section.label)}
+				<section>
+					<div class="mb-2 flex items-center gap-2"><h2 class="text-sm font-semibold text-rig-200">{section.label}</h2><span class="text-xs text-rig-500">{section.future ? 'Coming later' : section.devices.length}</span></div>
+					<div class="grid gap-3 xl:grid-cols-2">
+					{#if section.devices.length === 0 && !section.future}
+						<div class="flex items-center justify-between gap-4 rounded-xl border border-dashed border-rig-800 bg-rig-900/20 px-4 py-4 xl:col-span-2">
+							<div>
+								<div class="text-sm font-medium text-rig-300">No {section.label.toLowerCase()} added</div>
+								<div class="mt-0.5 text-xs text-rig-500">Add a device from the catalogue.</div>
+							</div>
+							<button onclick={() => openAdd(section.kind)} class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:bg-rig-800 hover:text-rig-100">
+								<Plus size={14} /> Add {section.label}
+							</button>
 						</div>
-
-						<span class="hidden rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-rig-300 sm:inline">
-							{meta(b)}
-						</span>
-
-						<div class="w-28 text-right text-sm font-semibold tabular-nums {st.online === false ? 'text-rig-600' : 'text-rig-100'}">
-							{st.value || '—'}
+					{/if}
+					{#each section.devices as device (device.id)}
+					<div class="rounded-xl border border-rig-800 bg-rig-900/40">
+						<div class="flex items-center gap-3 border-b border-rig-800 px-4 py-3">
+							<KindIcon kind={device.bindings[0].kind} size={20} class="text-rig-400" />
+							<div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{device.name}</div><div class="text-xs text-rig-500">{device.bindings.length} {device.bindings.length === 1 ? 'capability' : 'capabilities'}</div></div>
+							<button onclick={() => removeDevice(device)} class="rounded-md p-1.5 text-rig-500 hover:bg-rig-800 hover:text-danger" title="Remove device"><Trash2 size={15} /></button>
 						</div>
-
-						<span class="flex w-20 items-center justify-end gap-1.5 text-xs">
-							{#if st.online === null}
-								<span class="h-2 w-2 rounded-full bg-rig-700"></span><span class="text-rig-500">—</span>
-							{:else if st.online}
-								<span class="h-2 w-2 rounded-full bg-leaf"></span><span class="text-leaf">online</span>
-							{:else}
-								<span class="h-2 w-2 rounded-full bg-danger"></span><span class="text-danger">offline</span>
-							{/if}
-						</span>
-
-						<div class="flex items-center gap-1">
+						{#each device.bindings as b (b.id)}
+						{@const st = status(b)}
+						<div class="flex items-center gap-3 border-b border-rig-800/60 px-4 py-2.5 last:border-0">
+							<div class="min-w-0 flex-1"><div class="text-xs font-medium capitalize text-rig-300">{meta(b)}</div></div>
+							<div class="text-sm font-semibold tabular-nums">{st.value || '—'}</div>
+							<span class="h-2 w-2 rounded-full {st.online ? 'bg-leaf' : st.online === false ? 'bg-danger' : 'bg-rig-700'}" title={st.online ? 'Online' : st.online === false ? 'Offline' : 'Unknown'}></span>
+							<div class="flex items-center gap-1">
 							{#if b.kind === 'light'}
 								{#if b.primary}
 									<span class="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-warn" title="Primary grow light">
@@ -224,17 +280,14 @@
 							>
 								<Pencil size={15} />
 							</button>
-							<button
-								onclick={() => remove(b)}
-								class="rounded-md p-1.5 text-rig-400 transition-colors hover:bg-rig-800 hover:text-danger"
-								title="Remove"
-								aria-label="Remove {b.name}"
-							>
-								<Trash2 size={15} />
-							</button>
 						</div>
 					</div>
+						{/each}
+					</div>
 				{/each}
+					</div>
+				</section>
+			{/each}
 			</div>
 		{/if}
 	</div>
@@ -245,8 +298,11 @@
 		{catalog}
 		{discovered}
 		{usedEntities}
+		bindings={myBindings}
 		binding={editTarget}
 		onSaved={reload}
 		{flash}
+		onInstall={installProduct}
+		initialCategory={addCategory}
 	/>
 {/if}

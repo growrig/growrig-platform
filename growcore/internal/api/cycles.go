@@ -48,14 +48,17 @@ func (s *Server) putCycle(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.activity(id, "", "info", "configuration", "Started or updated grow cycle for "+cycle.Strain)
 	writeJSON(w, http.StatusOK, cycle)
 }
 
 func (s *Server) deleteCycle(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteCycle(r.PathValue("id")); err != nil {
+	envID := r.PathValue("id")
+	if err := s.store.DeleteCycle(envID); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.activity(envID, "", "info", "configuration", "Ended grow cycle")
 	w.WriteHeader(http.StatusNoContent)
 }
 

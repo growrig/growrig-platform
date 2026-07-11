@@ -25,6 +25,10 @@ type Server struct {
 	static      http.Handler
 }
 
+func (s *Server) activity(envID, deviceID, level, eventType, message string) {
+	_ = s.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message})
+}
+
 func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler) *Server {
 	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static}
 }
@@ -40,11 +44,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/catalog", s.getCatalog)
 	mux.HandleFunc("GET /api/discovery", s.getDiscovery)
 	mux.HandleFunc("POST /api/demo", s.postDemo)
+	mux.HandleFunc("GET /api/activity", s.getActivity)
 
 	mux.HandleFunc("GET /api/environments", s.getEnvironments)
 	mux.HandleFunc("POST /api/environments", s.createEnvironment)
 	mux.HandleFunc("PUT /api/environments/{id}", s.updateEnvironment)
 	mux.HandleFunc("DELETE /api/environments/{id}", s.deleteEnvironment)
+	mux.HandleFunc("GET /api/environments/{id}/config", s.getEnvironmentConfig)
+	mux.HandleFunc("PUT /api/environments/{id}/config", s.putEnvironmentConfig)
 	mux.HandleFunc("PUT /api/environments/{id}/targets", s.putTargets)
 	mux.HandleFunc("GET /api/environments/{id}/history", s.getHistory)
 	mux.HandleFunc("PUT /api/environments/{id}/cycle", s.putCycle)
@@ -74,6 +81,24 @@ func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.Latest())
+}
+
+func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if value := r.URL.Query().Get("limit"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			limit = parsed
+		}
+	}
+	events, err := s.store.Activities(r.URL.Query().Get("environmentId"), limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if events == nil {
+		events = []domain.Activity{}
+	}
+	writeJSON(w, http.StatusOK, events)
 }
 
 func (s *Server) getRoles(w http.ResponseWriter, r *http.Request) {
@@ -178,10 +203,30 @@ func (s *Server) putSwitch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	for _, b := range bindings {
 		if b.ID == id {
-			if err := s.adapter.SetSwitch(b.Entity, body.On); err != nil {
+			entity := b.Entity
+			if b.Kind == domain.KindLight {
+				entity = ""
+				for _, candidate := range bindings {
+					if candidate.DeviceID == b.PowerControllerID && candidate.Kind == domain.KindPower {
+						entity = candidate.Entity
+						break
+					}
+				}
+			}
+			if entity == "" {
+				writeJSON(w, http.StatusConflict, errBody("no power controller assigned"))
+				return
+			}
+			if err := s.adapter.SetSwitch(entity, body.On); err != nil {
+				_ = s.store.AddActivity(domain.Activity{EnvironmentID: b.EnvironmentID, DeviceID: b.DeviceID, Level: "error", Type: "control", Message: "Failed to switch " + b.Name})
 				writeErr(w, http.StatusBadGateway, err)
 				return
 			}
+			state := "off"
+			if body.On {
+				state = "on"
+			}
+			_ = s.store.AddActivity(domain.Activity{EnvironmentID: b.EnvironmentID, DeviceID: b.DeviceID, Level: "info", Type: "control", Message: "Manually switched " + b.Name + " " + state})
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

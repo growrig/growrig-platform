@@ -17,6 +17,7 @@
 	import KindIcon from '$lib/components/KindIcon.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
+	import { Select } from '$lib/components/ui';
 
 	let catalog = $state<CatalogProduct[]>([]);
 	let discovered = $state<DiscoveredEntity[]>([]);
@@ -156,12 +157,7 @@
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Tent model</span>
-					<select bind:value={model} class="{field} mt-1">
-						<option value="">— optional —</option>
-						{#each tents as t (t.id)}
-							<option value="{t.brand} {t.model}">{t.brand} {t.model}</option>
-						{/each}
-					</select>
+					<Select bind:value={model} placeholder="Optional" items={tents.map((t) => ({ value: `${t.brand} ${t.model}`, label: `${t.brand} ${t.model}` }))} class="mt-1" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Dimensions (cm){#if volume} — {volume.toFixed(2)} m³{/if}</span>
@@ -231,12 +227,7 @@
 					</label>
 				{:else if airMode === 'link'}
 					{#if rooms.length}
-						<select bind:value={roomId} class={field}>
-							<option value="">— select a room —</option>
-							{#each rooms as room (room.id)}
-								<option value={room.id}>{room.name}</option>
-							{/each}
-						</select>
+						<Select bind:value={roomId} placeholder="Select a room…" items={rooms.map((room) => ({ value: room.id, label: room.name }))} />
 					{:else}
 						<p class="text-sm text-rig-500">No rooms exist yet.</p>
 					{/if}
@@ -256,11 +247,7 @@
 					</label>
 					<label class="block">
 						<span class="text-sm text-rig-400">Phase</span>
-						<select bind:value={phase} class="{field} mt-1 capitalize">
-							{#each phases as p (p)}
-								<option value={p}>{p}</option>
-							{/each}
-						</select>
+						<Select value={phase} onValueChange={(value) => (phase = value as Phase)} items={phases.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }))} class="mt-1" />
 					</label>
 				</div>
 			</div>

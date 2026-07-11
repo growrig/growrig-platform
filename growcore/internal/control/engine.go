@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -16,15 +17,21 @@ type Engine struct {
 	store   *store.Store
 	adapter Adapter
 
-	mu      sync.RWMutex
-	latest  domain.Snapshot
-	onSnap  func(domain.Snapshot)
-	persist int
-	tick    int
+	mu              sync.RWMutex
+	latest          domain.Snapshot
+	onSnap          func(domain.Snapshot)
+	persist         int
+	tick            int
+	fanCommands     map[string]int
+	sensorStates    map[string]bool
+	emergencyStates map[string]bool
+	issueStates     map[string]bool
+	lastHealth      domain.ControllerHealth
 }
 
 func New(st *store.Store, adapter Adapter, onSnapshot func(domain.Snapshot)) *Engine {
-	return &Engine{store: st, adapter: adapter, onSnap: onSnapshot, persist: 5}
+	return &Engine{store: st, adapter: adapter, onSnap: onSnapshot, persist: 5,
+		fanCommands: map[string]int{}, sensorStates: map[string]bool{}, emergencyStates: map[string]bool{}, issueStates: map[string]bool{}}
 }
 
 func (e *Engine) Run(ctx context.Context, interval time.Duration) {
@@ -73,8 +80,16 @@ func (e *Engine) step(dt time.Duration) error {
 		return err
 	}
 	byEnv := map[string][]domain.Binding{}
+	powerEntityByDevice := map[string]string{}
+	controllerChannels := map[string]domain.Binding{}
 	for _, b := range bindings {
 		byEnv[b.EnvironmentID] = append(byEnv[b.EnvironmentID], b)
+		if b.Kind == domain.KindPower {
+			powerEntityByDevice[b.DeviceID] = b.Entity
+		}
+		if b.Kind == domain.KindController {
+			controllerChannels[b.ID] = b
+		}
 	}
 	cycles, err := e.store.Cycles()
 	if err != nil {
@@ -104,6 +119,41 @@ func (e *Engine) step(dt time.Duration) error {
 	views := make([]domain.EnvironmentView, 0, len(envs))
 	for _, env := range envs {
 		c := climates[env.ID]
+		if e.lastHealth != health {
+			level, eventType := "info", "notice"
+			if health != domain.HealthOnline {
+				level, eventType = "warning", "warning"
+			}
+			e.activity(env.ID, "", level, eventType, "Home Assistant connection is "+string(health))
+		}
+		for _, sensor := range sensorsByEnv[env.ID] {
+			previous, seen := e.sensorStates[sensor.ID]
+			if (!seen && !sensor.OK) || (seen && previous != sensor.OK) {
+				if sensor.OK {
+					e.activity(env.ID, sensor.ID, "info", "notice", sensor.Name+" is reporting again")
+				} else {
+					e.activity(env.ID, sensor.ID, "warning", "warning", sensor.Name+" is unavailable")
+				}
+			}
+			e.sensorStates[sensor.ID] = sensor.OK
+		}
+		emergency := c.hasTemp && env.EmergencyTempC > 0 && c.tempC >= env.EmergencyTempC
+		if previous := e.emergencyStates[env.ID]; emergency != previous {
+			if emergency {
+				e.activity(env.ID, "", "warning", "warning", "Emergency temperature reached")
+			} else if previous {
+				e.activity(env.ID, "", "info", "notice", "Temperature returned below the emergency limit")
+			}
+			e.emergencyStates[env.ID] = emergency
+		}
+		hasFans := false
+		for _, binding := range byEnv[env.ID] {
+			if binding.Kind == domain.KindFan {
+				hasFans = true
+				break
+			}
+		}
+		e.issue(env.ID+":fan-climate", hasFans && !c.hasTemp, env.ID, "", "Fan control is paused because no temperature reading is available", "Temperature reading restored; fan control resumed")
 		view := domain.EnvironmentView{
 			Environment: env,
 			Health:      health,
@@ -122,27 +172,42 @@ func (e *Engine) step(dt time.Duration) error {
 		for _, b := range byEnv[env.ID] {
 			switch b.Kind {
 			case domain.KindFan:
-				cs := domain.ControlState{ID: b.ID, Name: b.Name, Kind: domain.KindFan, Role: b.Role, Entity: b.Entity}
+				channel := controllerChannels[b.ControllerChannelID]
+				if channel.Entity == "" {
+					channel = b
+				}
+				cs := domain.ControlState{ID: b.ID, Name: b.Name, Kind: domain.KindFan, Role: b.Role, Entity: channel.Entity}
 				if c.hasTemp {
 					speed := ChannelSpeed(b.Role, env, c.tempC)
 					cs.DesiredSpeed = speed
-					if err := e.adapter.SetFan(b.Entity, speed); err != nil {
-						log.Printf("control: set fan %s: %v", b.Entity, err)
+					err := e.adapter.SetFan(channel.Entity, speed)
+					if err != nil {
+						log.Printf("control: set fan %s: %v", channel.Entity, err)
+					}
+					if previous, seen := e.fanCommands[channel.Entity]; !seen || previous != speed {
+						if err != nil {
+							e.activity(env.ID, b.DeviceID, "error", "control", "Failed to set "+b.Name+" speed")
+						} else {
+							e.activity(env.ID, b.DeviceID, "info", "control", fmt.Sprintf("Set %s to %d%% via %s", b.Name, speed, channel.Name))
+						}
+						e.fanCommands[channel.Entity] = speed
 					}
 					if (b.Role == domain.RoleExhaust || b.Role == domain.RoleIntake) && speed > exhaust {
 						exhaust = speed
 					}
 				}
-				if rpm, ok := e.adapter.Value(b.RPMEntity); ok {
+				if rpm, ok := e.adapter.Value(channel.RPMEntity); ok {
 					cs.RPM = int(rpm)
 				}
 				view.Controls = append(view.Controls, cs)
 			case domain.KindLight:
+				entity := powerEntityByDevice[b.PowerControllerID]
+				e.issue(env.ID+":light:"+b.ID, entity == "", env.ID, b.DeviceID, b.Name+" has no power controller assigned", b.Name+" power controller is connected")
 				cs := domain.ControlState{
-					ID: b.ID, Name: b.Name, Kind: domain.KindLight, Entity: b.Entity,
+					ID: b.ID, Name: b.Name, Kind: domain.KindLight, Entity: entity,
 					Wattage: b.Wattage, Primary: b.Primary,
 				}
-				if on, ok := e.adapter.SwitchState(b.Entity); ok {
+				if on, ok := e.adapter.SwitchState(entity); ok {
 					cs.On = on
 				}
 				view.Controls = append(view.Controls, cs)
@@ -177,6 +242,7 @@ func (e *Engine) step(dt time.Duration) error {
 			})
 		}
 	}
+	e.lastHealth = health
 
 	e.tick++
 	snap := domain.Snapshot{Time: now, Environments: views}
@@ -187,6 +253,23 @@ func (e *Engine) step(dt time.Duration) error {
 		e.onSnap(snap)
 	}
 	return nil
+}
+
+func (e *Engine) activity(envID, deviceID, level, eventType, message string) {
+	if err := e.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message}); err != nil {
+		log.Printf("activity: %v", err)
+	}
+}
+
+func (e *Engine) issue(key string, active bool, envID, deviceID, warning, resolved string) {
+	previous, seen := e.issueStates[key]
+	if active && (!seen || !previous) {
+		e.activity(envID, deviceID, "warning", "warning", warning)
+	}
+	if !active && seen && previous {
+		e.activity(envID, deviceID, "info", "notice", resolved)
+	}
+	e.issueStates[key] = active
 }
 
 // readSensors reads every sensor binding and aggregates temperature, humidity

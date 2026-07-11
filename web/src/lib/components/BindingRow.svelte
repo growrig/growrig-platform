@@ -4,6 +4,7 @@
 	import { measurementLabel } from '$lib/format';
 	import { bindingKindIcon, fallbackIcon } from '$lib/icons';
 	import X from '@lucide/svelte/icons/x';
+	import { Select } from '$lib/components/ui';
 
 	interface Props {
 		binding: Binding;
@@ -18,6 +19,8 @@
 	async function changeRole(role: Role) {
 		try {
 			await updateBinding(binding.id, {
+				deviceId: binding.deviceId,
+				deviceName: binding.deviceName,
 				environmentId: binding.environmentId,
 				kind: binding.kind,
 				name: binding.name,
@@ -55,15 +58,7 @@
 			{binding.measurement ? measurementLabel[binding.measurement] : 'sensor'}
 		</span>
 	{:else if binding.kind === 'fan'}
-		<select
-			value={binding.role ?? 'unassigned'}
-			onchange={(e) => changeRole(e.currentTarget.value as Role)}
-			class="rounded-md border border-rig-700 bg-rig-900 px-2 py-1 text-xs capitalize focus:border-rig-500 focus:outline-none"
-		>
-			{#each roles as role (role)}
-				<option value={role}>{role}</option>
-			{/each}
-		</select>
+		<Select value={binding.role ?? 'unassigned'} onValueChange={(value) => changeRole(value as Role)} items={roles.map((role) => ({ value: role, label: role[0].toUpperCase() + role.slice(1) }))} class="h-8 w-36" />
 	{:else}
 		<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-rig-300">{binding.kind}</span>
 	{/if}

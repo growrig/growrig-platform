@@ -1,8 +1,21 @@
 brand: TP-Link
 model: Tapo P110 smart plug
 connection: wifi
-description: Wi-Fi smart plug with energy monitoring, used to switch a device on/off.
+description: >-
+  The TP-Link Tapo P110 is a compact Wi-Fi smart plug with remote switching
+  and real-time energy monitoring. Through Home Assistant's TP-Link
+  integration, GrowRig can use it as a power controller for lights, fans, and
+  other equipment while also tracking their actual power consumption.
+version: 1.0.0
+author: GrowRig
+haIntegration: tplink
+documentation: https://www.home-assistant.io/integrations/tplink/
 provides:
   - label: On/off
-    kind: light
+    kind: power
     entityDomain: switch
+  - label: Actual power
+    kind: sensor
+    measurement: power
+    entityDomain: sensor
+    deviceClass: power

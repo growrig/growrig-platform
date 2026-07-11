@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -16,7 +17,9 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db        *sql.DB
+	configDir string
+	syncing   bool
 }
 
 // Open opens (creating if needed) the SQLite database at path and applies the
@@ -27,8 +30,12 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // modernc/sqlite is safest single-writer
-	s := &Store{db: db}
+	s := &Store{db: db, configDir: filepath.Join(filepath.Dir(path), "environments")}
 	if err := s.migrate(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.syncYAMLConfig(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -64,6 +71,10 @@ CREATE TABLE IF NOT EXISTS cycles (
 );
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
+	device_id      TEXT NOT NULL,
+	device_name    TEXT NOT NULL,
+	power_controller_id TEXT NOT NULL DEFAULT '',
+	controller_channel_id TEXT NOT NULL DEFAULT '',
     environment_id TEXT NOT NULL,
     kind           TEXT NOT NULL,
     name           TEXT NOT NULL,
@@ -86,11 +97,43 @@ CREATE TABLE IF NOT EXISTS readings (
     exhaust_speed  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_readings_env_ts ON readings (environment_id, ts);
+CREATE TABLE IF NOT EXISTS activity_log (
+    id             TEXT PRIMARY KEY,
+    environment_id TEXT NOT NULL DEFAULT '',
+    device_id      TEXT NOT NULL DEFAULT '',
+    ts             INTEGER NOT NULL,
+    level          TEXT NOT NULL,
+    type           TEXT NOT NULL,
+    message        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_env_ts ON activity_log (environment_id, ts DESC);
 -- Superseded by the bindings model.
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS devices;
 `
 	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	// The pre-device schema represented every entity as a device. It is
+	// intentionally not migrated: entity rows cannot reliably tell us which
+	// physical device they belong to.
+	var hasDeviceID int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('bindings') WHERE name='device_id'`).Scan(&hasDeviceID); err != nil {
+		return err
+	}
+	if hasDeviceID == 0 {
+		if _, err := s.db.Exec(`DROP TABLE bindings; CREATE TABLE bindings (
+			id TEXT PRIMARY KEY, device_id TEXT NOT NULL, device_name TEXT NOT NULL,
+			environment_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,
+			entity TEXT NOT NULL, measurement TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT '',
+			rpm_entity TEXT NOT NULL DEFAULT '', wattage REAL NOT NULL DEFAULT 0,
+			is_primary INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0
+		); CREATE INDEX idx_bindings_env ON bindings (environment_id); CREATE INDEX idx_bindings_device ON bindings (device_id)`); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_bindings_device ON bindings (device_id)`); err != nil {
 		return err
 	}
 	// Additive migrations for databases created before these columns existed.
@@ -102,10 +145,23 @@ DROP TABLE IF EXISTS devices;
 		{"environments", "height_cm", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "wattage", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "is_primary", "INTEGER NOT NULL DEFAULT 0"},
+		{"bindings", "power_controller_id", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "controller_channel_id", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
 		}
+	}
+	// Before controller channels were first-class, controllable HA fan entities
+	// were stored as physical fans. Reclassify those capabilities; entityless
+	// fan rows remain physical airflow devices.
+	if _, err := s.db.Exec(`UPDATE bindings SET kind='controller'
+		WHERE kind='fan' AND entity<>'' AND controller_channel_id=''`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`UPDATE bindings SET device_name='DIY ESP32 controller'
+		WHERE device_name='DIY ESP32 dual PC-fan controller'`); err != nil {
+		return err
 	}
 	return nil
 }
@@ -152,7 +208,10 @@ func (s *Store) SaveEnvironment(e domain.Environment) error {
 		e.WidthCm, e.DepthCm, e.HeightCm,
 		e.TargetTempC, e.TargetHumidity, e.TargetCO2, e.EmergencyTempC,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.writeEnvironmentConfig(e.ID)
 }
 
 func (s *Store) UpdateTargets(id string, targetTemp, targetHumidity float64) error {
@@ -165,7 +224,7 @@ func (s *Store) UpdateTargets(id string, targetTemp, targetHumidity float64) err
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("environment %q not found", id)
 	}
-	return nil
+	return s.writeEnvironmentConfig(id)
 }
 
 func (s *Store) Environments() ([]domain.Environment, error) {
@@ -255,26 +314,39 @@ func (s *Store) DeleteEnvironment(id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("environment %q not found", id)
 	}
-	return nil
+	return s.removeEnvironmentConfig(id)
 }
 
 // --- Bindings ---
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
+		   device_id=excluded.device_id, device_name=excluded.device_name,
+		   power_controller_id=excluded.power_controller_id,
+		   controller_channel_id=excluded.controller_channel_id,
 		   environment_id=excluded.environment_id, kind=excluded.kind, name=excluded.name,
 		   entity=excluded.entity, measurement=excluded.measurement, role=excluded.role,
 		   rpm_entity=excluded.rpm_entity, wattage=excluded.wattage, is_primary=excluded.is_primary`,
-		b.ID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
+		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
 		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), time.Now().UnixNano(),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.writeEnvironmentConfig(b.EnvironmentID)
 }
 
 func (s *Store) DeleteBinding(id string) error {
+	var envID string
+	_ = s.db.QueryRow(`SELECT environment_id FROM bindings WHERE id=?`, id).Scan(&envID)
+	// Removing a power controller disconnects any fixtures assigned to it.
+	if _, err := s.db.Exec(`UPDATE bindings SET power_controller_id=''
+		WHERE power_controller_id=(SELECT device_id FROM bindings WHERE id=?)`, id); err != nil {
+		return err
+	}
 	res, err := s.db.Exec(`DELETE FROM bindings WHERE id=?`, id)
 	if err != nil {
 		return err
@@ -282,7 +354,7 @@ func (s *Store) DeleteBinding(id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("binding %q not found", id)
 	}
-	return nil
+	return s.writeEnvironmentConfig(envID)
 }
 
 // SetPrimaryLight makes bindingID the sole primary light in its environment.
@@ -300,7 +372,10 @@ func (s *Store) SetPrimaryLight(envID, bindingID string) error {
 		`UPDATE bindings SET is_primary=1 WHERE id=? AND kind='light'`, bindingID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.writeEnvironmentConfig(envID)
 }
 
 // EnsurePrimaryLight guarantees that, if an environment has any lights, exactly
@@ -337,7 +412,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary
+		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -348,7 +423,7 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 		var b domain.Binding
 		var kind, measurement, role string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)
@@ -397,4 +472,50 @@ func (s *Store) RecentReadings(envID string, limit int) ([]domain.Reading, error
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
+}
+
+func (s *Store) AddActivity(a domain.Activity) error {
+	if a.Time.IsZero() {
+		a.Time = time.Now()
+	}
+	if a.ID == "" {
+		a.ID = fmt.Sprintf("activity-%d", a.Time.UnixNano())
+	}
+	_, err := s.db.Exec(`INSERT INTO activity_log (id, environment_id, device_id, ts, level, type, message)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, a.ID, a.EnvironmentID, a.DeviceID, a.Time.UnixMilli(), a.Level, a.Type, a.Message)
+	if err != nil {
+		return err
+	}
+	_, _ = s.db.Exec(`DELETE FROM activity_log WHERE id IN (SELECT id FROM activity_log ORDER BY ts DESC LIMIT -1 OFFSET 10000)`)
+	return nil
+}
+
+func (s *Store) Activities(envID string, limit int) ([]domain.Activity, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	query := `SELECT id, environment_id, device_id, ts, level, type, message FROM activity_log`
+	args := []any{}
+	if envID != "" {
+		query += ` WHERE environment_id=?`
+		args = append(args, envID)
+	}
+	query += ` ORDER BY ts DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Activity
+	for rows.Next() {
+		var a domain.Activity
+		var ts int64
+		if err := rows.Scan(&a.ID, &a.EnvironmentID, &a.DeviceID, &ts, &a.Level, &a.Type, &a.Message); err != nil {
+			return nil, err
+		}
+		a.Time = time.UnixMilli(ts)
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }

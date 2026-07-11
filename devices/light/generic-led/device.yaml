@@ -1,0 +1,8 @@
+brand: Generic
+model: LED grow light
+connection: generic
+description: A grow-light fixture. Assign a separately configured power controller after adding it.
+provides:
+  - label: Grow light
+    kind: light
+    entityDomain: ""

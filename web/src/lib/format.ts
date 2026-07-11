@@ -5,18 +5,21 @@ export type Tone = 'good' | 'warn' | 'danger' | 'muted';
 export const measurementUnit: Record<Measurement, string> = {
 	temperature: '°C',
 	humidity: '%',
-	co2: 'ppm'
+	co2: 'ppm',
+	power: ' W'
 };
 
 export const measurementLabel: Record<Measurement, string> = {
 	temperature: 'Temperature',
 	humidity: 'Humidity',
-	co2: 'CO₂'
+	co2: 'CO₂',
+	power: 'Power'
 };
 
 export function formatValue(measurement: Measurement, value: number): string {
 	if (measurement === 'co2') return Math.round(value).toString();
 	if (measurement === 'humidity') return value.toFixed(0);
+	if (measurement === 'power') return Math.round(value).toString();
 	return value.toFixed(1);
 }
 

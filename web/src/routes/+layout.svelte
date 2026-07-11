@@ -20,6 +20,7 @@
 
 	const nav = [
 		{ href: '/', label: 'Dashboard' },
+		{ href: '/activity', label: 'Activity Log' },
 		{ href: '/debug', label: 'Debug' }
 	];
 

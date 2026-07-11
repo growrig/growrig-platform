@@ -10,10 +10,10 @@
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import CycleCard from '$lib/components/CycleCard.svelte';
 	import SensorsDialog from '$lib/components/SensorsDialog.svelte';
+	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { Switch } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Settings from '@lucide/svelte/icons/settings';
-	import Cpu from '@lucide/svelte/icons/cpu';
 	import Lightbulb from '@lucide/svelte/icons/lightbulb';
 	import LightbulbOff from '@lucide/svelte/icons/lightbulb-off';
 	import Camera from '@lucide/svelte/icons/camera';
@@ -97,11 +97,8 @@
 					<span class="hidden text-sm text-rig-400 sm:inline">target {env.targetTempC}°C · {env.targetHumidity}% RH{#if env.targetCO2 > 0} · {env.targetCO2} ppm{/if}</span>
 				{/if}
 				<SensorsDialog sensors={env.sensors ?? []} />
-				<a href="/env/{id}/devices" class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100">
-					<Cpu size={15} /> Devices
-				</a>
 				<a href="/env/{id}/settings" class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100">
-					<Settings size={15} /> Settings
+					<Settings size={15} /> Settings & Devices
 				</a>
 			</div>
 		</div>
@@ -190,7 +187,7 @@
 							</div>
 						</div>
 						<a
-							href="/env/{id}/devices"
+							href="/env/{id}/settings#devices"
 							class="inline-flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
 						>
 							<Lightbulb size={15} /> Assign a light
@@ -295,5 +292,10 @@
 				</a>
 			</section>
 		{/if}
+
+		<section>
+			<div class="mb-3 flex items-center justify-between"><h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Activity Log</h2><a href="/activity" class="text-xs text-rig-500 hover:text-leaf">View all environments</a></div>
+			<ActivityLog environmentId={env.id} limit={20} />
+		</section>
 	</div>
 {/if}

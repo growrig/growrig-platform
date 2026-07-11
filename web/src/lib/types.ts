@@ -2,11 +2,11 @@
 
 export type Role = 'unassigned' | 'exhaust' | 'intake' | 'circulation';
 export type EnvironmentKind = 'tent' | 'room';
-export type BindingKind = 'sensor' | 'fan' | 'light' | 'camera';
-export type Measurement = 'temperature' | 'humidity' | 'co2';
+export type BindingKind = 'sensor' | 'fan' | 'controller' | 'light' | 'power' | 'camera';
+export type Measurement = 'temperature' | 'humidity' | 'co2' | 'power';
 export type Health = 'online' | 'stale' | 'offline';
 export type Phase = 'seedling' | 'vegetative' | 'flowering' | 'flush' | 'drying' | 'cure';
-export type Category = 'tent' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
+export type Category = 'tent' | 'controller' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
 
 export interface Cycle {
 	environmentId: string;
@@ -34,6 +34,10 @@ export interface CatalogProduct {
 	category: Category;
 	connection: string;
 	description?: string;
+	version: string;
+	author: string;
+	haIntegration?: string;
+	documentation?: string;
 	provides?: BindingTemplate[];
 }
 
@@ -54,6 +58,10 @@ export interface Environment {
 
 export interface Binding {
 	id: string;
+	deviceId: string;
+	deviceName: string;
+	powerControllerId?: string;
+	controllerChannelId?: string;
 	environmentId: string;
 	kind: BindingKind;
 	name: string;
@@ -70,6 +78,12 @@ export interface DiscoveredEntity {
 	name: string;
 	kind: BindingKind;
 	measurement?: Measurement;
+	haDeviceId?: string;
+	deviceName?: string;
+	integration?: string;
+	entityCategory?: string;
+	manufacturer?: string;
+	model?: string;
 }
 
 export interface SensorReading {
@@ -139,6 +153,16 @@ export interface Reading {
 	co2: number;
 	vpd: number;
 	exhaustSpeed: number;
+}
+
+export interface Activity {
+	id: string;
+	environmentId?: string;
+	deviceId?: string;
+	time: string;
+	level: 'info' | 'warning' | 'error';
+	type: 'control' | 'warning' | 'notice' | 'configuration';
+	message: string;
 }
 
 export interface Info {

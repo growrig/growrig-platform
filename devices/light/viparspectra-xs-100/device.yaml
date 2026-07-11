@@ -1,9 +1,0 @@
-brand: VIPARSPECTRA
-model: XS Series (100W)
-connection: wifi-plug
-description: VIPARSPECTRA XS-series 100W LED grow light switched via a smart plug.
-provides:
-  - label: Grow light (on/off)
-    kind: light
-    entityDomain: switch
-    wattage: 100

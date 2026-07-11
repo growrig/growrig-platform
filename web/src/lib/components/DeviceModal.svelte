@@ -10,10 +10,13 @@
 		environmentId: string;
 		catalog: CatalogProduct[];
 		discovered: DiscoveredEntity[];
+		bindings?: Binding[];
 		usedEntities: Set<string>;
 		/** When set, the modal edits this binding instead of adding new devices. */
 		binding?: Binding | null;
 		onSaved: () => void;
+		onInstall?: (product: CatalogProduct) => void;
+		initialCategory?: import('$lib/types').BindingKind;
 		flash?: (kind: 'ok' | 'err', text: string) => void;
 	}
 
@@ -22,9 +25,12 @@
 		environmentId,
 		catalog,
 		discovered,
+		bindings = [],
 		usedEntities,
 		binding = null,
 		onSaved,
+		onInstall,
+		initialCategory = 'sensor',
 		flash
 	}: Props = $props();
 
@@ -38,6 +44,7 @@
 	let rpmEntity = $state('');
 	let wattage = $state(0);
 	let primary = $state(false);
+	let powerControllerId = $state('');
 	let busy = $state(false);
 
 	// Reseed the form whenever the target binding changes.
@@ -50,6 +57,7 @@
 			rpmEntity = binding.rpmEntity ?? '';
 			wattage = binding.wattage ?? 0;
 			primary = binding.primary ?? false;
+			powerControllerId = binding.powerControllerId ?? '';
 		}
 	});
 
@@ -57,6 +65,7 @@
 		{ value: 'temperature', label: 'Temperature' },
 		{ value: 'humidity', label: 'Humidity' },
 		{ value: 'co2', label: 'CO₂' }
+		,{ value: 'power', label: 'Power' }
 	];
 	const roleItems: SelectItem[] = [
 		{ value: 'unassigned', label: 'Unassigned' },
@@ -84,13 +93,16 @@
 		busy = true;
 		try {
 			await updateBinding(binding.id, {
+				deviceId: binding.deviceId,
+				deviceName: name.trim() || binding.deviceName,
+				powerControllerId: binding.kind === 'light' ? powerControllerId || undefined : binding.powerControllerId,
 				environmentId: binding.environmentId,
 				kind: binding.kind,
-				name: name.trim() || binding.name,
+				name: binding.name,
 				entity: entity.trim(),
 				measurement: binding.kind === 'sensor' ? measurement : undefined,
 				role: binding.kind === 'fan' ? role : undefined,
-				rpmEntity: binding.kind === 'fan' ? rpmEntity.trim() : undefined,
+				rpmEntity: binding.kind === 'fan' || binding.kind === 'controller' ? rpmEntity.trim() : undefined,
 				wattage: binding.kind === 'light' ? wattage || 0 : undefined,
 				primary: binding.kind === 'light' ? primary : undefined
 			});
@@ -121,10 +133,12 @@
 				<span class="text-sm text-rig-400">Name</span>
 				<input bind:value={name} class="{field} mt-1" />
 			</label>
-			<label class="block">
-				<span class="text-sm text-rig-400">Entity</span>
-				<input bind:value={entity} class="{field} mt-1 font-mono text-xs" />
-			</label>
+			{#if binding.kind !== 'light'}
+				<label class="block">
+					<span class="text-sm text-rig-400">Entity</span>
+					<input bind:value={entity} class="{field} mt-1 font-mono text-xs" />
+				</label>
+			{/if}
 
 			{#if binding.kind === 'sensor'}
 				<label class="block">
@@ -136,7 +150,7 @@
 						class="mt-1"
 					/>
 				</label>
-			{:else if binding.kind === 'fan'}
+			{:else if binding.kind === 'fan' || binding.kind === 'controller'}
 				<label class="block">
 					<span class="text-sm text-rig-400">Role</span>
 					<Select
@@ -152,6 +166,10 @@
 				</label>
 			{:else if binding.kind === 'light'}
 				<label class="block">
+					<span class="text-sm text-rig-400">Power controller</span>
+					<Select bind:value={powerControllerId} placeholder="None" items={[...new Map(bindings.filter((b) => b.kind === 'power').map((b) => [b.deviceId, b.deviceName])).entries()].map(([value, label]) => ({ value, label }))} class="mt-1" />
+				</label>
+				<label class="block">
 					<span class="text-sm text-rig-400">Wattage (W)</span>
 					<input type="number" min="0" step="1" bind:value={wattage} placeholder="e.g. 150" class="{field} mt-1" />
 				</label>
@@ -166,10 +184,10 @@
 
 			<div class="flex justify-end gap-2 pt-2">
 				<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
-				<Button onclick={saveEdit} disabled={busy || !entity.trim()}>Save</Button>
+				<Button onclick={saveEdit} disabled={busy || (binding.kind !== 'light' && !entity.trim())}>Save</Button>
 			</div>
 		</div>
 	{:else}
-		<CatalogDevicePicker {catalog} {discovered} {usedEntities} onAdd={addDevices} />
+		<CatalogDevicePicker {catalog} {discovered} {bindings} {usedEntities} onAdd={addDevices} onSelectProduct={onInstall} {initialCategory} />
 	{/if}
 </Dialog>

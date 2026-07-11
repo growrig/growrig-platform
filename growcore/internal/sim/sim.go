@@ -199,7 +199,7 @@ func SeedTopology() ([]domain.Environment, []domain.Binding) {
 		{ID: RoomID, Name: "Lung Room", Kind: domain.KindRoom},
 	}
 	b := func(id, env string, kind domain.BindingKind, name, entity string) domain.Binding {
-		return domain.Binding{ID: id, EnvironmentID: env, Kind: kind, Name: name, Entity: entity}
+		return domain.Binding{ID: id, DeviceID: id, DeviceName: name, EnvironmentID: env, Kind: kind, Name: name, Entity: entity}
 	}
 	sensor := func(id, env, name, entity string, m domain.Measurement) domain.Binding {
 		x := b(id, env, domain.KindSensor, name, entity)
@@ -218,16 +218,33 @@ func SeedTopology() ([]domain.Environment, []domain.Binding) {
 		x.Primary = primary
 		return x
 	}
+	powerB := func(id, env, name, entity string) domain.Binding {
+		return b(id, env, domain.KindPower, name, entity)
+	}
 	bindings := []domain.Binding{
 		sensor("sim-t-temp", TentID, "Temperature", tentTemp, domain.MeasureTemperature),
 		sensor("sim-t-humid", TentID, "Humidity", tentHumid, domain.MeasureHumidity),
 		sensor("sim-t-co2", TentID, "CO₂", tentCO2, domain.MeasureCO2),
 		fanB("sim-t-fan1", TentID, "Fan 1", tentFan1, tentFan1R, domain.RoleExhaust),
 		fanB("sim-t-fan2", TentID, "Fan 2", tentFan2, tentFan2R, domain.RoleCirculation),
-		lightB("sim-t-light", TentID, "Grow Light", tentLight, 150, true),
+		lightB("sim-t-light", TentID, "Grow Light", "", 150, true),
+		powerB("sim-t-power", TentID, "Grow light plug", tentLight),
 		b("sim-t-cam", TentID, domain.KindCamera, "Tent Camera", tentCamera),
 		sensor("sim-r-temp", RoomID, "Temperature", roomTemp, domain.MeasureTemperature),
 		sensor("sim-r-humid", RoomID, "Humidity", roomHumid, domain.MeasureHumidity),
+	}
+	for i := range bindings {
+		switch bindings[i].ID {
+		case "sim-t-temp", "sim-t-humid", "sim-t-co2":
+			bindings[i].DeviceID, bindings[i].DeviceName = "sim-t-climate", "Tent environmental sensor"
+		case "sim-t-fan1", "sim-t-fan2":
+			bindings[i].DeviceID, bindings[i].DeviceName = "sim-t-fan-controller", "Dual fan controller"
+		case "sim-r-temp", "sim-r-humid":
+			bindings[i].DeviceID, bindings[i].DeviceName = "sim-r-climate", "Room environmental sensor"
+		}
+		if bindings[i].ID == "sim-t-light" {
+			bindings[i].PowerControllerID = "sim-t-power"
+		}
 	}
 	return envs, bindings
 }

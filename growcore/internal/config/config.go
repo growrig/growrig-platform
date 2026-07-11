@@ -3,8 +3,8 @@
 // Configuration is infrastructure only: how Grow Core listens, where it stores
 // data, and which adapter it uses to reach devices. The grow-domain model —
 // environments, devices, channel roles and Home Assistant entity bindings — is
-// owned by Grow Core and lives in the database, edited at runtime through the
-// API/UI (see ../../../growrig/docs/architecture.md, "Data ownership").
+// owned by Grow Core and persisted as portable YAML beside the runtime database.
+// SQLite is reserved for runtime cache, cycles and historical readings.
 //
 // The same binary runs in two modes, differing only by configuration:
 //

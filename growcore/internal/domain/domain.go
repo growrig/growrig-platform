@@ -36,10 +36,12 @@ var AllFanRoles = []Role{RoleUnassigned, RoleExhaust, RoleIntake, RoleCirculatio
 type BindingKind string
 
 const (
-	KindSensor BindingKind = "sensor"
-	KindFan    BindingKind = "fan"
-	KindLight  BindingKind = "light"
-	KindCamera BindingKind = "camera"
+	KindSensor     BindingKind = "sensor"
+	KindFan        BindingKind = "fan"
+	KindController BindingKind = "controller"
+	KindLight      BindingKind = "light"
+	KindPower      BindingKind = "power"
+	KindCamera     BindingKind = "camera"
 )
 
 // Measurement is what a sensor binding measures.
@@ -49,6 +51,7 @@ const (
 	MeasureTemperature Measurement = "temperature"
 	MeasureHumidity    Measurement = "humidity"
 	MeasureCO2         Measurement = "co2"
+	MeasurePower       Measurement = "power"
 )
 
 // ControllerHealth describes connection/adapter liveness.
@@ -62,26 +65,26 @@ const (
 
 // Environment is a controlled tent or a monitored room.
 type Environment struct {
-	ID   string          `json:"id"`
-	Name string          `json:"name"`
-	Kind EnvironmentKind `json:"kind"`
+	ID   string          `json:"id" yaml:"id"`
+	Name string          `json:"name" yaml:"name"`
+	Kind EnvironmentKind `json:"kind" yaml:"type"`
 	// AirSourceID optionally references the room (lung room) that supplies this
 	// tent's intake air. Empty for rooms or tents without a linked source.
-	AirSourceID string `json:"airSourceId"`
+	AirSourceID string `json:"airSourceId" yaml:"airSourceId,omitempty"`
 
 	// Model is an optional descriptive field (e.g. the grow-tent product)
 	// captured by the setup wizard.
-	Model string `json:"model"`
+	Model string `json:"model" yaml:"tentModel,omitempty"`
 
 	// Tent dimensions in centimetres; 0 = unset. VolumeM3 derives from these.
-	WidthCm  float64 `json:"widthCm"`
-	DepthCm  float64 `json:"depthCm"`
-	HeightCm float64 `json:"heightCm"`
+	WidthCm  float64 `json:"widthCm" yaml:"widthCm,omitempty"`
+	DepthCm  float64 `json:"depthCm" yaml:"depthCm,omitempty"`
+	HeightCm float64 `json:"heightCm" yaml:"heightCm,omitempty"`
 
-	TargetTempC    float64 `json:"targetTempC"`
-	TargetHumidity float64 `json:"targetHumidity"`
-	TargetCO2      float64 `json:"targetCO2"` // ppm; 0 = unset
-	EmergencyTempC float64 `json:"emergencyTempC"`
+	TargetTempC    float64 `json:"targetTempC" yaml:"targetTempC"`
+	TargetHumidity float64 `json:"targetHumidity" yaml:"targetHumidity"`
+	TargetCO2      float64 `json:"targetCO2" yaml:"targetCO2,omitempty"` // ppm; 0 = unset
+	EmergencyTempC float64 `json:"emergencyTempC" yaml:"emergencyTempC"`
 }
 
 // VolumeM3 returns the tent's air volume in cubic metres, or 0 if any
@@ -122,15 +125,21 @@ type Cycle struct {
 // Binding attaches a Home Assistant entity (or simulator entity id) to an
 // environment with a semantic category.
 type Binding struct {
-	ID            string      `json:"id"`
-	EnvironmentID string      `json:"environmentId"`
-	Kind          BindingKind `json:"kind"`
-	Name          string      `json:"name"`
-	Entity        string      `json:"entity"`
+	ID         string `json:"id"`
+	DeviceID   string `json:"deviceId"`
+	DeviceName string `json:"deviceName"`
+	// PowerControllerID links an entityless light fixture to a separately
+	// configured power device.
+	PowerControllerID   string      `json:"powerControllerId,omitempty"`
+	ControllerChannelID string      `json:"controllerChannelId,omitempty"`
+	EnvironmentID       string      `json:"environmentId"`
+	Kind                BindingKind `json:"kind"`
+	Name                string      `json:"name"`
+	Entity              string      `json:"entity"`
 
 	// Sensor only:
 	Measurement Measurement `json:"measurement,omitempty"`
-	// Fan only:
+	// Fan/controller only:
 	Role      Role   `json:"role,omitempty"`
 	RPMEntity string `json:"rpmEntity,omitempty"`
 	// Light only:
@@ -147,6 +156,17 @@ type Reading struct {
 	CO2           float64   `json:"co2"`
 	VPD           float64   `json:"vpd"`
 	ExhaustSpeed  int       `json:"exhaustSpeed"`
+}
+
+// Activity records a human-readable system action, warning or notice.
+type Activity struct {
+	ID            string    `json:"id"`
+	EnvironmentID string    `json:"environmentId,omitempty"`
+	DeviceID      string    `json:"deviceId,omitempty"`
+	Time          time.Time `json:"time"`
+	Level         string    `json:"level"` // info, warning, error
+	Type          string    `json:"type"`  // control, warning, notice, configuration
+	Message       string    `json:"message"`
 }
 
 // --- Live view types (built each control tick, sent to clients) ---

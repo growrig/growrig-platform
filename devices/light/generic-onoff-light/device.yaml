@@ -1,7 +1,0 @@
-brand: Generic
-model: On/off light
-connection: generic
-provides:
-  - label: Light
-    kind: light
-    entityDomain: light

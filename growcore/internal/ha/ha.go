@@ -33,8 +33,14 @@ import (
 const staleAfter = 90 * time.Second
 
 type entityMeta struct {
-	name        string
-	deviceClass string
+	name           string
+	deviceClass    string
+	deviceID       string
+	deviceName     string
+	integration    string
+	entityCategory string
+	manufacturer   string
+	model          string
 }
 
 type Adapter struct {
@@ -151,7 +157,7 @@ func (a *Adapter) Discover() []control.DiscoveredEntity {
 	defer a.mu.RUnlock()
 	var out []control.DiscoveredEntity
 	for entity, m := range a.meta {
-		d := control.DiscoveredEntity{Entity: entity, Name: m.name}
+		d := control.DiscoveredEntity{Entity: entity, Name: m.name, HADeviceID: m.deviceID, DeviceName: m.deviceName, Integration: m.integration, EntityCategory: m.entityCategory, Manufacturer: m.manufacturer, Model: m.model}
 		if d.Name == "" {
 			d.Name = entity
 		}
@@ -164,13 +170,17 @@ func (a *Adapter) Discover() []control.DiscoveredEntity {
 				d.Kind, d.Measurement = domain.KindSensor, domain.MeasureHumidity
 			case "carbon_dioxide":
 				d.Kind, d.Measurement = domain.KindSensor, domain.MeasureCO2
+			case "power":
+				d.Kind, d.Measurement = domain.KindSensor, domain.MeasurePower
 			default:
-				continue // only climate sensors are bindable for now
+				continue
 			}
 		case "fan":
-			d.Kind = domain.KindFan
+			d.Kind = domain.KindController
 		case "light":
 			d.Kind = domain.KindLight
+		case "switch":
+			d.Kind = domain.KindPower
 		case "camera":
 			d.Kind = domain.KindCamera
 		default:
@@ -228,6 +238,12 @@ func (a *Adapter) session(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
+	if err := wsjson.Write(ctx, conn, map[string]any{"id": 3, "type": "config/entity_registry/list"}); err != nil {
+		return err
+	}
+	if err := wsjson.Write(ctx, conn, map[string]any{"id": 4, "type": "config/device_registry/list"}); err != nil {
+		return err
+	}
 	a.setConnected(true)
 	log.Printf("ha: connected to %s", a.wsURL)
 
@@ -265,11 +281,18 @@ func (a *Adapter) authenticate(ctx context.Context, conn *websocket.Conn) error 
 func (a *Adapter) handle(msg *wsMessage) {
 	switch msg.Type {
 	case "result":
-		var states []haState
-		if len(msg.Result) > 0 && json.Unmarshal(msg.Result, &states) == nil {
-			for _, st := range states {
-				a.storeState(st)
+		switch msg.ID {
+		case 1:
+			var states []haState
+			if json.Unmarshal(msg.Result, &states) == nil {
+				for _, st := range states {
+					a.storeState(st)
+				}
 			}
+		case 3:
+			a.storeEntityRegistry(msg.Result)
+		case 4:
+			a.storeDeviceRegistry(msg.Result)
 		}
 	case "event":
 		var ev struct {
@@ -287,11 +310,63 @@ func (a *Adapter) storeState(st haState) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.states[st.EntityID] = st.State
-	a.meta[st.EntityID] = entityMeta{name: st.Attributes.FriendlyName, deviceClass: st.Attributes.DeviceClass}
+	m := a.meta[st.EntityID]
+	m.name, m.deviceClass = st.Attributes.FriendlyName, st.Attributes.DeviceClass
+	a.meta[st.EntityID] = m
 	if v, err := strconv.ParseFloat(st.State, 64); err == nil {
 		a.values[st.EntityID] = v
 	}
 	a.lastState = time.Now()
+}
+
+func (a *Adapter) storeEntityRegistry(raw json.RawMessage) {
+	// HA uses snake_case on the wire.
+	var wire []struct {
+		EntityID       string `json:"entity_id"`
+		DeviceID       string `json:"device_id"`
+		Platform       string `json:"platform"`
+		EntityCategory string `json:"entity_category"`
+	}
+	if json.Unmarshal(raw, &wire) != nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, e := range wire {
+		m := a.meta[e.EntityID]
+		m.deviceID, m.integration, m.entityCategory = e.DeviceID, e.Platform, e.EntityCategory
+		a.meta[e.EntityID] = m
+	}
+}
+
+func (a *Adapter) storeDeviceRegistry(raw json.RawMessage) {
+	var devices []struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		NameByUser   string `json:"name_by_user"`
+		Manufacturer string `json:"manufacturer"`
+		Model        string `json:"model"`
+	}
+	if json.Unmarshal(raw, &devices) != nil {
+		return
+	}
+	type deviceInfo struct{ name, manufacturer, model string }
+	infos := map[string]deviceInfo{}
+	for _, d := range devices {
+		name := d.Name
+		if d.NameByUser != "" {
+			name = d.NameByUser
+		}
+		infos[d.ID] = deviceInfo{name, d.Manufacturer, d.Model}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id, m := range a.meta {
+		if info, ok := infos[m.deviceID]; ok {
+			m.deviceName, m.manufacturer, m.model = info.name, info.manufacturer, info.model
+			a.meta[id] = m
+		}
+	}
 }
 
 func (a *Adapter) setConnected(v bool) {

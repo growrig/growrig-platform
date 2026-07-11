@@ -1,9 +1,9 @@
 brand: Generic
-model: PWM fan
+model: PC Fan (12V/PWM)
 connection: generic
-description: Any Home Assistant fan entity with speed control.
+description: A physical PWM fan. Assign it to a separately installed controller channel.
 provides:
   - label: Fan
     kind: fan
     role: exhaust
-    entityDomain: fan
+    entityDomain: ""

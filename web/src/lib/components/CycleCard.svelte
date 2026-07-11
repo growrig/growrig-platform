@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Cycle, Phase } from '$lib/types';
 	import { setCycle, clearCycle } from '$lib/api';
+	import { Select } from '$lib/components/ui';
 
 	interface Props {
 		environmentId: string;
@@ -74,9 +75,7 @@
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Phase</span>
-						<select bind:value={phase} class="{field} mt-1 capitalize">
-							{#each phases as p (p)}<option value={p}>{p}</option>{/each}
-						</select>
+						<Select value={phase} onValueChange={(value) => (phase = value as Phase)} items={phases.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }))} class="mt-1" />
 					</label>
 				</div>
 				<div class="flex gap-2">

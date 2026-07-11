@@ -1,8 +1,0 @@
-brand: Generic
-model: LED grow light
-connection: generic
-description: Any dimmable or on/off LED grow light. Set the wattage to match your fixture.
-provides:
-  - label: Grow light
-    kind: light
-    entityDomain: light

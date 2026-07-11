@@ -8,6 +8,7 @@
 	import KindIcon from '$lib/components/KindIcon.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
+	import { Select } from '$lib/components/ui';
 
 	let catalog = $state<CatalogProduct[]>([]);
 	let discovered = $state<DiscoveredEntity[]>([]);
@@ -68,11 +69,7 @@
 		<div class="space-y-4 rounded-xl border border-rig-800 bg-rig-900/40 p-5">
 			<label class="block">
 				<span class="text-sm text-rig-400">Environment</span>
-				<select bind:value={envId} class="{field} mt-1">
-					{#each environments as env (env.id)}
-						<option value={env.id}>{env.name}</option>
-					{/each}
-				</select>
+				<Select bind:value={envId} items={environments.map((env) => ({ value: env.id, label: env.name }))} class="mt-1" />
 			</label>
 			<CatalogDevicePicker {catalog} {discovered} {usedEntities} onAdd={(d) => (added = [...added, ...d])} />
 			{#if added.length}

@@ -3,6 +3,7 @@
 // against a separately-running Grow Core, set VITE_GROWCORE_URL.
 import type {
 	Binding,
+	Activity,
 	BindingKind,
 	CatalogProduct,
 	Cycle,
@@ -90,11 +91,25 @@ export const updateEnvironment = (id: string, env: EnvironmentInput) =>
 export const deleteEnvironment = (id: string) =>
 	req(`/api/environments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
+export const getEnvironmentYAML = async (id: string) =>
+	(await req(`/api/environments/${encodeURIComponent(id)}/config`)).text();
+
+export const updateEnvironmentYAML = (id: string, yaml: string) =>
+	req(`/api/environments/${encodeURIComponent(id)}/config`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/yaml' },
+		body: yaml
+	});
+
 // --- bindings ---
 
 export const getBindings = () => json<Binding[]>('/api/bindings');
 
 export interface BindingInput {
+	deviceId: string;
+	deviceName: string;
+	powerControllerId?: string;
+	controllerChannelId?: string;
 	environmentId: string;
 	kind: BindingKind;
 	name: string;
@@ -146,3 +161,9 @@ export const clearCycle = (envID: string) =>
 
 export const history = (envID: string, limit = 120) =>
 	json<Reading[]>(`/api/environments/${encodeURIComponent(envID)}/history?limit=${limit}`);
+
+export const getActivity = (environmentId?: string, limit = 100) => {
+	const params = new URLSearchParams({ limit: String(limit) });
+	if (environmentId) params.set('environmentId', environmentId);
+	return json<Activity[]>(`/api/activity?${params}`);
+};

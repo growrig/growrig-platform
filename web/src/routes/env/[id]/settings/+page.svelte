@@ -2,12 +2,13 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { getEnvironments, getBindings, deleteBinding, deleteEnvironment } from '$lib/api';
+	import { getEnvironments, getBindings, deleteBinding, deleteEnvironment, getEnvironmentYAML, updateEnvironmentYAML } from '$lib/api';
 	import type { Binding, Environment } from '$lib/types';
 	import EnvironmentCard from '$lib/components/EnvironmentCard.svelte';
+	import DevicesPage from '../devices/+page.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Cpu from '@lucide/svelte/icons/cpu';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Code2 from '@lucide/svelte/icons/code-2';
+	import { Button, Dialog } from '$lib/components/ui';
 
 	const id = $derived(page.params.id);
 
@@ -16,6 +17,10 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let removing = $state(false);
+	let yamlOpen = $state(false);
+	let yamlText = $state('');
+	let yamlBusy = $state(false);
+	let yamlError = $state('');
 
 	let notice = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
 	function flash(kind: 'ok' | 'err', text: string) {
@@ -54,6 +59,33 @@
 			removing = false;
 		}
 	}
+
+	async function openYAML() {
+		yamlBusy = true;
+		yamlError = '';
+		try {
+			yamlText = await getEnvironmentYAML(id!);
+			yamlOpen = true;
+		} catch (e) {
+			yamlError = e instanceof Error ? e.message : 'Could not load YAML';
+		} finally {
+			yamlBusy = false;
+		}
+	}
+
+	async function saveYAML() {
+		yamlBusy = true;
+		yamlError = '';
+		try {
+			await updateEnvironmentYAML(id!, yamlText);
+			yamlOpen = false;
+			window.location.reload();
+		} catch (e) {
+			yamlError = e instanceof Error ? e.message : 'Could not save YAML';
+		} finally {
+			yamlBusy = false;
+		}
+	}
 </script>
 
 <a href="/env/{id}" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
@@ -77,27 +109,10 @@
 		{/if}
 
 		<!-- Environment settings -->
-		<EnvironmentCard {env} {rooms} canDelete={false} onChanged={reload} {flash} />
+		<EnvironmentCard {env} {rooms} onChanged={reload} {flash} />
 
-		<!-- Devices -->
-		<section class="space-y-3">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Devices</h2>
-			<a
-				href="/env/{id}/devices"
-				class="flex items-center gap-3 rounded-xl border border-rig-800 bg-rig-900/40 p-4 transition-colors hover:border-rig-600"
-			>
-				<span class="grid h-10 w-10 place-items-center rounded-lg bg-rig-800 text-rig-300">
-					<Cpu size={20} />
-				</span>
-				<div class="min-w-0 flex-1">
-					<div class="text-sm font-medium">Manage devices</div>
-					<div class="text-xs text-rig-500">
-						{myBindings.length} device{myBindings.length === 1 ? '' : 's'} · add, edit or remove sensors, fans, lights and cameras
-					</div>
-				</div>
-				<ChevronRight size={18} class="text-rig-500" />
-			</a>
-		</section>
+		<!-- Device configuration is part of environment settings. -->
+		<DevicesPage embedded />
 
 		<!-- Danger zone -->
 		<section class="space-y-3">
@@ -116,5 +131,28 @@
 				</button>
 			</div>
 		</section>
+
+		<section class="space-y-3">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Configuration file</h2>
+			<div class="flex items-center justify-between gap-4 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+				<div>
+					<div class="text-sm font-medium">Environment YAML</div>
+					<div class="text-xs text-rig-500">Edit this environment and all of its device configuration directly.</div>
+				</div>
+				<Button variant="secondary" onclick={openYAML} disabled={yamlBusy}><Code2 size={15} /> Edit YAML</Button>
+			</div>
+			{#if yamlError && !yamlOpen}<p class="text-sm text-danger">{yamlError}</p>{/if}
+		</section>
 	</div>
+
+	<Dialog bind:open={yamlOpen} title="Edit environment YAML" description="Changes are validated and applied immediately. Keep the environment id unchanged.">
+		<div class="space-y-3">
+			<textarea bind:value={yamlText} rows="24" spellcheck="false" class="w-full resize-y rounded-md border border-rig-700 bg-rig-950 p-3 font-mono text-xs leading-5 text-rig-200 focus:border-rig-500 focus:outline-none"></textarea>
+			{#if yamlError}<p class="text-sm text-danger">{yamlError}</p>{/if}
+			<div class="flex justify-end gap-2">
+				<Button variant="ghost" onclick={() => (yamlOpen = false)} disabled={yamlBusy}>Cancel</Button>
+				<Button onclick={saveYAML} disabled={yamlBusy || !yamlText.trim()}>{yamlBusy ? 'Saving…' : 'Save YAML'}</Button>
+			</div>
+		</div>
+	</Dialog>
 {/if}

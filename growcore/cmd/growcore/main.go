@@ -3,7 +3,8 @@
 // Configuration is YAML (see -config) and covers infrastructure only: listen
 // address, storage, control interval, and the adapter used to reach devices.
 // The grow-domain model (environments, devices, roles, entity bindings) is
-// owned by Grow Core and lives in the database, edited through the API/UI.
+// owned by Grow Core and lives in per-environment YAML, edited through the
+// API/UI or manually between restarts. SQLite stores runtime/history data.
 //
 // The same binary runs either as a Home Assistant OS add-on (talking to HA
 // through the Supervisor proxy) or against a remote Home Assistant during local
