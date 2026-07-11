@@ -17,21 +17,31 @@ type Engine struct {
 	store   *store.Store
 	adapter Adapter
 
-	mu              sync.RWMutex
-	latest          domain.Snapshot
-	onSnap          func(domain.Snapshot)
-	persist         int
-	tick            int
+	mu     sync.RWMutex
+	latest domain.Snapshot
+	onSnap func(domain.Snapshot)
+	// History is sampled on a wall-clock cadence (persistEvery) rather than every
+	// control tick, so the graphs get a steady point rate independent of how fast
+	// the control loop runs.
+	persistEvery    time.Duration
+	lastPersist     time.Time
 	fanCommands     map[string]int
+	lightCommands   map[string]bool
 	sensorStates    map[string]bool
 	emergencyStates map[string]bool
 	issueStates     map[string]bool
 	lastHealth      domain.ControllerHealth
+
+	// schedMu guards lightOverrides, which a manual switch (HTTP goroutine) may
+	// write while the control loop reads it.
+	schedMu        sync.Mutex
+	lightOverrides map[string]time.Time // envID -> hold the manual light state until this instant
 }
 
 func New(st *store.Store, adapter Adapter, onSnapshot func(domain.Snapshot)) *Engine {
-	return &Engine{store: st, adapter: adapter, onSnap: onSnapshot, persist: 5,
-		fanCommands: map[string]int{}, sensorStates: map[string]bool{}, emergencyStates: map[string]bool{}, issueStates: map[string]bool{}}
+	return &Engine{store: st, adapter: adapter, onSnap: onSnapshot, persistEvery: time.Minute,
+		fanCommands: map[string]int{}, lightCommands: map[string]bool{}, sensorStates: map[string]bool{},
+		emergencyStates: map[string]bool{}, issueStates: map[string]bool{}, lightOverrides: map[string]time.Time{}}
 }
 
 func (e *Engine) Run(ctx context.Context, interval time.Duration) {
@@ -81,11 +91,17 @@ func (e *Engine) step(dt time.Duration) error {
 	}
 	byEnv := map[string][]domain.Binding{}
 	powerEntityByDevice := map[string]string{}
+	// Power-meter entity per device: a plug's actual wattage reading, distinct
+	// from the switch entity, used to report real light draw instead of rated.
+	powerMeterByDevice := map[string]string{}
 	controllerChannels := map[string]domain.Binding{}
 	for _, b := range bindings {
 		byEnv[b.EnvironmentID] = append(byEnv[b.EnvironmentID], b)
 		if b.Kind == domain.KindPower {
 			powerEntityByDevice[b.DeviceID] = b.Entity
+		}
+		if b.Kind == domain.KindSensor && b.Measurement == domain.MeasurePower {
+			powerMeterByDevice[b.DeviceID] = b.Entity
 		}
 		if b.Kind == domain.KindController {
 			controllerChannels[b.ID] = b
@@ -98,6 +114,14 @@ func (e *Engine) step(dt time.Duration) error {
 	cycleByEnv := map[string]domain.Cycle{}
 	for _, c := range cycles {
 		cycleByEnv[c.EnvironmentID] = c
+	}
+	schedules, err := e.store.LightSchedules()
+	if err != nil {
+		return err
+	}
+	scheduleByEnv := map[string]domain.LightSchedule{}
+	for _, sc := range schedules {
+		scheduleByEnv[sc.EnvironmentID] = sc
 	}
 
 	// Pass 1: aggregate sensor climate per environment (needed before tents can
@@ -115,6 +139,9 @@ func (e *Engine) step(dt time.Duration) error {
 
 	// Pass 2: drive controls and assemble the live views.
 	now := time.Now()
+	// Persist history at most once per persistEvery window (zero lastPersist on
+	// the first step forces an immediate sample).
+	persistTick := now.Sub(e.lastPersist) >= e.persistEvery
 	health := e.adapter.Health()
 	views := make([]domain.EnvironmentView, 0, len(envs))
 	for _, env := range envs {
@@ -169,6 +196,7 @@ func (e *Engine) step(dt time.Duration) error {
 		}
 
 		exhaust := 0
+		var devSamples []domain.DeviceReading
 		for _, b := range byEnv[env.ID] {
 			switch b.Kind {
 			case domain.KindFan:
@@ -199,6 +227,11 @@ func (e *Engine) step(dt time.Duration) error {
 				if rpm, ok := e.adapter.Value(channel.RPMEntity); ok {
 					cs.RPM = int(rpm)
 				}
+				if persistTick {
+					devSamples = append(devSamples, domain.DeviceReading{
+						BindingID: b.ID, EnvironmentID: env.ID, Time: now, Metric: "rpm", Value: float64(cs.RPM),
+					})
+				}
 				view.Controls = append(view.Controls, cs)
 			case domain.KindLight:
 				entity := powerEntityByDevice[b.PowerControllerID]
@@ -207,8 +240,37 @@ func (e *Engine) step(dt time.Duration) error {
 					ID: b.ID, Name: b.Name, Kind: domain.KindLight, Entity: entity,
 					Wattage: b.Wattage, Primary: b.Primary,
 				}
-				if on, ok := e.adapter.SwitchState(entity); ok {
+				on, known := e.adapter.SwitchState(entity)
+				// The photoperiod schedule drives the box's primary light only.
+				sched := scheduleByEnv[env.ID]
+				if b.Primary && entity != "" && sched.Mode != domain.LightScheduleOff && sched.Mode != "" {
+					phase := schedulePhase(cycleByEnv, env.ID)
+					if desired, ok := sched.DesiredOn(phase, now); ok && !e.overrideActive(env.ID, now) {
+						changed := e.driveLight(env, b, entity, desired, on, known)
+						if changed || !known {
+							on, known = desired, true
+						}
+					}
+				}
+				if known {
 					cs.On = on
+				}
+				// Prefer the plug's measured wattage; fall back to rated power while
+				// the light is on when no meter is bound.
+				power, measured := 0.0, false
+				if meter := powerMeterByDevice[b.PowerControllerID]; meter != "" {
+					if v, ok := e.adapter.Value(meter); ok {
+						power, measured = v, true
+					}
+				}
+				if !measured && cs.On {
+					power = b.Wattage
+				}
+				cs.Power = power
+				if persistTick && entity != "" {
+					devSamples = append(devSamples, domain.DeviceReading{
+						BindingID: b.ID, EnvironmentID: env.ID, Time: now, Metric: "power", Value: power,
+					})
 				}
 				view.Controls = append(view.Controls, cs)
 			case domain.KindCamera:
@@ -219,6 +281,11 @@ func (e *Engine) step(dt time.Duration) error {
 		if c, ok := cycleByEnv[env.ID]; ok {
 			cycle := c
 			view.Cycle = &cycle
+		}
+
+		if sc, ok := scheduleByEnv[env.ID]; ok {
+			sched := sc
+			view.Schedule = &sched
 		}
 
 		if env.Kind == domain.KindTent && env.AirSourceID != "" {
@@ -234,7 +301,29 @@ func (e *Engine) step(dt time.Duration) error {
 
 		views = append(views, view)
 
-		if e.tick%e.persist == 0 && c.hasClimate() {
+		if persistTick && len(devSamples) > 0 {
+			if err := e.store.InsertDeviceReadings(devSamples); err != nil {
+				log.Printf("control: insert device readings: %v", err)
+			}
+		}
+		if persistTick {
+			var sensSamples []domain.SensorSample
+			for _, sr := range view.Sensors {
+				if !sr.OK || sr.Measurement == "" {
+					continue
+				}
+				sensSamples = append(sensSamples, domain.SensorSample{
+					BindingID: sr.ID, EnvironmentID: env.ID, Time: now,
+					Measurement: sr.Measurement, Value: sr.Value,
+				})
+			}
+			if len(sensSamples) > 0 {
+				if err := e.store.InsertSensorReadings(sensSamples); err != nil {
+					log.Printf("control: insert sensor readings: %v", err)
+				}
+			}
+		}
+		if persistTick && c.hasClimate() {
 			e.store.InsertReading(domain.Reading{
 				EnvironmentID: env.ID, Time: now,
 				TempC: round1(c.tempC), Humidity: round1(c.humidity),
@@ -243,8 +332,10 @@ func (e *Engine) step(dt time.Duration) error {
 		}
 	}
 	e.lastHealth = health
+	if persistTick {
+		e.lastPersist = now
+	}
 
-	e.tick++
 	snap := domain.Snapshot{Time: now, Environments: views}
 	e.mu.Lock()
 	e.latest = snap
@@ -270,6 +361,87 @@ func (e *Engine) issue(key string, active bool, envID, deviceID, warning, resolv
 		e.activity(envID, deviceID, "info", "notice", resolved)
 	}
 	e.issueStates[key] = active
+}
+
+// driveLight reconciles a scheduled light to the desired on/off state. It
+// commands the switch when the desired value changes, when the actual state is
+// known to differ, or on the first tick, and logs each commanded transition.
+// It reports whether a command was issued this tick.
+func (e *Engine) driveLight(env domain.Environment, b domain.Binding, entity string, desired, actual, known bool) bool {
+	last, seen := e.lightCommands[entity]
+	if seen && last == desired && !(known && actual != desired) {
+		return false
+	}
+	err := e.adapter.SetSwitch(entity, desired)
+	if err != nil {
+		log.Printf("control: set light %s: %v", entity, err)
+	}
+	if !seen || last != desired {
+		state := "off"
+		if desired {
+			state = "on"
+		}
+		if err != nil {
+			e.activity(env.ID, b.DeviceID, "error", "control", "Failed to switch "+b.Name+" "+state)
+		} else {
+			e.activity(env.ID, b.DeviceID, "info", "control", "Switched "+b.Name+" "+state+" on schedule")
+		}
+	}
+	e.lightCommands[entity] = desired
+	return err == nil
+}
+
+// overrideActive reports whether a manual light override is holding for env.
+// Expired overrides are cleared.
+func (e *Engine) overrideActive(envID string, now time.Time) bool {
+	e.schedMu.Lock()
+	defer e.schedMu.Unlock()
+	until, ok := e.lightOverrides[envID]
+	if !ok {
+		return false
+	}
+	if now.Before(until) {
+		return true
+	}
+	delete(e.lightOverrides, envID)
+	return false
+}
+
+// NoteManualLightSwitch records that the primary light of an environment was
+// switched by hand, so the schedule holds that state until its next scheduled
+// transition (a "hold until next period"). When the hold ends the control loop
+// reconciles the light back to the schedule.
+func (e *Engine) NoteManualLightSwitch(envID string) {
+	sched, _, err := e.store.LightSchedule(envID)
+	if err != nil || sched.Mode == domain.LightScheduleOff {
+		return
+	}
+	cycles, _ := e.store.Cycles()
+	phase := domain.PhaseVegetative
+	for _, c := range cycles {
+		if c.EnvironmentID == envID {
+			phase = c.Phase
+			break
+		}
+	}
+	now := time.Now()
+	until := sched.NextTransition(phase, now)
+	if until.IsZero() {
+		// Always-on / always-off schedule has no boundary; hold for a day.
+		until = now.Add(24 * time.Hour)
+	}
+	e.schedMu.Lock()
+	e.lightOverrides[envID] = until
+	e.schedMu.Unlock()
+}
+
+// schedulePhase resolves the phase used by a light schedule: the environment's
+// cycle phase, or vegetative when no cycle is active.
+func schedulePhase(cycles map[string]domain.Cycle, envID string) domain.Phase {
+	if c, ok := cycles[envID]; ok && c.Phase != "" {
+		return c.Phase
+	}
+	return domain.PhaseVegetative
 }
 
 // readSensors reads every sensor binding and aggregates temperature, humidity

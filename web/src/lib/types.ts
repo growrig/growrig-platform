@@ -17,6 +17,22 @@ export interface Cycle {
 	notes: string;
 }
 
+export type LightScheduleMode = 'off' | 'phase' | 'custom';
+
+export interface LightSchedule {
+	environmentId: string;
+	mode: LightScheduleMode;
+	/** Local "HH:MM" the light comes on. */
+	lightsOnAt: string;
+	/** On-duration used in custom mode. */
+	onHours: number;
+	/** Per-phase on-hour overrides for phase mode; phases absent use defaults. */
+	phaseOnHours: Partial<Record<Phase, number>>;
+}
+
+/** Recommended hours of light per phase (from GET /api/lighting/defaults). */
+export type PhotoperiodDefaults = Partial<Record<Phase, number>>;
+
 export interface BindingTemplate {
 	label: string;
 	kind: BindingKind;
@@ -41,11 +57,32 @@ export interface CatalogProduct {
 	provides?: BindingTemplate[];
 }
 
+export interface Location {
+	id: string;
+	name: string;
+	lat: number;
+	lon: number;
+	address: string;
+}
+
+export interface GeocodeResult {
+	displayName: string;
+	lat: number;
+	lon: number;
+}
+
+export interface Weather {
+	temp: SeriesPoint[];
+	humidity: SeriesPoint[];
+	pressure: SeriesPoint[];
+}
+
 export interface Environment {
 	id: string;
 	name: string;
 	kind: EnvironmentKind;
 	airSourceId: string;
+	locationId: string;
 	model: string;
 	widthCm: number;
 	depthCm: number;
@@ -105,6 +142,7 @@ export interface ControlState {
 	rpm: number;
 	on: boolean;
 	wattage?: number;
+	power?: number; // lights: actual measured watts (from plug meter), else rated while on
 	primary?: boolean;
 }
 
@@ -138,6 +176,7 @@ export interface EnvironmentView extends Environment {
 	cameras: CameraRef[];
 	airSource?: AirSourceView;
 	cycle?: Cycle;
+	schedule?: LightSchedule;
 }
 
 export interface Snapshot {
@@ -153,6 +192,31 @@ export interface Reading {
 	co2: number;
 	vpd: number;
 	exhaustSpeed: number;
+}
+
+export interface SeriesPoint {
+	time: string;
+	value: number;
+}
+
+export interface DeviceSeries {
+	bindingId: string;
+	metric: 'rpm' | 'power';
+	points: SeriesPoint[];
+}
+
+export interface SensorSeries {
+	bindingId: string;
+	name: string;
+	entity: string;
+	measurement: Measurement;
+	points: SeriesPoint[];
+}
+
+export interface WeatherHistory {
+	temp: SeriesPoint[];
+	humidity: SeriesPoint[];
+	pressure: SeriesPoint[];
 }
 
 export interface Activity {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -97,6 +98,94 @@ func (s *Server) postDemo(w http.ResponseWriter, r *http.Request) {
 		StartedAt: time.Now().AddDate(0, 0, -21), Phase: domain.PhaseVegetative, PhaseStarted: time.Now().AddDate(0, 0, -7),
 	})
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) getSchedule(w http.ResponseWriter, r *http.Request) {
+	sched, _, err := s.store.LightSchedule(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, sched)
+}
+
+type scheduleBody struct {
+	Mode         domain.LightScheduleMode `json:"mode"`
+	LightsOnAt   string                   `json:"lightsOnAt"`
+	OnHours      float64                  `json:"onHours"`
+	PhaseOnHours map[domain.Phase]float64 `json:"phaseOnHours"`
+}
+
+func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
+	var b scheduleBody
+	if err := decode(r, &b); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if !validScheduleMode(b.Mode) {
+		writeJSON(w, http.StatusBadRequest, errBody("unknown schedule mode"))
+		return
+	}
+	if b.LightsOnAt != "" && !validHHMM(b.LightsOnAt) {
+		writeJSON(w, http.StatusBadRequest, errBody("lightsOnAt must be HH:MM"))
+		return
+	}
+	envs, err := s.store.Environments()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	id := r.PathValue("id")
+	if !containsEnv(envs, id) {
+		writeJSON(w, http.StatusNotFound, errBody("environment not found"))
+		return
+	}
+	phaseOn := map[domain.Phase]float64{}
+	for p, h := range b.PhaseOnHours {
+		if validPhase(p) {
+			phaseOn[p] = h
+		}
+	}
+	onAt := strings.TrimSpace(b.LightsOnAt)
+	if onAt == "" {
+		onAt = "06:00"
+	}
+	sched := domain.LightSchedule{
+		EnvironmentID: id,
+		Mode:          b.Mode,
+		LightsOnAt:    onAt,
+		OnHours:       b.OnHours,
+		PhaseOnHours:  phaseOn,
+	}
+	if err := s.store.SaveLightSchedule(sched); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.activity(id, "", "info", "configuration", "Updated light schedule")
+	writeJSON(w, http.StatusOK, sched)
+}
+
+// getLightingDefaults returns the recommended photoperiod (hours of light) for
+// each grow phase, used to seed the schedule editor.
+func (s *Server) getLightingDefaults(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, domain.PhotoperiodDefaults)
+}
+
+func validScheduleMode(m domain.LightScheduleMode) bool {
+	for _, x := range domain.AllLightScheduleModes {
+		if x == m {
+			return true
+		}
+	}
+	return false
+}
+
+func validHHMM(s string) bool {
+	var h, m int
+	if n, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil || n != 2 {
+		return false
+	}
+	return h >= 0 && h <= 23 && m >= 0 && m <= 59
 }
 
 func validPhase(p domain.Phase) bool {

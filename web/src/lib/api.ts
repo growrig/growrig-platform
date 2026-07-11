@@ -7,15 +7,24 @@ import type {
 	BindingKind,
 	CatalogProduct,
 	Cycle,
+	DeviceSeries,
 	DiscoveredEntity,
 	Environment,
 	EnvironmentKind,
+	GeocodeResult,
 	Info,
+	Location,
+	Weather,
+	LightSchedule,
+	LightScheduleMode,
 	Measurement,
 	Phase,
+	PhotoperiodDefaults,
 	Reading,
 	Role,
-	Snapshot
+	SensorSeries,
+	Snapshot,
+	WeatherHistory
 } from './types';
 
 export const CORE_URL: string = import.meta.env.VITE_GROWCORE_URL?.replace(/\/$/, '') ?? '';
@@ -69,6 +78,7 @@ export interface EnvironmentInput {
 	name: string;
 	kind: EnvironmentKind;
 	airSourceId: string;
+	locationId?: string;
 	model?: string;
 	widthCm?: number;
 	depthCm?: number;
@@ -100,6 +110,32 @@ export const updateEnvironmentYAML = (id: string, yaml: string) =>
 		headers: { 'Content-Type': 'application/yaml' },
 		body: yaml
 	});
+
+// --- locations, geocoding & weather ---
+
+export const getLocations = () => json<Location[]>('/api/locations');
+
+export interface LocationInput {
+	name: string;
+	lat: number;
+	lon: number;
+	address?: string;
+}
+
+export const createLocation = (l: LocationInput) =>
+	json<Location>('/api/locations', { method: 'POST', body: JSON.stringify(l) });
+
+export const updateLocation = (id: string, l: LocationInput) =>
+	json<Location>(`/api/locations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(l) });
+
+export const deleteLocation = (id: string) =>
+	req(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** Geocode an address or POI via Grow Core's Nominatim proxy. */
+export const geocode = (q: string) => json<GeocodeResult[]>(`/api/geocode?q=${encodeURIComponent(q)}`);
+
+/** Local hourly weather (past + forecast) for coordinates, via Open-Meteo proxy. */
+export const weather = (lat: number, lon: number) => json<Weather>(`/api/weather?lat=${lat}&lon=${lon}`);
 
 // --- bindings ---
 
@@ -157,10 +193,54 @@ export const setCycle = (envID: string, c: CycleInput) =>
 export const clearCycle = (envID: string) =>
 	req(`/api/environments/${encodeURIComponent(envID)}/cycle`, { method: 'DELETE' });
 
+// --- light schedule (photoperiod automation) ---
+
+export interface ScheduleInput {
+	mode: LightScheduleMode;
+	lightsOnAt: string;
+	onHours: number;
+	phaseOnHours: Partial<Record<Phase, number>>;
+}
+
+export const getSchedule = (envID: string) =>
+	json<LightSchedule>(`/api/environments/${encodeURIComponent(envID)}/schedule`);
+
+export const setSchedule = (envID: string, s: ScheduleInput) =>
+	json<LightSchedule>(`/api/environments/${encodeURIComponent(envID)}/schedule`, {
+		method: 'PUT',
+		body: JSON.stringify(s)
+	});
+
+export const getLightingDefaults = () => json<PhotoperiodDefaults>('/api/lighting/defaults');
+
 // --- history ---
 
 export const history = (envID: string, limit = 120) =>
 	json<Reading[]>(`/api/environments/${encodeURIComponent(envID)}/history?limit=${limit}`);
+
+/** Downsampled readings over the last `hours`, averaged into ~`buckets` points. */
+export const historyRange = (envID: string, hours = 72, buckets = 500) =>
+	json<Reading[]>(
+		`/api/environments/${encodeURIComponent(envID)}/history?hours=${hours}&buckets=${buckets}`
+	);
+
+/** Downsampled per-device series (fan rpm, light power) over the last `hours`. */
+export const deviceHistory = (envID: string, hours = 72, buckets = 500) =>
+	json<DeviceSeries[]>(
+		`/api/environments/${encodeURIComponent(envID)}/device-history?hours=${hours}&buckets=${buckets}`
+	);
+
+/** Downsampled per-sensor series (each bound sensor's own readings) over `hours`. */
+export const sensorHistory = (envID: string, hours = 72, buckets = 500) =>
+	json<SensorSeries[]>(
+		`/api/environments/${encodeURIComponent(envID)}/sensor-history?hours=${hours}&buckets=${buckets}`
+	);
+
+/** Persisted outdoor history for the env's resolved location, over `hours`. */
+export const weatherHistory = (envID: string, hours = 72, buckets = 500) =>
+	json<WeatherHistory>(
+		`/api/environments/${encodeURIComponent(envID)}/weather-history?hours=${hours}&buckets=${buckets}`
+	);
 
 export const getActivity = (environmentId?: string, limit = 100) => {
 	const params = new URLSearchParams({ limit: String(limit) });

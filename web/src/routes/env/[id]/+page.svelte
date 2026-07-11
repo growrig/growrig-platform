@@ -2,12 +2,14 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { live } from '$lib/live.svelte';
-	import { history, setSwitch, getPhases } from '$lib/api';
-	import type { Phase, Reading } from '$lib/types';
+	import { history, historyRange, deviceHistory, setSwitch, getPhases, getLightingDefaults, getLocations, weather } from '$lib/api';
+	import type { DeviceSeries, Location, Phase, PhotoperiodDefaults, Reading, Weather } from '$lib/types';
+	import { resolveLocationId } from '$lib/location';
+	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import { climateTone, toneClass, vpdZone, volumeM3, formatDimensions } from '$lib/format';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import VpdGauge from '$lib/components/VpdGauge.svelte';
-	import Sparkline from '$lib/components/Sparkline.svelte';
+	import MetricModal, { type MetricDescriptor } from '$lib/components/MetricModal.svelte';
 	import CycleCard from '$lib/components/CycleCard.svelte';
 	import SensorsDialog from '$lib/components/SensorsDialog.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
@@ -22,6 +24,7 @@
 	import Wind from '@lucide/svelte/icons/wind';
 	import Star from '@lucide/svelte/icons/star';
 	import Zap from '@lucide/svelte/icons/zap';
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 
 	const id = $derived(page.params.id);
 	const env = $derived(live.snapshot?.environments?.find((e) => e.id === id));
@@ -39,11 +42,40 @@
 	const hasInfo = $derived(!!(dims || env?.airSource));
 
 	let readings = $state<Reading[]>([]);
+	let rangeReadings = $state<Reading[]>([]);
+	let deviceSeries = $state<DeviceSeries[]>([]);
 	let phases = $state<Phase[]>([]);
+	let lightingDefaults = $state<PhotoperiodDefaults>({});
+	let locations = $state<Location[]>([]);
+	let weatherData = $state<Weather | undefined>();
+
+	// The env's location coordinates as a stable string key, so weather is
+	// fetched once per location rather than on every live snapshot. A tent
+	// without its own location inherits its air-source room's.
+	const weatherKey = $derived.by(() => {
+		const locId = resolveLocationId(env, live.snapshot?.environments ?? []);
+		const loc = locations.find((l) => l.id === locId);
+		return loc ? `${loc.lat},${loc.lon}` : '';
+	});
+	$effect(() => {
+		const key = weatherKey;
+		if (!key) {
+			weatherData = undefined;
+			return;
+		}
+		const [lat, lon] = key.split(',').map(Number);
+		weather(lat, lon)
+			.then((w) => (weatherData = w))
+			.catch(() => {});
+	});
 	async function refreshHistory() {
 		if (!id) return;
 		try {
-			readings = await history(id, 120);
+			[readings, rangeReadings, deviceSeries] = await Promise.all([
+				history(id, 120),
+				historyRange(id, 72, 500),
+				deviceHistory(id, 72, 500)
+			]);
 		} catch {
 			/* keep last */
 		}
@@ -51,6 +83,8 @@
 	onMount(() => {
 		refreshHistory();
 		getPhases().then((p) => (phases = p)).catch(() => {});
+		getLightingDefaults().then((d) => (lightingDefaults = d)).catch(() => {});
+		getLocations().then((l) => (locations = l)).catch(() => {});
 		const t = setInterval(refreshHistory, 5000);
 		return () => clearInterval(t);
 	});
@@ -71,6 +105,16 @@
 		circulation: 'Circulation',
 		unassigned: 'Unassigned'
 	};
+
+	// --- metric detail modal ---
+	// The modal owns its own timeframe + data fetching; the page just names which
+	// metric to open and hands it the live current values.
+	let metric = $state<{ descriptor: MetricDescriptor; title: string; unit: string } | null>(null);
+	let metricOpen = $state(false);
+	function openMetric(descriptor: MetricDescriptor, title: string, unit: string) {
+		metric = { descriptor, title, unit };
+		metricOpen = true;
+	}
 </script>
 
 <a href="/" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
@@ -102,10 +146,6 @@
 				</a>
 			</div>
 		</div>
-
-		{#if env.kind === 'tent'}
-			<CycleCard environmentId={env.id} cycle={env.cycle} {phases} />
-		{/if}
 
 		<!-- Basic info -->
 		{#if hasInfo}
@@ -140,38 +180,61 @@
 			</div>
 		{/if}
 
-		<!-- Climate tiles -->
+		{#if env.kind === 'tent'}
+			<CycleCard
+				environmentId={env.id}
+				cycle={env.cycle}
+				schedule={env.schedule}
+				hasPrimaryLight={!!primaryLight}
+				{phases}
+				defaults={lightingDefaults}
+			/>
+		{/if}
+
+		<!-- Timeline -->
+		<TimelineChart
+			readings={rangeReadings}
+			{deviceSeries}
+			controls={env.controls ?? []}
+			weather={weatherData}
+			schedule={env.schedule}
+			phase={env.cycle?.phase ?? 'vegetative'}
+			defaults={lightingDefaults}
+		/>
+
+		<!-- Climate tiles (value + trend; click to expand per-sensor history) -->
 		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			<StatTile
 				label="Temperature"
 				value={env.hasTemp ? env.tempC.toFixed(1) : '—'}
 				unit="°C"
 				tone={env.hasTemp ? climateTone(env.tempC, env.targetTempC, env.emergencyTempC) : 'muted'}
+				spark={env.hasTemp ? readings.map((r) => r.tempC) : undefined}
+				sparkColor="#f97316"
+				sparkTarget={env.targetTempC}
+				onclick={() => openMetric({ kind: 'sensor', measurement: 'temperature' }, 'Temperature', '°C')}
 			/>
-			<StatTile label="Humidity" value={env.hasHum ? env.humidity.toFixed(0) : '—'} unit="%" />
+			<StatTile
+				label="Humidity"
+				value={env.hasHum ? env.humidity.toFixed(0) : '—'}
+				unit="%"
+				spark={env.hasHum ? readings.map((r) => r.humidity) : undefined}
+				sparkColor="#38bdf8"
+				sparkTarget={env.targetHumidity}
+				onclick={() => openMetric({ kind: 'sensor', measurement: 'humidity' }, 'Humidity', '%')}
+			/>
 			{#if env.hasCO2}
-				<StatTile label="CO₂" value={env.co2.toFixed(0)} unit="ppm" />
+				<StatTile
+					label="CO₂"
+					value={env.co2.toFixed(0)}
+					unit="ppm"
+					spark={readings.map((r) => r.co2)}
+					sparkColor="#a78bfa"
+					onclick={() => openMetric({ kind: 'sensor', measurement: 'co2' }, 'CO₂', 'ppm')}
+				/>
 			{/if}
-			<VpdGauge vpd={env.vpd} ok={env.hasClimate} />
+			<VpdGauge vpd={env.vpd} ok={env.hasClimate} onclick={() => openMetric({ kind: 'vpd' }, 'VPD', 'kPa')} />
 		</div>
-
-		<!-- History -->
-		{#if readings.length > 1}
-			<div class="grid gap-4 sm:grid-cols-3">
-				<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
-					<span class="text-sm text-rig-400">Temperature</span>
-					<Sparkline values={readings.map((r) => r.tempC)} target={env.targetTempC} unit="°C" />
-				</div>
-				<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
-					<span class="text-sm text-rig-400">Humidity</span>
-					<Sparkline values={readings.map((r) => r.humidity)} target={env.targetHumidity} color="var(--color-rig-300)" unit="%" />
-				</div>
-				<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
-					<span class="text-sm text-rig-400">VPD</span>
-					<Sparkline values={readings.map((r) => r.vpd)} color="var(--color-leaf)" unit="" />
-				</div>
-			</div>
-		{/if}
 
 		<!-- Light -->
 		{#if env.kind === 'tent' || lights.length}
@@ -196,35 +259,48 @@
 				{:else}
 					<div class="grid gap-3 sm:grid-cols-2">
 						{#each orderedLights as light (light.id)}
-							<div class="flex items-center justify-between rounded-lg border p-3 {light.primary ? 'border-warn/40 bg-warn/5' : 'border-rig-800 bg-rig-950/40'}">
-								<div class="flex items-center gap-2">
-									{#if light.on}
-										<Lightbulb size={18} class="text-leaf" />
-									{:else}
-										<LightbulbOff size={18} class="text-rig-500" />
-									{/if}
-									<div>
+							{@const power = light.power ?? (light.on ? light.wattage ?? 0 : 0)}
+							<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-3">
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-2">
+										{#if light.on}
+											<Lightbulb size={18} class="text-leaf" />
+										{:else}
+											<LightbulbOff size={18} class="text-rig-500" />
+										{/if}
 										<div class="flex items-center gap-2 text-sm font-medium">
 											{light.name}
 											{#if light.primary}
-												<span class="inline-flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warn">
-													<Star size={10} fill="currentColor" /> Primary
+												<span class="inline-flex items-center gap-1 rounded-full bg-rig-800 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rig-300">
+													<Star size={10} fill="currentColor" class="text-warn" /> Primary
 												</span>
 											{/if}
 										</div>
-										{#if light.wattage}
-											<div class="flex items-center gap-1 text-xs text-rig-500">
-												<Zap size={12} /> {light.wattage} W
-											</div>
-										{/if}
+									</div>
+									<div class="flex items-center gap-2">
+										<span class="text-xs font-medium tabular-nums {light.on ? 'text-leaf' : 'text-rig-400'}">
+											{light.on ? 'On' : 'Off'}
+										</span>
+										<Switch checked={light.on} onCheckedChange={(v) => toggleLight(light.id, v)} />
+										<button
+											type="button"
+											onclick={() => openMetric({ kind: 'device', bindingId: light.id, metric: 'power' }, `${light.name} · power`, 'W')}
+											class="rounded-md p-1 text-rig-500 transition-colors hover:bg-rig-800 hover:text-rig-100"
+											aria-label="Power history"
+										>
+											<Maximize2 size={14} />
+										</button>
 									</div>
 								</div>
-								<div class="flex items-center gap-2">
-									<span class="text-xs font-medium tabular-nums {light.on ? 'text-leaf' : 'text-rig-400'}">
-										{light.on ? 'On' : 'Off'}
-									</span>
-									<Switch checked={light.on} onCheckedChange={(v) => toggleLight(light.id, v)} />
-								</div>
+								{#if light.wattage}
+									<div class="mb-1 mt-3 flex items-center justify-between text-xs text-rig-400">
+										<span class="flex items-center gap-1"><Zap size={12} /> power</span>
+										<span class="tabular-nums">{Math.round(power)} / {light.wattage} W</span>
+									</div>
+									<div class="h-2 overflow-hidden rounded-full bg-rig-800">
+										<div class="h-full rounded-full bg-leaf transition-all duration-500" style="width:{light.wattage ? (power / light.wattage) * 100 : 0}%"></div>
+									</div>
+								{/if}
 							</div>
 						{/each}
 					</div>
@@ -241,7 +317,17 @@
 						<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-3">
 							<div class="mb-2 flex items-center justify-between text-sm">
 								<span class="font-medium">{fan.name}</span>
-								<span class="text-rig-400">{roleLabel[fan.role ?? 'unassigned']}</span>
+								<div class="flex items-center gap-2">
+									<span class="text-rig-400">{roleLabel[fan.role ?? 'unassigned']}</span>
+									<button
+										type="button"
+										onclick={() => openMetric({ kind: 'device', bindingId: fan.id, metric: 'rpm' }, `${fan.name} · speed`, 'rpm')}
+										class="rounded-md p-1 text-rig-500 transition-colors hover:bg-rig-800 hover:text-rig-100"
+										aria-label="Speed history"
+									>
+										<Maximize2 size={14} />
+									</button>
+								</div>
 							</div>
 							<div class="mb-1 flex items-center justify-between text-xs text-rig-400">
 								<span>speed</span>
@@ -298,4 +384,17 @@
 			<ActivityLog environmentId={env.id} limit={20} />
 		</section>
 	</div>
+
+	{#if metric}
+		<MetricModal
+			bind:open={metricOpen}
+			envId={env.id}
+			title={metric.title}
+			unit={metric.unit}
+			descriptor={metric.descriptor}
+			sensors={env.sensors ?? []}
+			controls={env.controls ?? []}
+			vpdCurrent={env.hasClimate ? env.vpd : null}
+		/>
+	{/if}
 {/if}

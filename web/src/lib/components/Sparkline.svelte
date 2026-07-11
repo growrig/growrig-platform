@@ -6,8 +6,10 @@
 		color?: string;
 		height?: number;
 		unit?: string;
+		/** Show the "now <value>" label in the corner. */
+		showNow?: boolean;
 	}
-	let { values, target, color = 'var(--color-leaf)', height = 56, unit = '' }: Props = $props();
+	let { values, target, color = 'var(--color-leaf)', height = 56, unit = '', showNow = true }: Props = $props();
 
 	const width = 240;
 
@@ -56,7 +58,7 @@
 			<path d={path} fill="none" stroke={color} stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
 		{/if}
 	</svg>
-	{#if last != null}
+	{#if showNow && last != null}
 		<span class="absolute right-0 top-0 text-xs text-rig-400">now {last.toFixed(1)}{unit}</span>
 	{/if}
 </div>

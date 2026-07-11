@@ -6,6 +6,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -61,6 +62,13 @@ CREATE TABLE IF NOT EXISTS environments (
     target_co2      REAL NOT NULL DEFAULT 0,
     emergency_temp  REAL NOT NULL DEFAULT 35
 );
+CREATE TABLE IF NOT EXISTS locations (
+    id      TEXT PRIMARY KEY,
+    name    TEXT NOT NULL,
+    lat     REAL NOT NULL DEFAULT 0,
+    lon     REAL NOT NULL DEFAULT 0,
+    address TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS cycles (
     environment_id TEXT PRIMARY KEY,
     strain         TEXT NOT NULL DEFAULT '',
@@ -68,6 +76,13 @@ CREATE TABLE IF NOT EXISTS cycles (
     phase          TEXT NOT NULL DEFAULT '',
     phase_started  INTEGER NOT NULL DEFAULT 0,
     notes          TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS light_schedules (
+    environment_id TEXT PRIMARY KEY,
+    mode           TEXT NOT NULL DEFAULT 'off',
+    lights_on_at   TEXT NOT NULL DEFAULT '06:00',
+    on_hours       REAL NOT NULL DEFAULT 18,
+    phase_on_hours TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
@@ -97,6 +112,33 @@ CREATE TABLE IF NOT EXISTS readings (
     exhaust_speed  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_readings_env_ts ON readings (environment_id, ts);
+CREATE TABLE IF NOT EXISTS device_readings (
+    binding_id     TEXT NOT NULL,
+    environment_id TEXT NOT NULL,
+    ts             INTEGER NOT NULL,
+    metric         TEXT NOT NULL,
+    value          REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_devreadings ON device_readings (binding_id, ts);
+CREATE INDEX IF NOT EXISTS idx_devreadings_env_ts ON device_readings (environment_id, ts);
+CREATE TABLE IF NOT EXISTS sensor_readings (
+    binding_id     TEXT NOT NULL,
+    environment_id TEXT NOT NULL,
+    ts             INTEGER NOT NULL,
+    measurement    TEXT NOT NULL,
+    value          REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sensreadings ON sensor_readings (binding_id, ts);
+CREATE INDEX IF NOT EXISTS idx_sensreadings_env_ts ON sensor_readings (environment_id, ts);
+CREATE TABLE IF NOT EXISTS weather_readings (
+    location_id TEXT NOT NULL,
+    ts          INTEGER NOT NULL,
+    temp        REAL NOT NULL,
+    humidity    REAL NOT NULL,
+    pressure    REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (location_id, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_weatherreadings ON weather_readings (location_id, ts);
 CREATE TABLE IF NOT EXISTS activity_log (
     id             TEXT PRIMARY KEY,
     environment_id TEXT NOT NULL DEFAULT '',
@@ -147,6 +189,7 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "is_primary", "INTEGER NOT NULL DEFAULT 0"},
 		{"bindings", "power_controller_id", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "controller_channel_id", "TEXT NOT NULL DEFAULT ''"},
+		{"environments", "location_id", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
@@ -196,15 +239,15 @@ func (s *Store) SaveEnvironment(e domain.Environment) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT INTO environments
-		   (id, name, kind, air_source, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (id, name, kind, air_source, location_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, kind=excluded.kind, air_source=excluded.air_source,
-		   model=excluded.model,
+		   location_id=excluded.location_id, model=excluded.model,
 		   width_cm=excluded.width_cm, depth_cm=excluded.depth_cm, height_cm=excluded.height_cm,
 		   target_temp=excluded.target_temp, target_humidity=excluded.target_humidity,
 		   target_co2=excluded.target_co2, emergency_temp=excluded.emergency_temp`,
-		e.ID, e.Name, string(e.Kind), e.AirSourceID, e.Model,
+		e.ID, e.Name, string(e.Kind), e.AirSourceID, e.LocationID, e.Model,
 		e.WidthCm, e.DepthCm, e.HeightCm,
 		e.TargetTempC, e.TargetHumidity, e.TargetCO2, e.EmergencyTempC,
 	)
@@ -229,7 +272,7 @@ func (s *Store) UpdateTargets(id string, targetTemp, targetHumidity float64) err
 
 func (s *Store) Environments() ([]domain.Environment, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, kind, air_source, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp
+		`SELECT id, name, kind, air_source, location_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp
 		 FROM environments ORDER BY kind DESC, name`) // tents before rooms
 	if err != nil {
 		return nil, err
@@ -239,7 +282,7 @@ func (s *Store) Environments() ([]domain.Environment, error) {
 	for rows.Next() {
 		var e domain.Environment
 		var kind string
-		if err := rows.Scan(&e.ID, &e.Name, &kind, &e.AirSourceID, &e.Model, &e.WidthCm, &e.DepthCm, &e.HeightCm,
+		if err := rows.Scan(&e.ID, &e.Name, &kind, &e.AirSourceID, &e.LocationID, &e.Model, &e.WidthCm, &e.DepthCm, &e.HeightCm,
 			&e.TargetTempC, &e.TargetHumidity, &e.TargetCO2, &e.EmergencyTempC); err != nil {
 			return nil, err
 		}
@@ -247,6 +290,56 @@ func (s *Store) Environments() ([]domain.Environment, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// --- Locations ---
+
+func (s *Store) SaveLocation(l domain.Location) error {
+	_, err := s.db.Exec(
+		`INSERT INTO locations (id, name, lat, lon, address) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET name=excluded.name, lat=excluded.lat, lon=excluded.lon, address=excluded.address`,
+		l.ID, l.Name, l.Lat, l.Lon, l.Address)
+	return err
+}
+
+func (s *Store) Locations() ([]domain.Location, error) {
+	rows, err := s.db.Query(`SELECT id, name, lat, lon, address FROM locations ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Location
+	for rows.Next() {
+		var l domain.Location
+		if err := rows.Scan(&l.ID, &l.Name, &l.Lat, &l.Lon, &l.Address); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Location(id string) (domain.Location, bool, error) {
+	var l domain.Location
+	err := s.db.QueryRow(`SELECT id, name, lat, lon, address FROM locations WHERE id=?`, id).
+		Scan(&l.ID, &l.Name, &l.Lat, &l.Lon, &l.Address)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Location{}, false, nil
+	}
+	if err != nil {
+		return domain.Location{}, false, err
+	}
+	return l, true, nil
+}
+
+// DeleteLocation removes a location and clears it from any environments sited
+// there (those environments simply become unlocated).
+func (s *Store) DeleteLocation(id string) error {
+	if _, err := s.db.Exec(`UPDATE environments SET location_id='' WHERE location_id=?`, id); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM locations WHERE id=?`, id)
+	return err
 }
 
 // --- Cycles ---
@@ -291,6 +384,86 @@ func (s *Store) Cycles() ([]domain.Cycle, error) {
 	return out, rows.Err()
 }
 
+// --- Light schedules ---
+
+func (s *Store) SaveLightSchedule(sched domain.LightSchedule) error {
+	phases, err := json.Marshal(sched.PhaseOnHours)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO light_schedules (environment_id, mode, lights_on_at, on_hours, phase_on_hours)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(environment_id) DO UPDATE SET
+		   mode=excluded.mode, lights_on_at=excluded.lights_on_at,
+		   on_hours=excluded.on_hours, phase_on_hours=excluded.phase_on_hours`,
+		sched.EnvironmentID, string(sched.Mode), sched.LightsOnAt, sched.OnHours, string(phases),
+	)
+	return err
+}
+
+// LightSchedule returns the saved schedule for an environment, or a default
+// (manual) schedule with found=false when none is stored.
+func (s *Store) LightSchedule(envID string) (sched domain.LightSchedule, found bool, err error) {
+	row := s.db.QueryRow(
+		`SELECT mode, lights_on_at, on_hours, phase_on_hours FROM light_schedules WHERE environment_id=?`, envID)
+	sched, err = scanLightSchedule(envID, row.Scan)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.DefaultLightSchedule(envID), false, nil
+	}
+	if err != nil {
+		return domain.LightSchedule{}, false, err
+	}
+	return sched, true, nil
+}
+
+func (s *Store) LightSchedules() ([]domain.LightSchedule, error) {
+	rows, err := s.db.Query(`SELECT environment_id, mode, lights_on_at, on_hours, phase_on_hours FROM light_schedules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.LightSchedule
+	for rows.Next() {
+		var envID string
+		sched, err := scanLightSchedule("", func(dst ...any) error {
+			return rows.Scan(append([]any{&envID}, dst...)...)
+		})
+		if err != nil {
+			return nil, err
+		}
+		sched.EnvironmentID = envID
+		out = append(out, sched)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteLightSchedule(envID string) error {
+	_, err := s.db.Exec(`DELETE FROM light_schedules WHERE environment_id=?`, envID)
+	return err
+}
+
+// scanLightSchedule decodes the mode/on-at/hours/phase-overrides columns via
+// the given scan function into a schedule (EnvironmentID left to the caller).
+func scanLightSchedule(envID string, scan func(dst ...any) error) (domain.LightSchedule, error) {
+	var mode, onAt, phasesJSON string
+	var onHours float64
+	if err := scan(&mode, &onAt, &onHours, &phasesJSON); err != nil {
+		return domain.LightSchedule{}, err
+	}
+	phaseOn := map[domain.Phase]float64{}
+	if phasesJSON != "" {
+		_ = json.Unmarshal([]byte(phasesJSON), &phaseOn)
+	}
+	return domain.LightSchedule{
+		EnvironmentID: envID,
+		Mode:          domain.LightScheduleMode(mode),
+		LightsOnAt:    onAt,
+		OnHours:       onHours,
+		PhaseOnHours:  phaseOn,
+	}, nil
+}
+
 // DeleteEnvironment removes an environment. It fails if bindings still
 // reference it, or if another environment uses it as an air source.
 func (s *Store) DeleteEnvironment(id string) error {
@@ -314,6 +487,7 @@ func (s *Store) DeleteEnvironment(id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("environment %q not found", id)
 	}
+	_, _ = s.db.Exec(`DELETE FROM light_schedules WHERE environment_id=?`, id)
 	return s.removeEnvironmentConfig(id)
 }
 
@@ -472,6 +646,252 @@ func (s *Store) RecentReadings(envID string, limit int) ([]domain.Reading, error
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
+}
+
+// ReadingsSince returns readings newer than since, averaged into at most
+// buckets evenly-spaced time buckets (oldest first). Downsampling keeps a
+// multi-day window to a chart-friendly number of points.
+func (s *Store) ReadingsSince(envID string, since time.Time, buckets int) ([]domain.Reading, error) {
+	if buckets < 1 {
+		buckets = 1
+	}
+	sinceMs := since.UnixMilli()
+	windowMs := time.Now().UnixMilli() - sinceMs
+	bucketMs := windowMs / int64(buckets)
+	if bucketMs < 1 {
+		bucketMs = 1
+	}
+	rows, err := s.db.Query(
+		`SELECT CAST(AVG(ts) AS INTEGER) AS ts, AVG(temp), AVG(humidity), AVG(co2), AVG(vpd), CAST(AVG(exhaust_speed) AS INTEGER)
+		 FROM readings
+		 WHERE environment_id=? AND ts>=?
+		 GROUP BY (ts - ?) / ?
+		 ORDER BY ts`, envID, sinceMs, sinceMs, bucketMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Reading
+	for rows.Next() {
+		r := domain.Reading{EnvironmentID: envID}
+		var ts int64
+		if err := rows.Scan(&ts, &r.TempC, &r.Humidity, &r.CO2, &r.VPD, &r.ExhaustSpeed); err != nil {
+			return nil, err
+		}
+		r.Time = time.UnixMilli(ts)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// InsertDeviceReadings persists a batch of per-device samples in one transaction.
+func (s *Store) InsertDeviceReadings(rs []domain.DeviceReading) error {
+	if len(rs) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO device_readings (binding_id, environment_id, ts, metric, value) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, r := range rs {
+		if _, err := stmt.Exec(r.BindingID, r.EnvironmentID, r.Time.UnixMilli(), r.Metric, r.Value); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DeviceReadingsSince returns per-device series newer than since, each averaged
+// into at most buckets time buckets (oldest first).
+func (s *Store) DeviceReadingsSince(envID string, since time.Time, buckets int) ([]domain.DeviceSeries, error) {
+	if buckets < 1 {
+		buckets = 1
+	}
+	sinceMs := since.UnixMilli()
+	bucketMs := (time.Now().UnixMilli() - sinceMs) / int64(buckets)
+	if bucketMs < 1 {
+		bucketMs = 1
+	}
+	rows, err := s.db.Query(
+		`SELECT binding_id, metric, CAST(AVG(ts) AS INTEGER) AS ts, AVG(value)
+		 FROM device_readings
+		 WHERE environment_id=? AND ts>=?
+		 GROUP BY binding_id, metric, (ts - ?) / ?
+		 ORDER BY binding_id, metric, ts`, envID, sinceMs, sinceMs, bucketMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byKey := map[string]*domain.DeviceSeries{}
+	var order []*domain.DeviceSeries
+	for rows.Next() {
+		var bindingID, metric string
+		var ts int64
+		var value float64
+		if err := rows.Scan(&bindingID, &metric, &ts, &value); err != nil {
+			return nil, err
+		}
+		key := bindingID + "\x00" + metric
+		ser, ok := byKey[key]
+		if !ok {
+			ser = &domain.DeviceSeries{BindingID: bindingID, Metric: metric}
+			byKey[key] = ser
+			order = append(order, ser)
+		}
+		ser.Points = append(ser.Points, domain.SeriesPoint{Time: time.UnixMilli(ts), Value: value})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]domain.DeviceSeries, 0, len(order))
+	for _, ser := range order {
+		out = append(out, *ser)
+	}
+	return out, nil
+}
+
+// InsertSensorReadings persists a batch of per-sensor samples in one transaction.
+func (s *Store) InsertSensorReadings(rs []domain.SensorSample) error {
+	if len(rs) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO sensor_readings (binding_id, environment_id, ts, measurement, value) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, r := range rs {
+		if _, err := stmt.Exec(r.BindingID, r.EnvironmentID, r.Time.UnixMilli(), string(r.Measurement), r.Value); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SensorReadingsSince returns per-sensor series newer than since, each averaged
+// into at most buckets time buckets (oldest first). Names and entities are
+// joined from the current bindings so the series can label itself; a sensor
+// that has since been unbound falls back to its id.
+func (s *Store) SensorReadingsSince(envID string, since time.Time, buckets int) ([]domain.SensorSeries, error) {
+	if buckets < 1 {
+		buckets = 1
+	}
+	sinceMs := since.UnixMilli()
+	bucketMs := (time.Now().UnixMilli() - sinceMs) / int64(buckets)
+	if bucketMs < 1 {
+		bucketMs = 1
+	}
+	rows, err := s.db.Query(
+		`SELECT sr.binding_id, sr.measurement, COALESCE(b.name, sr.binding_id), COALESCE(b.entity, ''),
+		        CAST(AVG(sr.ts) AS INTEGER) AS ts, AVG(sr.value)
+		 FROM sensor_readings sr
+		 LEFT JOIN bindings b ON b.id = sr.binding_id
+		 WHERE sr.environment_id=? AND sr.ts>=?
+		 GROUP BY sr.binding_id, sr.measurement, (sr.ts - ?) / ?
+		 ORDER BY sr.binding_id, sr.ts`, envID, sinceMs, sinceMs, bucketMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byKey := map[string]*domain.SensorSeries{}
+	var order []*domain.SensorSeries
+	for rows.Next() {
+		var bindingID, measurement, name, entity string
+		var ts int64
+		var value float64
+		if err := rows.Scan(&bindingID, &measurement, &name, &entity, &ts, &value); err != nil {
+			return nil, err
+		}
+		ser, ok := byKey[bindingID]
+		if !ok {
+			ser = &domain.SensorSeries{BindingID: bindingID, Name: name, Entity: entity, Measurement: domain.Measurement(measurement)}
+			byKey[bindingID] = ser
+			order = append(order, ser)
+		}
+		ser.Points = append(ser.Points, domain.SeriesPoint{Time: time.UnixMilli(ts), Value: value})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]domain.SensorSeries, 0, len(order))
+	for _, ser := range order {
+		out = append(out, *ser)
+	}
+	return out, nil
+}
+
+// SaveWeatherReadings upserts outdoor observations, keyed by (location, ts) so
+// overlapping polls (Open-Meteo returns several past days each call) dedupe.
+func (s *Store) SaveWeatherReadings(rs []domain.WeatherSample) error {
+	if len(rs) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO weather_readings (location_id, ts, temp, humidity, pressure) VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, r := range rs {
+		if _, err := stmt.Exec(r.LocationID, r.Time.UnixMilli(), r.Temp, r.Humidity, r.Pressure); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// WeatherReadingsSince returns a location's outdoor history newer than since,
+// averaged into at most buckets time buckets (oldest first).
+func (s *Store) WeatherReadingsSince(locationID string, since time.Time, buckets int) (domain.WeatherHistory, error) {
+	var out domain.WeatherHistory
+	if buckets < 1 {
+		buckets = 1
+	}
+	sinceMs := since.UnixMilli()
+	bucketMs := (time.Now().UnixMilli() - sinceMs) / int64(buckets)
+	if bucketMs < 1 {
+		bucketMs = 1
+	}
+	rows, err := s.db.Query(
+		`SELECT CAST(AVG(ts) AS INTEGER) AS ts, AVG(temp), AVG(humidity), AVG(pressure)
+		 FROM weather_readings
+		 WHERE location_id=? AND ts>=?
+		 GROUP BY (ts - ?) / ?
+		 ORDER BY ts`, locationID, sinceMs, sinceMs, bucketMs)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ts int64
+		var temp, hum, pres float64
+		if err := rows.Scan(&ts, &temp, &hum, &pres); err != nil {
+			return out, err
+		}
+		t := time.UnixMilli(ts)
+		out.Temp = append(out.Temp, domain.SeriesPoint{Time: t, Value: temp})
+		out.Humidity = append(out.Humidity, domain.SeriesPoint{Time: t, Value: hum})
+		out.Pressure = append(out.Pressure, domain.SeriesPoint{Time: t, Value: pres})
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) AddActivity(a domain.Activity) error {

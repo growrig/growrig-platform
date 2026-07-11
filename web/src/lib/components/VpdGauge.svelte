@@ -1,18 +1,28 @@
 <script lang="ts">
 	import { vpdZone, toneClass } from '$lib/format';
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 
 	interface Props {
 		vpd: number;
 		ok: boolean;
+		/** When provided, the tile becomes a button that opens a detail view. */
+		onclick?: () => void;
 	}
-	let { vpd, ok }: Props = $props();
+	let { vpd, ok, onclick }: Props = $props();
 
 	const zone = $derived(vpdZone(vpd));
 	// Scale 0–2 kPa across the bar.
 	const pct = $derived(Math.max(0, Math.min(100, (vpd / 2) * 100)));
+
+	const base = 'group relative w-full rounded-lg border border-rig-800 bg-rig-950/40 p-4 text-left transition-colors';
+	const clickable = 'hover:border-rig-600 cursor-pointer';
 </script>
 
-<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
+<svelte:element
+	this={onclick ? 'button' : 'div'}
+	class="{base} {onclick ? clickable : ''}"
+	{...onclick ? { type: 'button', onclick } : {}}
+>
 	<div class="mb-1 flex items-baseline justify-between">
 		<span class="text-sm text-rig-400">VPD</span>
 		{#if ok}
@@ -39,4 +49,7 @@
 	{:else}
 		<p class="mt-2 text-xs text-rig-500">needs temperature + humidity</p>
 	{/if}
-</div>
+	{#if onclick}
+		<Maximize2 size={13} class="absolute right-3 top-3 text-rig-600 opacity-0 transition-opacity group-hover:opacity-100" />
+	{/if}
+</svelte:element>

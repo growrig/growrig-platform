@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { live } from '$lib/live.svelte';
 	import { climateTone, toneClass, vpdZone } from '$lib/format';
-	import { getInfo, loadDemo } from '$lib/api';
+	import { getInfo, getLocations, loadDemo } from '$lib/api';
 	import { onMount } from 'svelte';
-	import type { EnvironmentView } from '$lib/types';
+	import type { EnvironmentView, Location } from '$lib/types';
+	import { resolveLocationId } from '$lib/location';
 	import Sprout from '@lucide/svelte/icons/sprout';
+	import MapPin from '@lucide/svelte/icons/map-pin';
 
 	const snap = $derived(live.snapshot);
 	const tents = $derived((snap?.environments ?? []).filter((e) => e.kind === 'tent'));
@@ -13,11 +15,37 @@
 	const healthDot = (h: string) =>
 		h === 'online' ? 'bg-leaf' : h === 'stale' ? 'bg-warn' : 'bg-danger';
 
+	let locations = $state<Location[]>([]);
+	// Effective location per environment, inheriting a tent's air-source room's
+	// location when it has none of its own.
+	const locOf = (e: EnvironmentView) => resolveLocationId(e, snap?.environments ?? []);
+	// Group environments by location once any environment is sited; otherwise
+	// fall back to the flat tents/rooms layout.
+	const useGroups = $derived(
+		locations.length > 0 && (snap?.environments ?? []).some((e) => { const l = locOf(e); return l && locations.some((x) => x.id === l); })
+	);
+	const groups = $derived.by(() => {
+		const envs = snap?.environments ?? [];
+		const out: { key: string; name: string; located: boolean; envs: EnvironmentView[] }[] = [];
+		for (const loc of [...locations].sort((a, b) => a.name.localeCompare(b.name))) {
+			const inLoc = envs.filter((e) => locOf(e) === loc.id);
+			if (inLoc.length) out.push({ key: loc.id, name: loc.name, located: true, envs: inLoc });
+		}
+		const orphan = envs.filter((e) => { const l = locOf(e); return !l || !locations.some((x) => x.id === l); });
+		if (orphan.length) out.push({ key: '__none__', name: 'No location', located: false, envs: orphan });
+		return out;
+	});
+
 	let isSimulator = $state(false);
 	let loadingDemo = $state(false);
 	onMount(async () => {
 		try {
 			isSimulator = (await getInfo()).adapter === 'simulator';
+		} catch {
+			/* ignore */
+		}
+		try {
+			locations = await getLocations();
 		} catch {
 			/* ignore */
 		}
@@ -94,6 +122,20 @@
 				</button>
 			{/if}
 		</div>
+	</div>
+{:else if useGroups}
+	<div class="space-y-10">
+		{#each groups as group (group.key)}
+			<section>
+				<h1 class="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide {group.located ? 'text-leaf' : 'text-rig-500'}">
+					<MapPin size={14} />
+					{group.name}
+				</h1>
+				<div class="grid gap-4 sm:grid-cols-2">
+					{#each group.envs as env (env.id)}{@render card(env)}{/each}
+				</div>
+			</section>
+		{/each}
 	</div>
 {:else}
 	<div class="space-y-8">

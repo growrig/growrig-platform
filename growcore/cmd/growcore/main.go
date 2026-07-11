@@ -71,9 +71,12 @@ func main() {
 		log.Print("web UI embedded; serving at /")
 	}
 
+	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static)
+	go apiServer.PollWeather(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static).Handler(),
+		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

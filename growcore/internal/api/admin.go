@@ -44,6 +44,7 @@ type environmentBody struct {
 	Name           string                 `json:"name"`
 	Kind           domain.EnvironmentKind `json:"kind"`
 	AirSourceID    string                 `json:"airSourceId"`
+	LocationID     string                 `json:"locationId"`
 	Model          string                 `json:"model"`
 	WidthCm        float64                `json:"widthCm"`
 	DepthCm        float64                `json:"depthCm"`
@@ -115,6 +116,7 @@ func (s *Server) buildEnvironment(envID string, b environmentBody) (domain.Envir
 	}
 	env := domain.Environment{
 		ID: envID, Name: b.Name, Kind: kind, AirSourceID: b.AirSourceID,
+		LocationID:     b.LocationID,
 		Model:          b.Model,
 		WidthCm:        b.WidthCm,
 		DepthCm:        b.DepthCm,

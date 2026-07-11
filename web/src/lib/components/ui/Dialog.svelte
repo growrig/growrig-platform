@@ -11,6 +11,8 @@
 		/** Trigger content. Omit to control `open` externally. */
 		trigger?: Snippet;
 		triggerClass?: string;
+		/** Max width of the dialog. Defaults to `lg`. */
+		size?: 'lg' | 'xl' | '2xl' | '3xl';
 		children: Snippet;
 	}
 
@@ -20,8 +22,18 @@
 		description,
 		trigger,
 		triggerClass,
+		size = 'lg',
 		children
 	}: Props = $props();
+
+	const maxW = $derived(
+		{
+			lg: 'max-w-lg',
+			xl: 'max-w-xl',
+			'2xl': 'max-w-2xl',
+			'3xl': 'max-w-3xl'
+		}[size]
+	);
 </script>
 
 <Dialog.Root bind:open>
@@ -36,7 +48,7 @@
 			class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out"
 		/>
 		<Dialog.Content
-			class="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[92vw] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-rig-700 bg-rig-900 shadow-2xl outline-none"
+			class="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[92vw] {maxW} -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-rig-700 bg-rig-900 shadow-2xl outline-none"
 		>
 			<div class="flex items-start justify-between gap-4 border-b border-rig-800 px-5 py-4">
 				<div>

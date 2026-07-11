@@ -30,6 +30,7 @@ const (
 	tentFan2   = "sim.tent_fan2"
 	tentFan2R  = "sim.tent_fan2_rpm"
 	tentLight  = "sim.tent_light"
+	tentLightW = "sim.tent_light_power" // plug's actual power draw (W)
 	tentCamera = "sim.tent_camera"
 	roomTemp   = "sim.room_temperature"
 	roomHumid  = "sim.room_humidity"
@@ -131,6 +132,13 @@ func (s *Simulator) Value(entity string) (float64, bool) {
 		return s.tentHumidity, true
 	case tentCO2:
 		return s.tentCO2, true
+	case tentLightW:
+		// A real LED grow light draws a bit under its rated wattage; the plug
+		// reports a small standby draw when off.
+		if s.lightOn {
+			return clampF(138+s.noise(2.5), 120, 150), true
+		}
+		return clampF(0.4+s.noise(0.1), 0, 2), true
 	case roomTemp:
 		return s.roomTempC, true
 	case roomHumid:
@@ -229,6 +237,7 @@ func SeedTopology() ([]domain.Environment, []domain.Binding) {
 		fanB("sim-t-fan2", TentID, "Fan 2", tentFan2, tentFan2R, domain.RoleCirculation),
 		lightB("sim-t-light", TentID, "Grow Light", "", 150, true),
 		powerB("sim-t-power", TentID, "Grow light plug", tentLight),
+		sensor("sim-t-power-meter", TentID, "Grow light power", tentLightW, domain.MeasurePower),
 		b("sim-t-cam", TentID, domain.KindCamera, "Tent Camera", tentCamera),
 		sensor("sim-r-temp", RoomID, "Temperature", roomTemp, domain.MeasureTemperature),
 		sensor("sim-r-humid", RoomID, "Humidity", roomHumid, domain.MeasureHumidity),
@@ -241,6 +250,9 @@ func SeedTopology() ([]domain.Environment, []domain.Binding) {
 			bindings[i].DeviceID, bindings[i].DeviceName = "sim-t-fan-controller", "Dual fan controller"
 		case "sim-r-temp", "sim-r-humid":
 			bindings[i].DeviceID, bindings[i].DeviceName = "sim-r-climate", "Room environmental sensor"
+		case "sim-t-power", "sim-t-power-meter":
+			// Switch + power-meter are two capabilities of the one smart plug.
+			bindings[i].DeviceID, bindings[i].DeviceName = "sim-t-power", "Grow light plug"
 		}
 		if bindings[i].ID == "sim-t-light" {
 			bindings[i].PowerControllerID = "sim-t-power"

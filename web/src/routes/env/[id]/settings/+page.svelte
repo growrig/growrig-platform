@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { getEnvironments, getBindings, deleteBinding, deleteEnvironment, getEnvironmentYAML, updateEnvironmentYAML } from '$lib/api';
-	import type { Binding, Environment } from '$lib/types';
+	import { getEnvironments, getBindings, getLocations, deleteBinding, deleteEnvironment, getEnvironmentYAML, updateEnvironmentYAML } from '$lib/api';
+	import type { Binding, Environment, Location } from '$lib/types';
 	import EnvironmentCard from '$lib/components/EnvironmentCard.svelte';
 	import DevicesPage from '../devices/+page.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -14,6 +14,7 @@
 
 	let environments = $state<Environment[]>([]);
 	let bindings = $state<Binding[]>([]);
+	let locations = $state<Location[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let removing = $state(false);
@@ -30,7 +31,7 @@
 
 	async function reload() {
 		try {
-			[environments, bindings] = await Promise.all([getEnvironments(), getBindings()]);
+			[environments, bindings, locations] = await Promise.all([getEnvironments(), getBindings(), getLocations()]);
 			error = null;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to reach Grow Core';
@@ -109,7 +110,7 @@
 		{/if}
 
 		<!-- Environment settings -->
-		<EnvironmentCard {env} {rooms} onChanged={reload} {flash} />
+		<EnvironmentCard {env} {rooms} {locations} onChanged={reload} {flash} />
 
 		<!-- Device configuration is part of environment settings. -->
 		<DevicesPage embedded />

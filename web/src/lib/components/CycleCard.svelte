@@ -1,109 +1,91 @@
 <script lang="ts">
-	import type { Cycle, Phase } from '$lib/types';
-	import { setCycle, clearCycle } from '$lib/api';
-	import { Select } from '$lib/components/ui';
+	import type { Cycle, LightSchedule, Phase, PhotoperiodDefaults } from '$lib/types';
+	import CycleModal from '$lib/components/CycleModal.svelte';
+	import { nextTransition } from '$lib/photoperiod';
+	import Sun from '@lucide/svelte/icons/sun';
 
 	interface Props {
 		environmentId: string;
 		cycle?: Cycle;
+		schedule?: LightSchedule;
 		phases: Phase[];
+		defaults: PhotoperiodDefaults;
+		hasPrimaryLight: boolean;
 	}
-	let { environmentId, cycle, phases }: Props = $props();
+	let { environmentId, cycle, schedule, phases, defaults, hasPrimaryLight }: Props = $props();
 
 	let editing = $state(false);
-	let strain = $state('');
-	let startDate = $state(new Date().toISOString().slice(0, 10));
-	let phase = $state<Phase>('vegetative');
-	let notes = $state('');
-	let busy = $state(false);
-	let err = $state('');
 
-	function beginEdit() {
-		strain = cycle?.strain ?? '';
-		startDate = (cycle?.startedAt ?? new Date().toISOString()).slice(0, 10);
-		phase = cycle?.phase ?? 'vegetative';
-		notes = cycle?.notes ?? '';
-		editing = true;
-	}
+	// Ticks so the countdown to the next light transition stays live.
+	let nowMs = $state(Date.now());
+	$effect(() => {
+		const t = setInterval(() => (nowMs = Date.now()), 30_000);
+		return () => clearInterval(t);
+	});
 
 	function daysSince(iso?: string): number {
 		if (!iso) return 0;
 		return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 	}
 
-	async function save() {
-		busy = true;
-		err = '';
-		try {
-			await setCycle(environmentId, { strain, startedAt: startDate, phase, notes });
-			editing = false;
-		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
-		} finally {
-			busy = false;
-		}
+	function relTime(ms: number): string {
+		const min = Math.max(0, Math.round(ms / 60_000));
+		const h = Math.floor(min / 60);
+		const m = min % 60;
+		if (min < 1) return 'now';
+		if (h === 0) return `${m}m`;
+		if (m === 0) return `${h}h`;
+		return `${h}h ${m}m`;
 	}
 
-	async function clear() {
-		if (!confirm('End this cycle?')) return;
-		try {
-			await clearCycle(environmentId);
-			editing = false;
-		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
-		}
-	}
+	// Effective hours of light for the current phase given the active schedule.
+	const effectiveHours = $derived.by(() => {
+		if (!schedule || schedule.mode === 'off') return null;
+		if (schedule.mode === 'custom') return schedule.onHours;
+		const p = cycle?.phase ?? 'vegetative';
+		return schedule.phaseOnHours?.[p] ?? defaults[p] ?? 18;
+	});
 
-	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const lightingSummary = $derived.by(() => {
+		if (!schedule || schedule.mode === 'off') return 'Lighting: manual';
+		const h = effectiveHours ?? 0;
+		const off = Math.max(0, 24 - h);
+		const follows = schedule.mode === 'phase' ? ' · follows phase' : '';
+		const next = nextTransition(schedule, cycle?.phase ?? 'vegetative', defaults, nowMs);
+		const countdown = next ? ` · ${next.on ? 'on' : 'off'} in ${relTime(next.at - nowMs)}` : '';
+		return `${h}/${off} · on at ${schedule.lightsOnAt}${follows}${countdown}`;
+	});
 </script>
 
 <section>
-	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Cycle</h2>
+	<div class="mb-3 flex items-center justify-between">
+		<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Cycle</h2>
+	</div>
 	<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
-		{#if err}<p class="mb-2 text-xs text-danger">{err}</p>{/if}
-
-		{#if editing}
-			<div class="space-y-3">
-				<label class="block">
-					<span class="text-xs text-rig-400">Strain</span>
-					<input bind:value={strain} placeholder="e.g. Blue Dream" class="{field} mt-1" />
-				</label>
-				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block">
-						<span class="text-xs text-rig-400">Start date</span>
-						<input type="date" bind:value={startDate} class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Phase</span>
-						<Select value={phase} onValueChange={(value) => (phase = value as Phase)} items={phases.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }))} class="mt-1" />
-					</label>
-				</div>
-				<div class="flex gap-2">
-					<button onclick={save} disabled={busy || !strain.trim()} class="rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400 disabled:opacity-50">Save</button>
-					<button onclick={() => (editing = false)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-rig-500">Cancel</button>
-					{#if cycle}
-						<button onclick={clear} class="ml-auto rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-danger hover:text-danger">End cycle</button>
-					{/if}
-				</div>
-			</div>
-		{:else if cycle}
+		{#if cycle}
 			<div class="flex items-center justify-between">
 				<div>
 					<div class="text-lg font-semibold">{cycle.strain || 'Unnamed strain'}</div>
-					<div class="mt-1 flex items-center gap-2 text-sm text-rig-400">
+					<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-rig-400">
 						<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">{cycle.phase}</span>
 						<span>day {daysSince(cycle.startedAt)}</span>
 						<span class="text-rig-600">·</span>
 						<span>{daysSince(cycle.phaseStarted)}d in {cycle.phase}</span>
 					</div>
+					<div class="mt-2 flex items-center gap-1.5 text-sm text-rig-400">
+						<Sun size={14} class={schedule && schedule.mode !== 'off' ? 'text-warn' : 'text-rig-600'} />
+						<span>{lightingSummary}</span>
+					</div>
 				</div>
-				<button onclick={beginEdit} class="rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 hover:border-rig-500">Edit</button>
+				<button onclick={() => (editing = true)} class="rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 hover:border-rig-500">Edit</button>
 			</div>
 		{:else}
 			<div class="flex items-center justify-between">
 				<span class="text-sm text-rig-400">No active cycle.</span>
-				<button onclick={beginEdit} class="rounded-md bg-rig-500 px-3 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400">Start a cycle</button>
+				<button onclick={() => (editing = true)} class="rounded-md bg-rig-500 px-3 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400">Start a cycle</button>
 			</div>
 		{/if}
 	</div>
 </section>
+
+<CycleModal bind:open={editing} {environmentId} {cycle} {schedule} {phases} {defaults} {hasPrimaryLight} />

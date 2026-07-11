@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -54,8 +55,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/environments/{id}/config", s.putEnvironmentConfig)
 	mux.HandleFunc("PUT /api/environments/{id}/targets", s.putTargets)
 	mux.HandleFunc("GET /api/environments/{id}/history", s.getHistory)
+	mux.HandleFunc("GET /api/environments/{id}/device-history", s.getDeviceHistory)
+	mux.HandleFunc("GET /api/environments/{id}/sensor-history", s.getSensorHistory)
+	mux.HandleFunc("GET /api/environments/{id}/weather-history", s.getWeatherHistory)
 	mux.HandleFunc("PUT /api/environments/{id}/cycle", s.putCycle)
 	mux.HandleFunc("DELETE /api/environments/{id}/cycle", s.deleteCycle)
+	mux.HandleFunc("GET /api/environments/{id}/schedule", s.getSchedule)
+	mux.HandleFunc("PUT /api/environments/{id}/schedule", s.putSchedule)
+	mux.HandleFunc("GET /api/lighting/defaults", s.getLightingDefaults)
+
+	mux.HandleFunc("GET /api/locations", s.getLocations)
+	mux.HandleFunc("POST /api/locations", s.createLocation)
+	mux.HandleFunc("PUT /api/locations/{id}", s.updateLocation)
+	mux.HandleFunc("DELETE /api/locations/{id}", s.deleteLocation)
+	mux.HandleFunc("GET /api/geocode", s.geocode)
+	mux.HandleFunc("GET /api/weather", s.getWeather)
 
 	mux.HandleFunc("GET /api/bindings", s.getBindings)
 	mux.HandleFunc("POST /api/bindings", s.createBinding)
@@ -158,13 +172,32 @@ func (s *Server) putTargets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getHistory(w http.ResponseWriter, r *http.Request) {
-	limit := 120
-	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
-			limit = n
+	id := r.PathValue("id")
+	q := r.URL.Query()
+	var readings []domain.Reading
+	var err error
+	// ?hours=N returns a downsampled window (for the timeline); otherwise the
+	// legacy ?limit=N most-recent readings (for sparklines).
+	if v := q.Get("hours"); v != "" {
+		hours := 72
+		if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 24*30 {
+			hours = n
 		}
+		buckets := 500
+		if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
+			buckets = n
+		}
+		since := time.Now().Add(-time.Duration(hours) * time.Hour)
+		readings, err = s.store.ReadingsSince(id, since, buckets)
+	} else {
+		limit := 120
+		if v := q.Get("limit"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n > 0 && n <= 5000 {
+				limit = n
+			}
+		}
+		readings, err = s.store.RecentReadings(id, limit)
 	}
-	readings, err := s.store.RecentReadings(r.PathValue("id"), limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -173,6 +206,54 @@ func (s *Server) getHistory(w http.ResponseWriter, r *http.Request) {
 		readings = []domain.Reading{}
 	}
 	writeJSON(w, http.StatusOK, readings)
+}
+
+// getDeviceHistory returns downsampled per-device series (fan rpm, light power)
+// over the last ?hours, for the timeline's optional per-device lines.
+func (s *Server) getDeviceHistory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	hours := 72
+	if n, e := strconv.Atoi(q.Get("hours")); e == nil && n > 0 && n <= 24*30 {
+		hours = n
+	}
+	buckets := 500
+	if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
+		buckets = n
+	}
+	since := time.Now().Add(-time.Duration(hours) * time.Hour)
+	series, err := s.store.DeviceReadingsSince(r.PathValue("id"), since, buckets)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if series == nil {
+		series = []domain.DeviceSeries{}
+	}
+	writeJSON(w, http.StatusOK, series)
+}
+
+// getSensorHistory returns downsampled per-sensor series (each bound sensor's
+// own readings) over the last ?hours, for the metric-detail modal.
+func (s *Server) getSensorHistory(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	hours := 72
+	if n, e := strconv.Atoi(q.Get("hours")); e == nil && n > 0 && n <= 24*30 {
+		hours = n
+	}
+	buckets := 500
+	if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
+		buckets = n
+	}
+	since := time.Now().Add(-time.Duration(hours) * time.Hour)
+	series, err := s.store.SensorReadingsSince(r.PathValue("id"), since, buckets)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if series == nil {
+		series = []domain.SensorSeries{}
+	}
+	writeJSON(w, http.StatusOK, series)
 }
 
 func (s *Server) getBindings(w http.ResponseWriter, r *http.Request) {
@@ -227,6 +308,11 @@ func (s *Server) putSwitch(w http.ResponseWriter, r *http.Request) {
 				state = "on"
 			}
 			_ = s.store.AddActivity(domain.Activity{EnvironmentID: b.EnvironmentID, DeviceID: b.DeviceID, Level: "info", Type: "control", Message: "Manually switched " + b.Name + " " + state})
+			// A hand toggle of the scheduled primary light holds until the next
+			// scheduled transition, so the schedule doesn't immediately revert it.
+			if b.Kind == domain.KindLight && b.Primary {
+				s.engine.NoteManualLightSwitch(b.EnvironmentID)
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

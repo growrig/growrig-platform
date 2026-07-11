@@ -7,7 +7,10 @@
 // independent. See ../../../growrig/docs/architecture.md.
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // EnvironmentKind distinguishes a controlled grow space from a monitored room.
 type EnvironmentKind string
@@ -63,6 +66,17 @@ const (
 	HealthOffline ControllerHealth = "offline"
 )
 
+// Location is a physical place (a home, a greenhouse site) with geographic
+// coordinates, shared by the environments sited there. Coordinates drive local
+// weather lookups; the name groups environments on the dashboard.
+type Location struct {
+	ID      string  `json:"id" yaml:"id"`
+	Name    string  `json:"name" yaml:"name"`
+	Lat     float64 `json:"lat" yaml:"lat"`
+	Lon     float64 `json:"lon" yaml:"lon"`
+	Address string  `json:"address" yaml:"address,omitempty"` // geocoder display name
+}
+
 // Environment is a controlled tent or a monitored room.
 type Environment struct {
 	ID   string          `json:"id" yaml:"id"`
@@ -71,6 +85,9 @@ type Environment struct {
 	// AirSourceID optionally references the room (lung room) that supplies this
 	// tent's intake air. Empty for rooms or tents without a linked source.
 	AirSourceID string `json:"airSourceId" yaml:"airSourceId,omitempty"`
+	// LocationID optionally sites this environment at a Location (for weather
+	// and dashboard grouping).
+	LocationID string `json:"locationId" yaml:"locationId,omitempty"`
 
 	// Model is an optional descriptive field (e.g. the grow-tent product)
 	// captured by the setup wizard.
@@ -122,6 +139,177 @@ type Cycle struct {
 	Notes         string    `json:"notes"`
 }
 
+// --- Automations ---
+//
+// An automation drives an actuator over time rather than in reaction to a
+// sensor reading. The light photoperiod schedule is the first (and today only)
+// automation type; future types (interval circulation, threshold dehumidify)
+// are siblings of LightSchedule, not extensions of it.
+
+// LightScheduleMode selects how a tent's primary grow light is driven.
+type LightScheduleMode string
+
+const (
+	// LightScheduleOff leaves the light under manual control only.
+	LightScheduleOff LightScheduleMode = "off"
+	// LightSchedulePhase follows the recommended photoperiod for the cycle's
+	// current phase, with optional per-phase overrides.
+	LightSchedulePhase LightScheduleMode = "phase"
+	// LightScheduleCustom uses a fixed on-time and duration, ignoring the phase.
+	LightScheduleCustom LightScheduleMode = "custom"
+)
+
+// AllLightScheduleModes lists the selectable schedule modes.
+var AllLightScheduleModes = []LightScheduleMode{LightScheduleOff, LightSchedulePhase, LightScheduleCustom}
+
+// PhotoperiodDefaults maps each grow phase to its recommended daily hours of
+// light. These are the presets a user starts from and can override per phase.
+var PhotoperiodDefaults = map[Phase]float64{
+	PhaseSeedling:   18,
+	PhaseVegetative: 18,
+	PhaseFlowering:  12,
+	PhaseFlush:      12,
+	PhaseDrying:     0,
+	PhaseCure:       0,
+}
+
+// LightSchedule is the photoperiod automation for an environment's primary
+// grow light. The light turns on at LightsOnAt (a local "HH:MM" wall-clock
+// time) and stays on for the effective number of hours; the remainder of the
+// 24h day is dark. Anchoring on wall-clock time (rather than counting from an
+// arbitrary cycle start) keeps the dark period aligned to a real daily window.
+type LightSchedule struct {
+	EnvironmentID string            `json:"environmentId"`
+	Mode          LightScheduleMode `json:"mode"`
+	// LightsOnAt is the local time the light comes on, "HH:MM" (24h).
+	LightsOnAt string `json:"lightsOnAt"`
+	// OnHours is the on-duration for custom mode.
+	OnHours float64 `json:"onHours"`
+	// PhaseOnHours holds per-phase overrides for phase mode. A phase absent
+	// from the map falls back to PhotoperiodDefaults.
+	PhaseOnHours map[Phase]float64 `json:"phaseOnHours"`
+}
+
+// DefaultLightSchedule is the schedule for an environment that has none saved:
+// manual control, with sensible on-time/duration seeds for the editor.
+func DefaultLightSchedule(envID string) LightSchedule {
+	return LightSchedule{
+		EnvironmentID: envID,
+		Mode:          LightScheduleOff,
+		LightsOnAt:    "06:00",
+		OnHours:       18,
+		PhaseOnHours:  map[Phase]float64{},
+	}
+}
+
+// EffectiveOnHours resolves the on-duration for the given phase: the custom
+// duration in custom mode, otherwise the per-phase override or the default.
+func (s LightSchedule) EffectiveOnHours(phase Phase) float64 {
+	if s.Mode == LightScheduleCustom {
+		return clampHours(s.OnHours)
+	}
+	if h, ok := s.PhaseOnHours[phase]; ok {
+		return clampHours(h)
+	}
+	if h, ok := PhotoperiodDefaults[phase]; ok {
+		return h
+	}
+	return 18
+}
+
+// DesiredOn reports whether the light should be on at time now for the given
+// phase. ok is false when the schedule is not driving the light (mode off).
+func (s LightSchedule) DesiredOn(phase Phase, now time.Time) (on bool, ok bool) {
+	if s.Mode == LightScheduleOff {
+		return false, false
+	}
+	hours := s.EffectiveOnHours(phase)
+	if hours <= 0 {
+		return false, true
+	}
+	if hours >= 24 {
+		return true, true
+	}
+	onAt, valid := parseHHMM(s.LightsOnAt)
+	if !valid {
+		return false, false
+	}
+	mins := now.Hour()*60 + now.Minute()
+	span := int(hours * 60)
+	return inWindow(mins, onAt, span), true
+}
+
+// NextTransition returns the next wall-clock instant at/after now when the
+// scheduled light state flips. Used to hold a manual override until the next
+// scheduled boundary. It returns the zero time when the schedule never flips
+// (mode off, or an always-on / always-off duration).
+func (s LightSchedule) NextTransition(phase Phase, now time.Time) time.Time {
+	if s.Mode == LightScheduleOff {
+		return time.Time{}
+	}
+	hours := s.EffectiveOnHours(phase)
+	if hours <= 0 || hours >= 24 {
+		return time.Time{}
+	}
+	onAt, valid := parseHHMM(s.LightsOnAt)
+	if !valid {
+		return time.Time{}
+	}
+	offAt := (onAt + int(hours*60)) % 1440
+	return nextClockTime(now, onAt, offAt)
+}
+
+func clampHours(h float64) float64 {
+	if h < 0 {
+		return 0
+	}
+	if h > 24 {
+		return 24
+	}
+	return h
+}
+
+// parseHHMM parses "HH:MM" into minutes-since-midnight.
+func parseHHMM(s string) (mins int, ok bool) {
+	var h, m int
+	if _, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil {
+		return 0, false
+	}
+	if h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, false
+	}
+	return h*60 + m, true
+}
+
+// inWindow reports whether minute-of-day t falls in the on-window that starts
+// at start and lasts span minutes, wrapping past midnight.
+func inWindow(t, start, span int) bool {
+	end := start + span
+	if end <= 1440 {
+		return t >= start && t < end
+	}
+	// Window wraps midnight: on from start..2400 and 0..(end-1440).
+	return t >= start || t < end-1440
+}
+
+// nextClockTime returns the soonest instant strictly after now that lands on
+// one of the given minute-of-day marks.
+func nextClockTime(now time.Time, marks ...int) time.Time {
+	var best time.Time
+	nowMins := now.Hour()*60 + now.Minute()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for _, mark := range marks {
+		cand := midnight.Add(time.Duration(mark) * time.Minute)
+		if mark <= nowMins {
+			cand = cand.Add(24 * time.Hour)
+		}
+		if best.IsZero() || cand.Before(best) {
+			best = cand
+		}
+	}
+	return best
+}
+
 // Binding attaches a Home Assistant entity (or simulator entity id) to an
 // environment with a semantic category.
 type Binding struct {
@@ -158,6 +346,68 @@ type Reading struct {
 	ExhaustSpeed  int       `json:"exhaustSpeed"`
 }
 
+// DeviceReading is a single per-device sample (fan RPM, light power, …)
+// persisted for the timeline. Kept separate from Reading, which aggregates
+// per-environment climate.
+type DeviceReading struct {
+	BindingID     string    `json:"bindingId"`
+	EnvironmentID string    `json:"environmentId"`
+	Time          time.Time `json:"time"`
+	Metric        string    `json:"metric"` // "rpm" | "power"
+	Value         float64   `json:"value"`
+}
+
+// SeriesPoint is one downsampled point in a device series.
+type SeriesPoint struct {
+	Time  time.Time `json:"time"`
+	Value float64   `json:"value"`
+}
+
+// DeviceSeries is a device's downsampled history for one metric.
+type DeviceSeries struct {
+	BindingID string        `json:"bindingId"`
+	Metric    string        `json:"metric"`
+	Points    []SeriesPoint `json:"points"`
+}
+
+// SensorSample is a single per-sensor reading persisted for the timeline. Kept
+// separate from Reading, which aggregates all sensors of a kind into one
+// per-environment climate value.
+type SensorSample struct {
+	BindingID     string      `json:"bindingId"`
+	EnvironmentID string      `json:"environmentId"`
+	Time          time.Time   `json:"time"`
+	Measurement   Measurement `json:"measurement"`
+	Value         float64     `json:"value"`
+}
+
+// SensorSeries is one sensor's downsampled history, with enough identity to
+// label it in the metric-detail modal.
+type SensorSeries struct {
+	BindingID   string        `json:"bindingId"`
+	Name        string        `json:"name"`
+	Entity      string        `json:"entity"`
+	Measurement Measurement   `json:"measurement"`
+	Points      []SeriesPoint `json:"points"`
+}
+
+// WeatherSample is a single persisted outdoor observation for a location.
+type WeatherSample struct {
+	LocationID string
+	Time       time.Time
+	Temp       float64
+	Humidity   float64
+	Pressure   float64
+}
+
+// WeatherHistory is a location's downsampled outdoor history, used to overlay
+// outdoor conditions on the metric-detail modal for comparison.
+type WeatherHistory struct {
+	Temp     []SeriesPoint `json:"temp"`
+	Humidity []SeriesPoint `json:"humidity"`
+	Pressure []SeriesPoint `json:"pressure"`
+}
+
 // Activity records a human-readable system action, warning or notice.
 type Activity struct {
 	ID            string    `json:"id"`
@@ -192,6 +442,7 @@ type ControlState struct {
 	RPM          int         `json:"rpm"`               // fans
 	On           bool        `json:"on"`                // lights
 	Wattage      float64     `json:"wattage,omitempty"` // lights: rated power (W)
+	Power        float64     `json:"power,omitempty"`   // lights: actual measured power (W) from the plug meter, else rated while on
 	Primary      bool        `json:"primary,omitempty"` // lights: the box's main grow light
 }
 
@@ -229,6 +480,7 @@ type EnvironmentView struct {
 	Cameras    []CameraRef      `json:"cameras"`
 	AirSource  *AirSourceView   `json:"airSource,omitempty"`
 	Cycle      *Cycle           `json:"cycle,omitempty"`
+	Schedule   *LightSchedule   `json:"schedule,omitempty"`
 }
 
 // Snapshot is the full live system state broadcast to clients.
