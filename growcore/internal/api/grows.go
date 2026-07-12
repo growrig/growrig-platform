@@ -76,7 +76,7 @@ func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity("", "", "info", "configuration", "Created grow "+grow.Name)
+	s.growActivity(grow.ID, "", "info", "configuration", "Created grow "+grow.Name)
 	writeJSON(w, http.StatusOK, grow)
 }
 
@@ -159,7 +159,7 @@ func (s *Server) changeStage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity("", "", "info", "configuration", grow.Name+" advanced to "+stage)
+	s.growActivity(grow.ID, "", "info", "configuration", grow.Name+" advanced to "+stage)
 	writeJSON(w, http.StatusOK, grow)
 }
 
@@ -178,7 +178,7 @@ func (s *Server) completeGrow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity("", "", "info", "configuration", "Completed grow "+grow.Name)
+	s.growActivity(grow.ID, "", "info", "configuration", "Completed grow "+grow.Name)
 	writeJSON(w, http.StatusOK, grow)
 }
 
@@ -353,7 +353,7 @@ func (s *Server) createPlants(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity(b.EnvironmentID, "", "info", "configuration", "Added plants to "+grow.Name)
+	s.growActivity(grow.ID, b.EnvironmentID, "info", "configuration", "Added plants to "+grow.Name)
 	writeJSON(w, http.StatusOK, units)
 }
 
@@ -390,7 +390,7 @@ func (s *Server) updatePlant(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity("", "", "info", "configuration", "Updated "+plantLabel(unit))
+	s.growActivity(unit.GrowID, "", "info", "configuration", "Updated "+plantLabel(unit))
 	writeJSON(w, http.StatusOK, unit)
 }
 
@@ -426,7 +426,7 @@ func (s *Server) movePlant(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity(b.EnvironmentID, "", "info", "configuration", "Moved "+plantLabel(unit)+" here")
+	s.growActivity(unit.GrowID, b.EnvironmentID, "info", "configuration", "Moved "+plantLabel(unit)+" here")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -446,7 +446,7 @@ func (s *Server) setPlantStatus(status domain.PlantStatus, verb string) http.Han
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
-		s.activity("", "", "info", "configuration", verb+" "+plantLabel(unit))
+		s.growActivity(unit.GrowID, "", "info", "configuration", verb+" "+plantLabel(unit))
 		writeJSON(w, http.StatusOK, unit)
 	}
 }

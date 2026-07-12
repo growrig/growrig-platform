@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -197,6 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_weatherreadings ON weather_readings (location_id,
 CREATE TABLE IF NOT EXISTS activity_log (
     id             TEXT PRIMARY KEY,
     environment_id TEXT NOT NULL DEFAULT '',
+    grow_id        TEXT NOT NULL DEFAULT '',
     device_id      TEXT NOT NULL DEFAULT '',
     ts             INTEGER NOT NULL,
     level          TEXT NOT NULL,
@@ -296,10 +298,16 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "camera_capture_interval", "INTEGER NOT NULL DEFAULT 60"},
 		{"bindings", "camera_retention_days", "INTEGER NOT NULL DEFAULT 7"},
 		{"bindings", "camera_storage_mb", "INTEGER NOT NULL DEFAULT 5120"},
+		{"activity_log", "grow_id", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
 		}
+	}
+	// Index activity by grow; created here (not in the schema DDL) so it runs
+	// after the additive grow_id column exists on pre-existing databases.
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_activity_grow_ts ON activity_log (grow_id, ts DESC)`); err != nil {
+		return err
 	}
 	// Before controller channels were first-class, controllable HA fan entities
 	// were stored as physical fans. Reclassify those capabilities; entityless
@@ -1398,8 +1406,8 @@ func (s *Store) AddActivity(a domain.Activity) error {
 	if a.ID == "" {
 		a.ID = fmt.Sprintf("activity-%d", a.Time.UnixNano())
 	}
-	_, err := s.db.Exec(`INSERT INTO activity_log (id, environment_id, device_id, ts, level, type, message)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, a.ID, a.EnvironmentID, a.DeviceID, a.Time.UnixMilli(), a.Level, a.Type, a.Message)
+	_, err := s.db.Exec(`INSERT INTO activity_log (id, environment_id, grow_id, device_id, ts, level, type, message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, a.ID, a.EnvironmentID, a.GrowID, a.DeviceID, a.Time.UnixMilli(), a.Level, a.Type, a.Message)
 	if err != nil {
 		return err
 	}
@@ -1407,15 +1415,34 @@ func (s *Store) AddActivity(a domain.Activity) error {
 	return nil
 }
 
-func (s *Store) Activities(envID string, limit int) ([]domain.Activity, error) {
+// Activities returns recent activity, newest first. envID and growID are
+// optional filters; levels, when non-empty, restricts to those severity levels
+// (e.g. "warning", "error") so callers can hide routine control/notice noise.
+func (s *Store) Activities(envID, growID string, levels []string, limit int) ([]domain.Activity, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	query := `SELECT id, environment_id, device_id, ts, level, type, message FROM activity_log`
+	query := `SELECT id, environment_id, grow_id, device_id, ts, level, type, message FROM activity_log`
+	where := []string{}
 	args := []any{}
 	if envID != "" {
-		query += ` WHERE environment_id=?`
+		where = append(where, "environment_id=?")
 		args = append(args, envID)
+	}
+	if growID != "" {
+		where = append(where, "grow_id=?")
+		args = append(args, growID)
+	}
+	if len(levels) > 0 {
+		placeholders := make([]string, len(levels))
+		for i, lvl := range levels {
+			placeholders[i] = "?"
+			args = append(args, lvl)
+		}
+		where = append(where, "level IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if len(where) > 0 {
+		query += ` WHERE ` + strings.Join(where, " AND ")
 	}
 	query += ` ORDER BY ts DESC LIMIT ?`
 	args = append(args, limit)
@@ -1428,7 +1455,7 @@ func (s *Store) Activities(envID string, limit int) ([]domain.Activity, error) {
 	for rows.Next() {
 		var a domain.Activity
 		var ts int64
-		if err := rows.Scan(&a.ID, &a.EnvironmentID, &a.DeviceID, &ts, &a.Level, &a.Type, &a.Message); err != nil {
+		if err := rows.Scan(&a.ID, &a.EnvironmentID, &a.GrowID, &a.DeviceID, &ts, &a.Level, &a.Type, &a.Message); err != nil {
 			return nil, err
 		}
 		a.Time = time.UnixMilli(ts)

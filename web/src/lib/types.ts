@@ -403,6 +403,7 @@ export interface WeatherHistory {
 export interface Activity {
 	id: string;
 	environmentId?: string;
+	growId?: string;
 	deviceId?: string;
 	time: string;
 	level: 'info' | 'warning' | 'error';

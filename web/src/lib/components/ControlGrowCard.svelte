@@ -51,31 +51,34 @@
 	<div class="mb-3 flex items-center justify-between">
 		<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Control grow &amp; lighting</h2>
 	</div>
-	<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
+	{#snippet body()}
 		{#if grow}
 			<!-- The occupants panel above already names the grow; here we only surface
 			     the lighting schedule this grow's stage drives. -->
-			<div class="flex items-center justify-between gap-3">
-				<div class="flex items-center gap-1.5 text-sm text-rig-400">
-					<Sun size={14} class={schedule && schedule.mode !== 'off' ? 'text-warn' : 'text-rig-600'} />
-					<span>{lightingSummary}</span>
-				</div>
-				{#if canEdit}
-					<button onclick={() => (editing = true)} class="shrink-0 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 hover:border-rig-500">Edit</button>
-				{/if}
+			<div class="flex items-center gap-1.5 text-sm text-rig-400">
+				<Sun size={14} class={schedule && schedule.mode !== 'off' ? 'text-warn' : 'text-rig-600'} />
+				<span>{lightingSummary}</span>
 			</div>
 		{:else}
-			<div class="flex items-center justify-between">
-				<div class="text-sm text-rig-400">
-					No control grow selected.
-					<span class="text-rig-500">Nominate a grow to drive this tent's photoperiod.</span>
-				</div>
-				{#if canEdit}
-					<button onclick={() => (editing = true)} class="rounded-md bg-rig-500 px-3 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400">Set control grow</button>
-				{/if}
+			<div class="text-sm text-rig-400">
+				No control grow selected.
+				<span class="text-rig-500">Nominate a grow to drive this tent's photoperiod.</span>
 			</div>
 		{/if}
-	</div>
+	{/snippet}
+	{#if canEdit}
+		<button
+			type="button"
+			onclick={() => (editing = true)}
+			class="block w-full rounded-lg border border-rig-800 bg-rig-950/40 p-4 text-left transition-colors hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none"
+		>
+			{@render body()}
+		</button>
+	{:else}
+		<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
+			{@render body()}
+		</div>
+	{/if}
 </section>
 
 {#if canEdit}

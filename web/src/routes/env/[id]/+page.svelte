@@ -382,8 +382,7 @@ const roleLabel: Record<string, string> = {
 		{/if}
 
 		<section>
-			<div class="mb-3 flex items-center justify-between"><h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Activity Log</h2><a href="/activity" class="text-xs text-rig-500 hover:text-leaf">View all environments</a></div>
-			<ActivityLog environmentId={env.id} limit={20} />
+			<ActivityLog environmentId={env.id} limit={20} title="Activity Log" />
 		</section>
 	</div>
 

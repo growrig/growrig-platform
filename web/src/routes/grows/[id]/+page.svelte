@@ -22,6 +22,7 @@
 	import { titleCase, daysSince } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
+	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Sprout from '@lucide/svelte/icons/sprout';
@@ -362,6 +363,11 @@
 				<p class="whitespace-pre-wrap rounded-xl border border-rig-800 bg-rig-950/40 p-4 text-sm text-rig-300">{grow.notes}</p>
 			</section>
 		{/if}
+
+		<!-- Activity log -->
+		<section>
+			<ActivityLog growId={grow.id} limit={30} title="Activity Log" />
+		</section>
 	</div>
 
 	{#if isAdmin}

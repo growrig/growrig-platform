@@ -132,11 +132,47 @@ func TestActivityLogFiltersByEnvironment(t *testing.T) {
 	if err := st.AddActivity(domain.Activity{EnvironmentID: "b", Level: "warning", Type: "warning", Message: "sensor offline"}); err != nil {
 		t.Fatal(err)
 	}
-	events, err := st.Activities("a", 10)
+	events, err := st.Activities("a", "", nil, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(events) != 1 || events[0].Message != "fan changed" {
 		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestActivityLogFiltersByGrow(t *testing.T) {
+	st := open(t)
+	if err := st.AddActivity(domain.Activity{GrowID: "g1", Level: "info", Type: "configuration", Message: "created grow"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddActivity(domain.Activity{GrowID: "g2", Level: "info", Type: "configuration", Message: "other grow"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := st.Activities("", "g1", nil, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Message != "created grow" {
+		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestActivityLogFiltersByLevel(t *testing.T) {
+	st := open(t)
+	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "info", Type: "control", Message: "fan changed"})
+	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "warning", Type: "warning", Message: "sensor offline"})
+	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "error", Type: "warning", Message: "device unreachable"})
+	events, err := st.Activities("a", "", []string{"warning", "error"}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected only warning+error events, got: %+v", events)
+	}
+	for _, e := range events {
+		if e.Level == "info" {
+			t.Fatalf("info event leaked through level filter: %+v", e)
+		}
 	}
 }

@@ -49,9 +49,12 @@
 		<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Occupants</h2>
 		<div class="space-y-3">
 			{#each groups as g (g.grow.id)}
-				<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
+				<a
+					href="/grows/{g.grow.id}"
+					class="group block rounded-lg border border-rig-800 bg-rig-950/40 p-4 transition-colors hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none"
+				>
 					<div class="flex items-center justify-between">
-						<a href="/grows/{g.grow.id}" class="font-medium hover:text-leaf">{g.grow.name}</a>
+						<span class="font-medium">{g.grow.name}</span>
 						<div class="flex items-center gap-2 text-sm text-rig-400">
 							<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">{g.grow.stage}</span>
 							<span class="inline-flex items-center gap-1"><Sprout size={13} /> {countPlants(g.units)}</span>
@@ -60,7 +63,7 @@
 					<div class="mt-3">
 						<CultivarThumbnails refs={cultivarRefs(g.units)} {cultivars} />
 					</div>
-				</div>
+				</a>
 			{/each}
 		</div>
 	</section>

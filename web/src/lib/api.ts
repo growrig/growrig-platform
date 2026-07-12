@@ -417,9 +417,13 @@ export const weatherHistory = (envID: string, hours = 72, buckets = 500) =>
 		`/api/environments/${encodeURIComponent(envID)}/weather-history?hours=${hours}&buckets=${buckets}`
 	);
 
-export const getActivity = (environmentId?: string, limit = 100) => {
-	const params = new URLSearchParams({ limit: String(limit) });
-	if (environmentId) params.set('environmentId', environmentId);
+export const getActivity = (
+	opts: { environmentId?: string; growId?: string; levels?: string[]; limit?: number } = {}
+) => {
+	const params = new URLSearchParams({ limit: String(opts.limit ?? 100) });
+	if (opts.environmentId) params.set('environmentId', opts.environmentId);
+	if (opts.growId) params.set('growId', opts.growId);
+	if (opts.levels?.length) params.set('levels', opts.levels.join(','));
 	return json<Activity[]>(`/api/activity?${params}`);
 };
 

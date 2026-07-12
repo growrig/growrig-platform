@@ -412,6 +412,7 @@ type WeatherHistory struct {
 type Activity struct {
 	ID            string    `json:"id"`
 	EnvironmentID string    `json:"environmentId,omitempty"`
+	GrowID        string    `json:"growId,omitempty"`
 	DeviceID      string    `json:"deviceId,omitempty"`
 	Time          time.Time `json:"time"`
 	Level         string    `json:"level"` // info, warning, error

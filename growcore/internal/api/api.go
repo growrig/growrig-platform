@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -35,6 +36,12 @@ type Server struct {
 
 func (s *Server) activity(envID, deviceID, level, eventType, message string) {
 	_ = s.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message})
+}
+
+// growActivity records an activity event scoped to a grow (and optionally the
+// environment its plants sit in), so it surfaces on that grow's activity log.
+func (s *Server) growActivity(growID, envID, level, eventType, message string) {
+	_ = s.store.AddActivity(domain.Activity{GrowID: growID, EnvironmentID: envID, Level: level, Type: eventType, Message: message})
 }
 
 func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder, preferencesPath string) *Server {
@@ -220,6 +227,15 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	envParam := r.URL.Query().Get("environmentId")
+	growParam := r.URL.Query().Get("growId")
+	var levels []string
+	if lv := strings.TrimSpace(r.URL.Query().Get("levels")); lv != "" {
+		for _, l := range strings.Split(lv, ",") {
+			if l = strings.TrimSpace(l); l != "" {
+				levels = append(levels, l)
+			}
+		}
+	}
 	u, _ := currentUser(r)
 	allowed, all := s.accessibleEnvIDs(u)
 	// A non-admin asking for a specific environment must be able to see it.
@@ -227,14 +243,15 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, errBody("you do not have access to this environment"))
 		return
 	}
-	events, err := s.store.Activities(envParam, limit)
+	events, err := s.store.Activities(envParam, growParam, levels, limit)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// Without an environment filter, non-admins only see events for the
-	// environments they can access (env-less config events stay admin-only).
-	if !all && envParam == "" {
+	// Without an environment or grow filter, non-admins only see events for the
+	// environments they can access (env-less config events stay admin-only). A
+	// grow filter is not environment-scoped, so it isn't narrowed here.
+	if !all && envParam == "" && growParam == "" {
 		filtered := make([]domain.Activity, 0, len(events))
 		for _, e := range events {
 			if e.EnvironmentID != "" && allowed[e.EnvironmentID] {
