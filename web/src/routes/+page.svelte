@@ -2,13 +2,14 @@
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { climateTone, titleCase, toneClass, valueNow, vpdZone } from '$lib/format';
-	import { createEnvironment, getInfo, getLocations, loadDemo, weather } from '$lib/api';
+	import { cameraProxyURL, createEnvironment, getInfo, getLocations, loadDemo, weather } from '$lib/api';
 	import { onMount } from 'svelte';
 	import type { EnvironmentView, GrowView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
 	import { Dialog, Select } from '$lib/components/ui';
 	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
 	import EnvironmentDetailsDialog from '$lib/components/EnvironmentDetailsDialog.svelte';
+	import CameraPreview from '$lib/components/CameraPreview.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Thermometer from '@lucide/svelte/icons/thermometer';
@@ -242,13 +243,15 @@
 
 <!-- Grow box (tent) card — the leaf of the hierarchy. -->
 {#snippet box(env: EnvironmentView)}
+	{@const camera = env.cameras?.[0]}
 	<!-- The whole card links to the env; a full-bleed overlay anchor keeps that
 	     tap target while letting the edit button live outside the anchor. -->
 	<div
 		class="group/box relative rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600"
 	>
 		<a href="/env/{env.id}" class="absolute inset-0 rounded-xl" aria-label="Open {env.name}"></a>
-		<div class="pointer-events-none relative">
+		<div class="pointer-events-none relative grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+			<div>
 			<div class="mb-3 flex items-center justify-between gap-2">
 				<div class="flex items-center gap-2">
 					<span class="h-2 w-2 rounded-full {healthDot(env.health)}"></span>
@@ -298,6 +301,12 @@
 			</div>
 			{:else}
 				<p class="text-sm text-rig-500">no climate sensors yet</p>
+			{/if}
+			</div>
+			{#if camera}
+				<div class="overflow-hidden rounded-lg border border-rig-800 bg-rig-950/60">
+					<CameraPreview url={camera.entity || camera.cameraType === 'rtsp' || !camera.streamUrl ? cameraProxyURL(camera.id) : camera.streamUrl} type={camera.cameraType === 'rtsp' ? 'snapshot' : camera.cameraType} refreshSeconds={camera.cameraType === 'rtsp' ? camera.cameraCaptureInterval ?? 60 : 2} class="border-0" emptyLabel="Camera connecting…" errorLabel="Camera connecting…" />
+				</div>
 			{/if}
 		</div>
 	</div>

@@ -2,7 +2,6 @@
 	import type { Tone } from '$lib/format';
 	import { toneClass } from '$lib/format';
 	import Sparkline from '$lib/components/Sparkline.svelte';
-	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 
 	interface Props {
 		label: string;
@@ -52,11 +51,5 @@
 	{/if}
 	{#if sub}
 		<p class="text-xs text-rig-500">{sub}</p>
-	{/if}
-	{#if onclick}
-		<Maximize2
-			size={13}
-			class="absolute right-3 top-3 text-rig-600 opacity-0 transition-opacity group-hover:opacity-100"
-		/>
 	{/if}
 </svelte:element>

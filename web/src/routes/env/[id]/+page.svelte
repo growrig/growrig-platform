@@ -27,7 +27,6 @@
 	import CameraStreamStats from '$lib/components/CameraStreamStats.svelte';
 	import Star from '@lucide/svelte/icons/star';
 	import Zap from '@lucide/svelte/icons/zap';
-	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 
 	const id = $derived(page.params.id);
 	const env = $derived(live.snapshot?.environments?.find((e) => e.id === id));
@@ -204,7 +203,6 @@
 								<div class="mt-2 flex items-center gap-2 text-sm">
 									<Camera size={16} class="text-rig-400" />
 									<span class="transition-colors group-hover:text-leaf">{cam.name}</span>
-									<Maximize2 size={14} class="ml-1 text-rig-600 transition-colors group-hover:text-rig-300" />
 									<span class="ml-auto flex items-center gap-2 text-xs text-rig-500">{#if cam.cameraType === 'rtsp'}<CameraStreamStats cameraId={cam.id} /><span>·</span>{/if}<span>{cam.cameraType === 'rtsp' ? 'Live · RTSP' : cam.entity ? 'Home Assistant' : cam.cameraType || 'Connecting…'}</span></span>
 								</div>
 							</div>
@@ -225,7 +223,7 @@
 			defaults={lightingDefaults}
 		/>
 
-		<!-- Climate tiles (value + trend; click to expand per-sensor history) -->
+		<!-- Climate tiles (value + trend; click for per-sensor history) -->
 		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			<StatTile
 				label="Temperature"
@@ -314,14 +312,6 @@
 										{#if canWrite}
 											<Switch checked={light.on} onCheckedChange={(v) => toggleLight(light.id, v)} />
 										{/if}
-										<button
-											type="button"
-											onclick={() => openMetric({ kind: 'device', bindingId: light.id, metric: 'power' }, `${light.name} · power`, 'W')}
-											class="rounded-md p-1 text-rig-500 transition-colors hover:bg-rig-800 hover:text-rig-100"
-											aria-label="Power history"
-										>
-											<Maximize2 size={14} />
-										</button>
 									</div>
 								</div>
 								{#if light.wattage}
@@ -356,14 +346,6 @@
 								<span class="font-medium">{fan.name}</span>
 								<div class="flex items-center gap-2">
 									<span class="text-rig-400">{roleLabel[fan.role ?? 'unassigned']}</span>
-									<button
-										type="button"
-										onclick={(event) => { event.stopPropagation(); openMetric({ kind: 'device', bindingId: fan.id, metric: 'rpm' }, `${fan.name} · speed`, 'rpm'); }}
-										class="rounded-md p-1 text-rig-500 transition-colors hover:bg-rig-800 hover:text-rig-100"
-										aria-label="Speed history"
-									>
-										<Maximize2 size={14} />
-									</button>
 								</div>
 							</div>
 							<div class="mb-1 flex items-center justify-between text-xs text-rig-400">

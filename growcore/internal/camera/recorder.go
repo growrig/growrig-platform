@@ -145,9 +145,15 @@ func (r *Recorder) SnapshotPath(environmentID, id, stamp string) (string, error)
 	if err != nil {
 		return "", errors.New("invalid snapshot id")
 	}
-	path := filepath.Join(r.cameraDir(environmentID, id), at.Format("2006/01/02/15"), stamp+".jpg")
+	path := filepath.Join(r.cameraDir(environmentID, id), at.Format("2006/01/02"), stamp+".jpg")
 	if _, err := os.Stat(path); err != nil {
-		return "", err
+		// Compatibility with archives created before snapshots were grouped by
+		// day instead of by hour.
+		legacyPath := filepath.Join(r.cameraDir(environmentID, id), at.Format("2006/01/02/15"), stamp+".jpg")
+		if _, legacyErr := os.Stat(legacyPath); legacyErr != nil {
+			return "", err
+		}
+		return legacyPath, nil
 	}
 	return path, nil
 }
@@ -410,7 +416,7 @@ func readJPEG(r *bufio.Reader, max int) ([]byte, error) {
 
 func (r *Recorder) save(b domain.Binding, image []byte, now time.Time) error {
 	dir := r.cameraDir(b.EnvironmentID, b.ID)
-	archiveDir := filepath.Join(dir, now.Format("2006/01/02/15"))
+	archiveDir := filepath.Join(dir, now.Format("2006/01/02"))
 	if err := os.MkdirAll(archiveDir, 0750); err != nil {
 		return err
 	}
