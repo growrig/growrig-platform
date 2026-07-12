@@ -95,3 +95,8 @@ export function relTime(ms: number): string {
 export function titleCase(s: string): string {
 	return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
+
+/** WebSocket round-trip latency; sub-1 ms values show one decimal place. */
+export function fmtLatencyMs(ms: number): string {
+	return ms < 1 ? ms.toFixed(1) : String(Math.round(ms));
+}

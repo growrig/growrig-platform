@@ -7,6 +7,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { preferences, onPreferencesUpdated } from '$lib/preferences.svelte';
 	import { fmtClock } from '$lib/datetime';
+	import { fmtLatencyMs } from '$lib/format';
 	import { Button } from '$lib/components/ui';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -124,7 +125,7 @@
 					<div class="hidden text-sm tabular-nums text-rig-400 sm:block" title="{preferences.timezone} · {preferences.locale}">{instanceTime}</div>
 					<div class="flex items-center gap-2 text-sm text-rig-300">
 						<span class="h-2 w-2 rounded-full {statusMeta[live.status].dot}"></span>
-						<span class="tabular-nums">{live.status === 'live' ? (live.latencyMs == null ? '— ms' : `${live.latencyMs} ms`) : statusMeta[live.status].label}</span>
+						<span class="tabular-nums">{live.status === 'live' ? (live.latencyMs == null ? '— ms' : `${fmtLatencyMs(live.latencyMs)} ms`) : statusMeta[live.status].label}</span>
 					</div>
 					{#if auth.user}
 						<div class="flex items-center gap-2 border-l border-rig-800 pl-4">

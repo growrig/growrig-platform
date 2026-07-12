@@ -26,6 +26,7 @@ class LiveState {
 	#retry = 0;
 	#timer: ReturnType<typeof setTimeout> | null = null;
 	#pingTimer: ReturnType<typeof setInterval> | null = null;
+	#pingSentAt: number | null = null;
 	#stopped = false;
 
 	start() {
@@ -42,6 +43,7 @@ class LiveState {
 		if (this.#pingTimer) clearInterval(this.#pingTimer);
 		this.#ws?.close();
 		this.#ws = null;
+		this.#pingSentAt = null;
 		// Drop cached state so a signed-out (or switched) user never sees the
 		// previous session's environments.
 		this.snapshot = null;
@@ -85,8 +87,9 @@ class LiveState {
 		ws.onmessage = (ev) => {
 			try {
 				const message = JSON.parse(ev.data);
-				if (message?.type === 'pong' && typeof message.id === 'number') {
-					this.latencyMs = Math.max(0, Date.now() - message.id);
+				if (message?.type === 'pong' && this.#pingSentAt != null) {
+					this.latencyMs = Math.max(0, performance.now() - this.#pingSentAt);
+					this.#pingSentAt = null;
 					return;
 				}
 				this.#apply(message as Snapshot, 'ws');
@@ -101,13 +104,16 @@ class LiveState {
 			this.#ws = null;
 			this.status = 'offline';
 			this.latencyMs = null;
+			this.#pingSentAt = null;
 			this.#scheduleReconnect();
 		};
 		ws.onerror = () => ws.close();
 	}
 
 	#sendPing() {
-		if (this.#ws?.readyState === WebSocket.OPEN) this.#ws.send(JSON.stringify({ type: 'ping', id: Date.now() }));
+		if (this.#ws?.readyState !== WebSocket.OPEN) return;
+		this.#pingSentAt = performance.now();
+		this.#ws.send(JSON.stringify({ type: 'ping', id: Date.now() }));
 	}
 
 	#scheduleReconnect() {
