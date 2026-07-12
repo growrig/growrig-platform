@@ -1,6 +1,7 @@
 brand: SwitchBot
 vendor: switchbot
-model: "CO₂ Meter Pro"
+model: "Meter Pro (CO2)"
+image: switchbot-meter-pro-co2.webp
 connection: ble
 description: "Bluetooth CO₂ (with temperature & humidity) sensor."
 provides:
