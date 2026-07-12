@@ -226,6 +226,12 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 			limit = parsed
 		}
 	}
+	offset := 0
+	if value := r.URL.Query().Get("offset"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
 	envParam := r.URL.Query().Get("environmentId")
 	growParam := r.URL.Query().Get("growId")
 	var levels []string
@@ -243,27 +249,65 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, errBody("you do not have access to this environment"))
 		return
 	}
-	events, err := s.store.Activities(envParam, growParam, levels, limit)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
+
 	// Without an environment or grow filter, non-admins only see events for the
 	// environments they can access (env-less config events stay admin-only). A
-	// grow filter is not environment-scoped, so it isn't narrowed here.
+	// grow filter is not environment-scoped, so it isn't narrowed here. Because
+	// this filtering is post-query, paginate the accessible subset in memory.
 	if !all && envParam == "" && growParam == "" {
-		filtered := make([]domain.Activity, 0, len(events))
-		for _, e := range events {
+		batch, err := s.store.Activities(envParam, growParam, levels, 500, 0)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		filtered := make([]domain.Activity, 0, len(batch))
+		for _, e := range batch {
 			if e.EnvironmentID != "" && allowed[e.EnvironmentID] {
 				filtered = append(filtered, e)
 			}
 		}
-		events = filtered
+		writeJSON(w, http.StatusOK, paginate(filtered, offset, limit))
+		return
+	}
+
+	total, err := s.store.CountActivities(envParam, growParam, levels)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	events, err := s.store.Activities(envParam, growParam, levels, limit, offset)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
 	}
 	if events == nil {
 		events = []domain.Activity{}
 	}
-	writeJSON(w, http.StatusOK, events)
+	writeJSON(w, http.StatusOK, activityPage{Items: events, Total: total})
+}
+
+// activityPage is a page of activity plus the total matching count, so clients
+// can render pagination.
+type activityPage struct {
+	Items []domain.Activity `json:"items"`
+	Total int               `json:"total"`
+}
+
+// paginate slices an already-filtered, in-memory activity list into a page.
+func paginate(items []domain.Activity, offset, limit int) activityPage {
+	total := len(items)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	page := items[offset:end]
+	if page == nil {
+		page = []domain.Activity{}
+	}
+	return activityPage{Items: page, Total: total}
 }
 
 func (s *Server) getRoles(w http.ResponseWriter, r *http.Request) {

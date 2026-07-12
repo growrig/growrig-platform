@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,7 +133,7 @@ func TestActivityLogFiltersByEnvironment(t *testing.T) {
 	if err := st.AddActivity(domain.Activity{EnvironmentID: "b", Level: "warning", Type: "warning", Message: "sensor offline"}); err != nil {
 		t.Fatal(err)
 	}
-	events, err := st.Activities("a", "", nil, 10)
+	events, err := st.Activities("a", "", nil, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +150,7 @@ func TestActivityLogFiltersByGrow(t *testing.T) {
 	if err := st.AddActivity(domain.Activity{GrowID: "g2", Level: "info", Type: "configuration", Message: "other grow"}); err != nil {
 		t.Fatal(err)
 	}
-	events, err := st.Activities("", "g1", nil, 10)
+	events, err := st.Activities("", "g1", nil, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestActivityLogFiltersByLevel(t *testing.T) {
 	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "info", Type: "control", Message: "fan changed"})
 	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "warning", Type: "warning", Message: "sensor offline"})
 	_ = st.AddActivity(domain.Activity{EnvironmentID: "a", Level: "error", Type: "warning", Message: "device unreachable"})
-	events, err := st.Activities("a", "", []string{"warning", "error"}, 10)
+	events, err := st.Activities("a", "", []string{"warning", "error"}, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,5 +175,35 @@ func TestActivityLogFiltersByLevel(t *testing.T) {
 		if e.Level == "info" {
 			t.Fatalf("info event leaked through level filter: %+v", e)
 		}
+	}
+}
+
+func TestActivityLogPaginates(t *testing.T) {
+	st := open(t)
+	for i := 0; i < 5; i++ {
+		if err := st.AddActivity(domain.Activity{ID: fmt.Sprintf("e%d", i), EnvironmentID: "a", Level: "info", Type: "control", Message: fmt.Sprintf("msg %d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	total, err := st.CountActivities("a", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 5 {
+		t.Fatalf("expected count 5, got %d", total)
+	}
+	page1, err := st.Activities("a", "", nil, 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page2, err := st.Activities("a", "", nil, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1) != 2 || len(page2) != 2 {
+		t.Fatalf("expected 2 per page, got %d and %d", len(page1), len(page2))
+	}
+	if page1[0].ID == page2[0].ID {
+		t.Fatalf("pages overlap: %s == %s", page1[0].ID, page2[0].ID)
 	}
 }

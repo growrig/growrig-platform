@@ -417,14 +417,23 @@ export const weatherHistory = (envID: string, hours = 72, buckets = 500) =>
 		`/api/environments/${encodeURIComponent(envID)}/weather-history?hours=${hours}&buckets=${buckets}`
 	);
 
-export const getActivity = (
-	opts: { environmentId?: string; growId?: string; levels?: string[]; limit?: number } = {}
-) => {
+export interface ActivityPage {
+	items: Activity[];
+	total: number;
+}
+
+export const getActivity = async (
+	opts: { environmentId?: string; growId?: string; levels?: string[]; limit?: number; offset?: number } = {}
+): Promise<ActivityPage> => {
 	const params = new URLSearchParams({ limit: String(opts.limit ?? 100) });
 	if (opts.environmentId) params.set('environmentId', opts.environmentId);
 	if (opts.growId) params.set('growId', opts.growId);
 	if (opts.levels?.length) params.set('levels', opts.levels.join(','));
-	return json<Activity[]>(`/api/activity?${params}`);
+	if (opts.offset) params.set('offset', String(opts.offset));
+	// Tolerate the pre-pagination response (a bare array) so the UI doesn't break
+	// during a rolling deploy where the backend hasn't been restarted yet.
+	const res = await json<ActivityPage | Activity[]>(`/api/activity?${params}`);
+	return Array.isArray(res) ? { items: res, total: res.length } : res;
 };
 
 // --- auth ---

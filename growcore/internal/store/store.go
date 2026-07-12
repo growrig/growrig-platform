@@ -1415,14 +1415,9 @@ func (s *Store) AddActivity(a domain.Activity) error {
 	return nil
 }
 
-// Activities returns recent activity, newest first. envID and growID are
-// optional filters; levels, when non-empty, restricts to those severity levels
-// (e.g. "warning", "error") so callers can hide routine control/notice noise.
-func (s *Store) Activities(envID, growID string, levels []string, limit int) ([]domain.Activity, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 100
-	}
-	query := `SELECT id, environment_id, grow_id, device_id, ts, level, type, message FROM activity_log`
+// activityWhere builds the shared WHERE clause and its args for the activity
+// filters, so Activities and CountActivities stay in sync.
+func activityWhere(envID, growID string, levels []string) (string, []any) {
 	where := []string{}
 	args := []any{}
 	if envID != "" {
@@ -1441,11 +1436,26 @@ func (s *Store) Activities(envID, growID string, levels []string, limit int) ([]
 		}
 		where = append(where, "level IN ("+strings.Join(placeholders, ",")+")")
 	}
-	if len(where) > 0 {
-		query += ` WHERE ` + strings.Join(where, " AND ")
+	if len(where) == 0 {
+		return "", args
 	}
-	query += ` ORDER BY ts DESC LIMIT ?`
-	args = append(args, limit)
+	return " WHERE " + strings.Join(where, " AND "), args
+}
+
+// Activities returns recent activity, newest first. envID and growID are
+// optional filters; levels, when non-empty, restricts to those severity levels
+// (e.g. "warning", "error") so callers can hide routine control/notice noise.
+// offset skips that many rows for pagination.
+func (s *Store) Activities(envID, growID string, levels []string, limit, offset int) ([]domain.Activity, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	clause, args := activityWhere(envID, growID, levels)
+	query := `SELECT id, environment_id, grow_id, device_id, ts, level, type, message FROM activity_log` + clause + ` ORDER BY ts DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -1462,4 +1472,13 @@ func (s *Store) Activities(envID, growID string, levels []string, limit int) ([]
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// CountActivities returns the total number of activity rows matching the same
+// filters Activities uses, for pagination.
+func (s *Store) CountActivities(envID, growID string, levels []string) (int, error) {
+	clause, args := activityWhere(envID, growID, levels)
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM activity_log`+clause, args...).Scan(&n)
+	return n, err
 }

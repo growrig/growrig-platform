@@ -6,6 +6,7 @@ export { default as Switch } from './Switch.svelte';
 export { default as Slider } from './Slider.svelte';
 export { default as DropdownMenu } from './DropdownMenu.svelte';
 export { default as Dialog } from './Dialog.svelte';
+export { default as Pagination } from './Pagination.svelte';
 
 export type { SelectItem } from './Select.svelte';
 export type { DropdownItem } from './DropdownMenu.svelte';
