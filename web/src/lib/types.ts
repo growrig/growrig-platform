@@ -51,10 +51,13 @@ export interface ProductVariant {
 	id: string;
 	brand?: string;
 	vendor?: string;
+	group?: string;
 	model?: string;
 	image?: string;
+	images?: { src: string; model?: string }[];
 	description?: string;
 	specs?: Record<string, number>;
+	models?: ProductVariant[];
 }
 
 export interface CatalogProduct {

@@ -11,6 +11,13 @@ version: 1.0.0
 author: GrowRig
 haIntegration: tplink
 documentation: https://www.home-assistant.io/integrations/tplink/
+products:
+  - id: tapo-p110
+    vendor: tp-link
+    brand: TP-Link
+    model: Tapo P110 smart plug
+    images:
+      - src: tapo-p110.jpg
 provides:
   - label: On/off
     kind: power

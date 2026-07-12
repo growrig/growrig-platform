@@ -150,6 +150,7 @@
 		overrideFanSpecs = false;
 		standaloneName = `${variant.brand ?? product?.brand ?? ''} ${variant.model ?? ''}`.trim() || variant.id;
 		const specs = variant.specs ?? {};
+		lightWattage = specs.wattage ?? lightWattage;
 		fanSizeMm = specs.sizeMm ?? 0;
 		fanMaxRpm = specs.maxRpm ?? 0;
 		fanAirflowCfm = specs.airflowCfm ?? 0;
@@ -305,6 +306,9 @@
 				<input bind:value={standaloneName} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-rig-500 focus:outline-none" />
 			</label>
 			{#if (product.provides ?? []).some((template) => template.kind === 'light')}
+				{#if product.products?.length}
+					<label class="mt-4 block"><span class="text-sm text-rig-300">Light model</span><Select value={productVariantId} onValueChange={selectVariant} items={productVariantItems} class="mt-1" /></label>
+				{/if}
 				{#if (product.provides ?? []).some((template) => template.kind === 'light' && !template.wattage)}
 					<label class="mt-4 block">
 						<span class="text-sm text-rig-300">Rated wattage</span>

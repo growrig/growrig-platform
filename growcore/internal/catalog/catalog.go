@@ -74,10 +74,18 @@ type Variant struct {
 	ID          string             `json:"id" yaml:"id"`
 	Brand       string             `json:"brand,omitempty" yaml:"brand,omitempty"`
 	Vendor      string             `json:"vendor,omitempty" yaml:"vendor,omitempty"`
+	Group       string             `json:"group,omitempty" yaml:"group,omitempty"`
 	Model       string             `json:"model,omitempty" yaml:"model,omitempty"`
 	Description string             `json:"description,omitempty" yaml:"description,omitempty"`
-	Image       string             `json:"image,omitempty" yaml:"image,omitempty"`
+	Image       string             `json:"image,omitempty" yaml:"-"`
+	Images      []ProductImage     `json:"images,omitempty" yaml:"images,omitempty"`
 	Specs       map[string]float64 `json:"specs,omitempty" yaml:"specs,omitempty"`
+	Models      []Variant          `json:"models,omitempty" yaml:"models,omitempty"`
+}
+
+type ProductImage struct {
+	Src   string `json:"src" yaml:"src"`
+	Model string `json:"model,omitempty" yaml:"model,omitempty"`
 }
 
 // Product is a catalog entry — a driver that GrowRig can bind to. It may list
@@ -107,7 +115,6 @@ type deviceFile struct {
 	Brand         string            `yaml:"brand"`
 	Vendor        string            `yaml:"vendor"`
 	Model         string            `yaml:"model"`
-	Image         string            `yaml:"image"`
 	Connection    string            `yaml:"connection"`
 	Description   string            `yaml:"description"`
 	Version       string            `yaml:"version"`
@@ -257,15 +264,43 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 				}
 				return "/api/catalog/assets/" + cat.Name() + "/" + dev.Name() + "/" + filepath.Base(name)
 			}
-			for i := range df.Products {
-				df.Products[i].Image = assetURL(df.Products[i].Image)
+			var concrete []Variant
+			for _, item := range df.Products {
+				if len(item.Models) > 0 {
+					for _, model := range item.Models {
+						if model.Brand == "" {
+							model.Brand = item.Brand
+						}
+						if model.Vendor == "" {
+							model.Vendor = item.Vendor
+						}
+						for _, image := range item.Images {
+							if model.Image == "" && (image.Model == "" || image.Model == model.ID) {
+								model.Image = image.Src
+							}
+						}
+						concrete = append(concrete, model)
+					}
+				} else {
+					concrete = append(concrete, item)
+				}
+			}
+			for i := range concrete {
+				for _, image := range concrete[i].Images {
+					if concrete[i].Image == "" && (image.Model == "" || image.Model == concrete[i].ID) {
+						concrete[i].Image = image.Src
+					}
+				}
+				concrete[i].Image = assetURL(concrete[i].Image)
+				for j := range concrete[i].Images {
+					concrete[i].Images[j].Src = assetURL(concrete[i].Images[j].Src)
+				}
 			}
 			out = append(out, Product{
 				ID:            dev.Name(),
 				Brand:         df.Brand,
 				Vendor:        df.Vendor,
 				Model:         df.Model,
-				Image:         assetURL(df.Image),
 				Category:      category,
 				Connection:    df.Connection,
 				Description:   df.Description,
@@ -275,7 +310,7 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 				Documentation: df.Documentation,
 				Provides:      df.Provides,
 				MaxChannels:   df.MaxChannels,
-				Products:      df.Products,
+				Products:      concrete,
 				FanType:       df.FanType,
 			})
 		}
