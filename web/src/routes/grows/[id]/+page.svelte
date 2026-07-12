@@ -13,13 +13,14 @@
 		createPlant,
 		movePlant,
 		updatePlant,
+		repotPlant,
 		harvestPlant,
 		removePlant,
 		getCultivars,
 		cultivarImageURL
 	} from '$lib/api';
 	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar } from '$lib/types';
-	import { titleCase, daysSince } from '$lib/format';
+	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
@@ -28,6 +29,7 @@
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
 
 	const id = $derived(page.params.id);
 	const isAdmin = $derived(auth.isAdmin);
@@ -94,13 +96,30 @@
 		}
 	}
 
-	async function move(plant: PlantDetail, envId: string) {
-		if (!envId || envId === plant.currentEnvironmentId) return;
+	// --- move plant to another environment ---
+	let moveOpen = $state(false);
+	let movingPlant = $state<PlantDetail | null>(null);
+	let mpEnv = $state('');
+	let mpBusy = $state(false);
+	function openMove(plant: PlantDetail) {
+		movingPlant = plant;
+		mpEnv = plant.currentEnvironmentId;
+		moveOpen = true;
+	}
+	async function saveMove() {
+		if (!movingPlant || !mpEnv || mpEnv === movingPlant.currentEnvironmentId) {
+			moveOpen = false;
+			return;
+		}
+		mpBusy = true;
 		try {
-			await movePlant(plant.id, envId);
+			await movePlant(movingPlant.id, mpEnv);
+			moveOpen = false;
 			await reload();
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Failed';
+		} finally {
+			mpBusy = false;
 		}
 	}
 
@@ -111,14 +130,30 @@
 	let epCultivar = $state('');
 	let epTracking = $state<TrackingMode>('individual');
 	let epQuantity = $state(1);
+	let epPotSize = $state<number | null>(null);
+	let epPotUnit = $state<PotUnit>('L');
+	let epPotType = $state('');
 	let epBusy = $state(false);
 	function openEdit(plant: PlantDetail) {
 		editingPlant = plant;
-		epLabel = plant.label;
+		epLabel = plant.label === defaultPlantLabel(plant.tracking) ? '' : plant.label;
 		epCultivar = plant.cultivar;
 		epTracking = plant.tracking;
 		epQuantity = plant.quantity;
+		epPotSize = plant.currentPot?.size ?? null;
+		epPotUnit = plant.currentPot?.unit ?? 'L';
+		epPotType = plant.currentPot?.type ?? '';
 		editOpen = true;
+	}
+	function potChanged(
+		current: PlantDetail['currentPot'],
+		size: number | null,
+		unit: PotUnit,
+		type: string
+	): boolean {
+		if (!size || size <= 0) return false;
+		if (!current) return true;
+		return current.size !== size || current.unit !== unit || (current.type ?? '') !== type;
 	}
 	async function saveEdit() {
 		if (!editingPlant) return;
@@ -130,6 +165,13 @@
 				tracking: epTracking,
 				quantity: epTracking === 'group' ? epQuantity : 1
 			});
+			if (potChanged(editingPlant.currentPot, epPotSize, epPotUnit, epPotType)) {
+				await repotPlant(editingPlant.id, {
+					size: epPotSize!,
+					unit: epPotUnit,
+					type: epPotType
+				});
+			}
 			editOpen = false;
 			await reload();
 		} catch (e) {
@@ -140,6 +182,7 @@
 	}
 
 	async function harvest(plant: PlantDetail) {
+		if (!confirm(`Harvest ${plantDisplayName(plant)}?`)) return;
 		try {
 			await harvestPlant(plant.id);
 			await reload();
@@ -212,7 +255,7 @@
 			await createPlant(grow.id, {
 				tracking: apTracking,
 				quantity: apTracking === 'group' ? apQuantity : 1,
-				label: apLabel,
+				label: apLabel.trim() || undefined,
 				cultivar: apCultivar,
 				environmentId: apEnv,
 				...(apPotSize && apPotSize > 0
@@ -346,18 +389,32 @@
 												{/if}
 											</div>
 											<div class="min-w-0 truncate">
-												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{p.cultivar || p.label || 'Plant'}</a>
+												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{plantDisplayName(p)}</a>
 												{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
 											</div>
 										</div>
 									</td>
 									<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
 									<td class="px-4 py-2 text-rig-300">
-										{#if isAdmin && p.status === 'active'}
-											<Select value={p.currentEnvironmentId} onValueChange={(v) => move(p, v)} items={envItems} class="min-w-[9rem]" />
-										{:else}
-											{p.currentEnvironmentName || '—'}
-										{/if}
+										<div class="flex items-center gap-1.5">
+											{#if p.currentEnvironmentId}
+												<a href="/env/{p.currentEnvironmentId}" class="truncate hover:text-leaf hover:underline">
+													{p.currentEnvironmentName || p.currentEnvironmentId}
+												</a>
+											{:else}
+												<span>—</span>
+											{/if}
+											{#if isAdmin && p.status === 'active'}
+												<button
+													onclick={() => openMove(p)}
+													title="Change location"
+													aria-label="Change location"
+													class="shrink-0 rounded-md border border-rig-700 p-1 text-rig-400 hover:border-rig-500 hover:text-rig-200"
+												>
+													<ArrowRightLeft size={13} />
+												</button>
+											{/if}
+										</div>
 									</td>
 									<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}` : '—'}</td>
 									<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
@@ -396,7 +453,22 @@
 	{#if isAdmin}
 		<GrowFormModal bind:open={editing} grow={grow} {presets} onSaved={reload} />
 
-		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label and cultivar. Each plant keeps its own id and history.">
+		<Dialog bind:open={moveOpen} title="Change location" description="Move this plant to another environment. Its placement history is kept.">
+			<div class="space-y-4">
+				<label class="block">
+					<span class="text-xs text-rig-400">Environment</span>
+					<Select value={mpEnv} onValueChange={(v) => (mpEnv = v)} items={envItems} class="mt-1" />
+				</label>
+				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
+					<Button variant="ghost" onclick={() => (moveOpen = false)}>Cancel</Button>
+					<Button onclick={saveMove} disabled={mpBusy || !mpEnv || mpEnv === movingPlant?.currentEnvironmentId}>
+						<ArrowRightLeft size={15} /> Move
+					</Button>
+				</div>
+			</div>
+		</Dialog>
+
+		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label, cultivar and pot. Each plant keeps its own id and history.">
 			<div class="space-y-4">
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
@@ -412,12 +484,26 @@
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
-						<span class="text-xs text-rig-400">Label</span>
+						<span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span>
 						<input bind:value={epLabel} placeholder="Plant" class="{field} mt-1" />
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
 						<Select value={epCultivar} onValueChange={(v) => (epCultivar = v)} items={cultivarItems(epCultivar)} class="mt-1" />
+					</label>
+				</div>
+				<div class="grid gap-3 sm:grid-cols-3">
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span>
+						<input type="number" min="0" step="any" bind:value={epPotSize} placeholder="e.g. 11" class="{field} mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Unit</span>
+						<Select value={epPotUnit} onValueChange={(v) => (epPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot type</span>
+						<Select value={epPotType} onValueChange={(v) => (epPotType = v)} items={potTypeItems} class="mt-1" />
 					</label>
 				</div>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
@@ -443,8 +529,8 @@
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
-						<span class="text-xs text-rig-400">Label</span>
-						<input bind:value={apLabel} placeholder={apTracking === 'group' ? 'Tray' : 'Plant'} class="{field} mt-1" />
+						<span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span>
+						<input bind:value={apLabel} placeholder={apTracking === 'group' ? 'Group' : 'Plant'} class="{field} mt-1" />
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>

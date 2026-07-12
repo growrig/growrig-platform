@@ -431,13 +431,21 @@ func (e *Engine) step(dt time.Duration) error {
 
 	growViews := make([]domain.GrowView, 0, len(grows))
 	for _, g := range grows {
+		envs := growEnvs[g.ID]
+		if envs == nil {
+			envs = []domain.GrowEnvRef{}
+		}
+		cults := cultByGrow[g.ID]
+		if cults == nil {
+			cults = []domain.GrowCultivarRef{}
+		}
 		growViews = append(growViews, domain.GrowView{
 			Grow:         g,
 			StageDays:    domain.DaysSince(g.StageStarted, now),
 			TotalDays:    domain.DaysSince(g.StartedAt, now),
 			PlantCount:   plantCountByGrow[g.ID],
-			Environments: growEnvs[g.ID],
-			Cultivars:    cultByGrow[g.ID],
+			Environments: envs,
+			Cultivars:    cults,
 		})
 	}
 	snap := domain.Snapshot{Time: now, Environments: views, Grows: growViews}

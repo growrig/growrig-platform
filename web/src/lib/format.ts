@@ -1,4 +1,4 @@
-import type { Measurement, SeriesPoint } from './types';
+import type { Measurement, SeriesPoint, TrackingMode } from './types';
 
 export type Tone = 'good' | 'warn' | 'danger' | 'muted';
 
@@ -15,6 +15,21 @@ export const measurementLabel: Record<Measurement, string> = {
 	co2: 'CO₂',
 	power: 'Power'
 };
+
+export function defaultPlantLabel(tracking: TrackingMode = 'individual'): string {
+	return tracking === 'group' ? 'Group' : 'Plant';
+}
+
+/** Name shown in lists and headings: cultivar, then custom label, then the default. */
+export function plantDisplayName(p: {
+	cultivar?: string;
+	label?: string;
+	tracking?: TrackingMode;
+}): string {
+	if (p.cultivar?.trim()) return p.cultivar.trim();
+	if (p.label?.trim()) return p.label.trim();
+	return defaultPlantLabel(p.tracking);
+}
 
 export function formatValue(measurement: Measurement, value: number): string {
 	if (measurement === 'co2') return Math.round(value).toString();

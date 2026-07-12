@@ -4,7 +4,7 @@
 	import { auth } from '$lib/auth.svelte';
 	import { getPlant, getEnvironments, movePlant, repotPlant, updatePlant, harvestPlant, removePlant, getCultivars, cultivarImageURL } from '$lib/api';
 	import type { Environment, PlantView, PlantPot, Cultivar, TrackingMode, PotUnit } from '$lib/types';
-	import { titleCase, daysSince } from '$lib/format';
+	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -63,6 +63,9 @@
 	let epCultivar = $state('');
 	let epTracking = $state<TrackingMode>('individual');
 	let epQuantity = $state(1);
+	let epPotSize = $state<number | null>(null);
+	let epPotUnit = $state<PotUnit>('L');
+	let epPotType = $state('');
 	let epBusy = $state(false);
 	const trackingItems = [
 		{ value: 'individual', label: 'Individual plant' },
@@ -70,11 +73,24 @@
 	];
 	function openEdit() {
 		if (!plant) return;
-		epLabel = plant.label;
+		epLabel = plant.label === defaultPlantLabel(plant.tracking) ? '' : plant.label;
 		epCultivar = plant.cultivar;
 		epTracking = plant.tracking;
 		epQuantity = plant.quantity;
+		epPotSize = plant.currentPot?.size ?? null;
+		epPotUnit = plant.currentPot?.unit ?? 'L';
+		epPotType = plant.currentPot?.type ?? '';
 		editOpen = true;
+	}
+	function potChanged(
+		current: PlantView['currentPot'],
+		size: number | null,
+		unit: PotUnit,
+		type: string
+	): boolean {
+		if (!size || size <= 0) return false;
+		if (!current) return true;
+		return current.size !== size || current.unit !== unit || (current.type ?? '') !== type;
 	}
 	async function saveEdit() {
 		if (!plant) return;
@@ -86,6 +102,13 @@
 				tracking: epTracking,
 				quantity: epTracking === 'group' ? epQuantity : 1
 			});
+			if (potChanged(plant.currentPot, epPotSize, epPotUnit, epPotType)) {
+				await repotPlant(plant.id, {
+					size: epPotSize!,
+					unit: epPotUnit,
+					type: epPotType
+				});
+			}
 			editOpen = false;
 			await reload();
 		} catch (e) {
@@ -136,7 +159,7 @@
 	}
 
 	async function harvest() {
-		if (!plant) return;
+		if (!plant || !confirm(`Harvest ${plantDisplayName(plant)}?`)) return;
 		try {
 			await harvestPlant(plant.id);
 			await reload();
@@ -190,7 +213,7 @@
 				<div>
 				<div class="flex items-center gap-3">
 					<h1 class="text-2xl font-semibold">
-						{plant.cultivar || plant.label || 'Plant'}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
+						{plantDisplayName(plant)}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
 					</h1>
 					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(plant.status)}">{plant.status}</span>
 				</div>
@@ -221,7 +244,13 @@
 				<div class="flex items-center gap-2 text-sm">
 					<MapPin size={15} class="text-rig-500" />
 					<span class="text-rig-400">Currently in</span>
-					<span class="font-medium">{plant.currentEnvironmentName || 'nowhere'}</span>
+					{#if plant.currentEnvironmentId}
+						<a href="/env/{plant.currentEnvironmentId}" class="font-medium hover:text-leaf hover:underline">
+							{plant.currentEnvironmentName || plant.currentEnvironmentId}
+						</a>
+					{:else}
+						<span class="font-medium">nowhere</span>
+					{/if}
 				</div>
 			</div>
 			<div class="flex items-center justify-between gap-2 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
@@ -245,7 +274,13 @@
 					<ol class="space-y-2">
 						{#each plant.placements as p (p.id)}
 							<li class="flex items-center justify-between rounded-lg border border-rig-800 bg-rig-950/40 px-4 py-2 text-sm">
-								<span class="font-medium">{p.environmentName || p.environmentId}</span>
+								{#if p.environmentId}
+									<a href="/env/{p.environmentId}" class="font-medium hover:text-leaf hover:underline">
+										{p.environmentName || p.environmentId}
+									</a>
+								{:else}
+									<span class="font-medium">{p.environmentName || '—'}</span>
+								{/if}
 								<span class="text-rig-400">
 									{fmtDate(p.startedAt)} →
 									{#if p.endedAt}{fmtDate(p.endedAt)}{:else}<span class="text-leaf">current</span>{/if}
@@ -278,7 +313,7 @@
 	</div>
 
 	{#if isAdmin}
-		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label and cultivar. Each plant keeps its own id and history.">
+		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label, cultivar and pot. Each plant keeps its own id and history.">
 			<div class="space-y-4">
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
@@ -294,12 +329,26 @@
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
-						<span class="text-xs text-rig-400">Label</span>
+						<span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span>
 						<input bind:value={epLabel} placeholder="Plant" class="{field} mt-1" />
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
 						<input bind:value={epCultivar} placeholder="e.g. Genovese" class="{field} mt-1" />
+					</label>
+				</div>
+				<div class="grid gap-3 sm:grid-cols-3">
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span>
+						<input type="number" min="0" step="any" bind:value={epPotSize} placeholder="e.g. 11" class="{field} mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Unit</span>
+						<Select value={epPotUnit} onValueChange={(v) => (epPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot type</span>
+						<Select value={epPotType} onValueChange={(v) => (epPotType = v)} items={potTypeItems} class="mt-1" />
 					</label>
 				</div>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">

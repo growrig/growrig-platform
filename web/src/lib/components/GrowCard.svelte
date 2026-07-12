@@ -34,12 +34,12 @@
 		<span class="inline-flex items-center gap-1"><Sprout size={12} /> {grow.plantCount} plants</span>
 		<span>·</span>
 		<span>{grow.stageDays}d in {grow.stage}</span>
-		{#if grow.environments.length}
+		{#if (grow.environments ?? []).length}
 			<span>·</span>
-			<span class="inline-flex items-center gap-1"><MapPin size={11} /> {grow.environments.map((e) => e.name).join(', ')}</span>
+			<span class="inline-flex items-center gap-1"><MapPin size={11} /> {(grow.environments ?? []).map((e) => e.name).join(', ')}</span>
 		{/if}
 	</div>
-	{#if grow.cultivars.length}
-		<div class="mt-3"><CultivarThumbnails refs={grow.cultivars} {cultivars} /></div>
+	{#if (grow.cultivars ?? []).length}
+		<div class="mt-3"><CultivarThumbnails refs={grow.cultivars ?? []} {cultivars} /></div>
 	{/if}
 </a>
