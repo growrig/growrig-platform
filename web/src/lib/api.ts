@@ -32,6 +32,7 @@ import type {
 	Species,
 	StagePresets,
 	TrackingMode,
+	PotUnit,
 	User,
 	UserRole,
 	Weather,
@@ -288,17 +289,23 @@ export const changeStage = (id: string, stage: string) =>
 export const completeGrow = (id: string) =>
 	json<Grow>(`/api/grows/${encodeURIComponent(id)}/complete`, { method: 'POST' });
 
-export interface BulkPlantsInput {
-	count: number;
+/** Create one plant record: an individual plant, or a group (tray/bed/batch)
+ * whose `quantity` is how many plants it holds. Each call makes one unit with
+ * its own id and history. */
+export interface CreatePlantInput {
 	tracking: TrackingMode;
-	quantityPer?: number;
+	quantity?: number;
 	label?: string;
 	cultivar?: string;
 	environmentId?: string;
+	/** Optional starting pot (opens the plant's repot history). */
+	potSize?: number;
+	potUnit?: PotUnit;
+	potType?: string;
 }
 
-export const bulkCreatePlants = (growID: string, b: BulkPlantsInput) =>
-	json<PlantUnit[]>(`/api/grows/${encodeURIComponent(growID)}/plants`, {
+export const createPlant = (growID: string, b: CreatePlantInput) =>
+	json<PlantUnit>(`/api/grows/${encodeURIComponent(growID)}/plants`, {
 		method: 'POST',
 		body: JSON.stringify(b)
 	});
@@ -306,6 +313,7 @@ export const bulkCreatePlants = (growID: string, b: BulkPlantsInput) =>
 export interface UpdatePlantInput {
 	label: string;
 	cultivar: string;
+	tracking?: TrackingMode;
 	quantity?: number;
 }
 
@@ -319,6 +327,13 @@ export const movePlant = (plantID: string, environmentId: string) =>
 	json<{ status: string }>(`/api/plants/${encodeURIComponent(plantID)}/move`, {
 		method: 'POST',
 		body: JSON.stringify({ environmentId })
+	});
+
+/** Record a repot: closes the current pot and opens a new one (keeps history). */
+export const repotPlant = (plantID: string, pot: { size: number; unit: PotUnit; type?: string }) =>
+	json<{ status: string }>(`/api/plants/${encodeURIComponent(plantID)}/repot`, {
+		method: 'POST',
+		body: JSON.stringify(pot)
 	});
 
 export const harvestPlant = (plantID: string) =>
@@ -363,12 +378,15 @@ export const deleteCultivar = (id: string) =>
 
 // --- Feeding presets ---
 
-/** Built-in + user feeding presets, optionally filtered to a single species. */
-export const getFeedingPresets = (species?: string) =>
-	json<FeedingPreset[]>(`/api/feedings${species ? `?species=${encodeURIComponent(species)}` : ''}`);
+/** The user's own feeding presets (stored as YAML on disk). */
+export const getFeedingPresets = () => json<FeedingPreset[]>('/api/feedings');
+
+/** Built-in presets, offered only as templates to seed a new preset. */
+export const getFeedingTemplates = (species?: string) =>
+	json<FeedingPreset[]>(`/api/feeding-templates${species ? `?species=${encodeURIComponent(species)}` : ''}`);
 
 export const getFeedingPreset = (id: string) =>
-	json<FeedingPreset>(`/api/feedings/${id.split('/').map(encodeURIComponent).join('/')}`);
+	json<FeedingPreset>(`/api/feedings/${encodeURIComponent(id)}`);
 
 export interface FeedingPresetInput {
 	species: string;

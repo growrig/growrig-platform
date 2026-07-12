@@ -1,101 +1,140 @@
 package store
 
 import (
-	"database/sql"
-	"encoding/json"
-	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
-// feedingBody is the JSON blob stored in feeding_presets.body: the flexible
-// part of a preset (default unit, products, phases). The columns hold the
-// searchable/displayable scalars; the body keeps the rest schema-light.
-type feedingBody struct {
-	Unit     string                  `json:"unit"`
-	Products []domain.FeedingProduct `json:"products"`
-	Phases   []domain.FeedingPhase   `json:"phases"`
+// User feeding presets are stored as one YAML file per preset under
+// <dataDir>/feedings/<id>.yaml, so they live on the user's filesystem next to
+// their environment configs — portable, hand-editable, and versionable. This
+// mirrors how environments persist (see yaml.go). Built-in presets are a
+// separate, read-only catalog under species/<id>/feedings.yaml (see
+// internal/feeding) and are only used as templates when creating a user preset.
+
+// feedingDoc is the on-disk shape of a user preset file. It carries every field
+// (unlike domain.FeedingPreset's YAML tags, which are tuned for the built-in
+// catalog where species is the directory name and there is no created time).
+type feedingDoc struct {
+	Version     int                     `yaml:"version"`
+	ID          string                  `yaml:"id"`
+	Species     string                  `yaml:"species"`
+	Name        string                  `yaml:"name"`
+	Brand       string                  `yaml:"brand,omitempty"`
+	Description string                  `yaml:"description,omitempty"`
+	Unit        string                  `yaml:"unit"`
+	CreatedAt   time.Time               `yaml:"createdAt"`
+	Products    []domain.FeedingProduct `yaml:"products"`
+	Phases      []domain.FeedingPhase   `yaml:"phases"`
 }
 
-const feedingCols = `id, species, name, brand, description, body, created_at`
-
-func scanFeedingPreset(scan func(dst ...any) error) (domain.FeedingPreset, error) {
-	var p domain.FeedingPreset
-	var bodyJSON string
-	var created int64
-	if err := scan(&p.ID, &p.Species, &p.Name, &p.Brand, &p.Description, &bodyJSON, &created); err != nil {
-		return domain.FeedingPreset{}, err
+func (d feedingDoc) toPreset() domain.FeedingPreset {
+	return domain.FeedingPreset{
+		ID:          d.ID,
+		Species:     d.Species,
+		Name:        d.Name,
+		Brand:       d.Brand,
+		Description: d.Description,
+		Source:      "user",
+		Unit:        d.Unit,
+		Products:    d.Products,
+		Phases:      d.Phases,
+		CreatedAt:   d.CreatedAt,
 	}
-	var b feedingBody
-	if bodyJSON != "" {
-		_ = json.Unmarshal([]byte(bodyJSON), &b)
-	}
-	p.Unit = b.Unit
-	p.Products = b.Products
-	p.Phases = b.Phases
-	p.Source = "user"
-	p.CreatedAt = time.UnixMilli(created)
-	return p, nil
 }
 
-// SaveFeedingPreset inserts or updates a user feeding preset.
-func (s *Store) SaveFeedingPreset(p domain.FeedingPreset) error {
-	body, err := json.Marshal(feedingBody{Unit: p.Unit, Products: p.Products, Phases: p.Phases})
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(
-		`INSERT INTO feeding_presets (id, species, name, brand, description, body, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET
-		   species=excluded.species, name=excluded.name, brand=excluded.brand,
-		   description=excluded.description, body=excluded.body`,
-		p.ID, p.Species, p.Name, p.Brand, p.Description, string(body), p.CreatedAt.UnixMilli(),
-	)
-	return err
+func (s *Store) feedingPath(id string) string {
+	return filepath.Join(s.feedingDir, id+".yaml")
 }
 
-// FeedingPresets returns all user presets (optionally filtered by species),
-// newest first.
-func (s *Store) FeedingPresets(species string) ([]domain.FeedingPreset, error) {
-	q := `SELECT ` + feedingCols + ` FROM feeding_presets`
-	args := []any{}
-	if species != "" {
-		q += ` WHERE species=?`
-		args = append(args, species)
-	}
-	q += ` ORDER BY created_at DESC`
-	rows, err := s.db.Query(q, args...)
+// FeedingPresets returns all user presets, newest first.
+func (s *Store) FeedingPresets() ([]domain.FeedingPreset, error) {
+	paths, err := filepath.Glob(filepath.Join(s.feedingDir, "*.yaml"))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []domain.FeedingPreset
-	for rows.Next() {
-		p, err := scanFeedingPreset(rows.Scan)
+	out := make([]domain.FeedingPreset, 0, len(paths))
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
 		if err != nil {
-			return nil, err
+			continue
 		}
-		out = append(out, p)
+		var doc feedingDoc
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			continue // skip a corrupt file rather than fail the whole list
+		}
+		if doc.ID == "" {
+			// Fall back to the filename stem so hand-created files still load.
+			doc.ID = filepath.Base(p[:len(p)-len(".yaml")])
+		}
+		out = append(out, doc.toPreset())
 	}
-	return out, rows.Err()
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
 }
 
 // FeedingPreset returns one user preset by id.
 func (s *Store) FeedingPreset(id string) (domain.FeedingPreset, bool, error) {
-	p, err := scanFeedingPreset(s.db.QueryRow(`SELECT `+feedingCols+` FROM feeding_presets WHERE id=?`, id).Scan)
-	if errors.Is(err, sql.ErrNoRows) {
+	raw, err := os.ReadFile(s.feedingPath(id))
+	if os.IsNotExist(err) {
 		return domain.FeedingPreset{}, false, nil
 	}
 	if err != nil {
 		return domain.FeedingPreset{}, false, err
 	}
-	return p, true, nil
+	var doc feedingDoc
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return domain.FeedingPreset{}, false, fmt.Errorf("invalid preset YAML: %w", err)
+	}
+	if doc.ID == "" {
+		doc.ID = id
+	}
+	return doc.toPreset(), true, nil
 }
 
-// DeleteFeedingPreset removes a user preset.
+// SaveFeedingPreset writes a user preset atomically to its YAML file.
+func (s *Store) SaveFeedingPreset(p domain.FeedingPreset) error {
+	if p.ID == "" {
+		return fmt.Errorf("preset id is required")
+	}
+	doc := feedingDoc{
+		Version:     1,
+		ID:          p.ID,
+		Species:     p.Species,
+		Name:        p.Name,
+		Brand:       p.Brand,
+		Description: p.Description,
+		Unit:        p.Unit,
+		CreatedAt:   p.CreatedAt,
+		Products:    p.Products,
+		Phases:      p.Phases,
+	}
+	raw, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.feedingDir, 0o755); err != nil {
+		return err
+	}
+	tmp := filepath.Join(s.feedingDir, "."+p.ID+".yaml.tmp")
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.feedingPath(p.ID))
+}
+
+// DeleteFeedingPreset removes a user preset file.
 func (s *Store) DeleteFeedingPreset(id string) error {
-	_, err := s.db.Exec(`DELETE FROM feeding_presets WHERE id=?`, id)
+	err := os.Remove(s.feedingPath(id))
+	if os.IsNotExist(err) {
+		return nil
+	}
 	return err
 }

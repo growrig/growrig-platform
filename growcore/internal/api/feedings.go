@@ -10,43 +10,42 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/species"
 )
 
-// Feeding presets combine two sources behind one API: read-only built-ins from
-// the species/<id>/feedings.yaml tree (Source "builtin", id "<species>/<slug>")
-// and editable user presets from the DB (Source "user"). Reads merge both;
-// writes only ever touch user presets — a builtin id is rejected.
+// Feeding presets are user-owned nutrient schedules stored as YAML on disk (see
+// store/feeding.go). Built-in presets (the BioBizz charts) are a separate,
+// read-only catalog exposed only as *templates* to prefill the create form —
+// they never appear in the user's own list.
 
-func isBuiltinFeeding(id string) bool {
-	_, ok := feeding.Get(id)
-	return ok
-}
-
+// getFeedingPresets lists the user's presets (the ones shown on the Grows page).
 func (s *Server) getFeedingPresets(w http.ResponseWriter, r *http.Request) {
-	sp := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("species")))
-	var builtins []domain.FeedingPreset
-	if sp != "" {
-		builtins = feeding.BySpecies(sp)
-	} else {
-		builtins = feeding.All()
-	}
-	user, err := s.store.FeedingPresets(sp)
+	presets, err := s.store.FeedingPresets()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// Built-ins first, then user presets (newest first from the store).
-	out := make([]domain.FeedingPreset, 0, len(builtins)+len(user))
-	out = append(out, builtins...)
-	out = append(out, user...)
-	writeJSON(w, http.StatusOK, out)
+	if presets == nil {
+		presets = []domain.FeedingPreset{}
+	}
+	writeJSON(w, http.StatusOK, presets)
+}
+
+// getFeedingTemplates lists the built-in presets used to seed a new preset,
+// optionally filtered to one species.
+func (s *Server) getFeedingTemplates(w http.ResponseWriter, r *http.Request) {
+	sp := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("species")))
+	var templates []domain.FeedingPreset
+	if sp != "" {
+		templates = feeding.BySpecies(sp)
+	} else {
+		templates = feeding.All()
+	}
+	if templates == nil {
+		templates = []domain.FeedingPreset{}
+	}
+	writeJSON(w, http.StatusOK, templates)
 }
 
 func (s *Server) getFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if p, ok := feeding.Get(id); ok {
-		writeJSON(w, http.StatusOK, p)
-		return
-	}
-	p, ok, err := s.store.FeedingPreset(id)
+	p, ok, err := s.store.FeedingPreset(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -142,12 +141,7 @@ func (s *Server) createFeedingPreset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if isBuiltinFeeding(id) {
-		writeJSON(w, http.StatusForbidden, errBody("built-in presets are read-only; duplicate it to customize"))
-		return
-	}
-	p, ok, err := s.store.FeedingPreset(id)
+	p, ok, err := s.store.FeedingPreset(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -186,12 +180,7 @@ func (s *Server) updateFeedingPreset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if isBuiltinFeeding(id) {
-		writeJSON(w, http.StatusForbidden, errBody("built-in presets cannot be deleted"))
-		return
-	}
-	if err := s.store.DeleteFeedingPreset(id); err != nil {
+	if err := s.store.DeleteFeedingPreset(r.PathValue("id")); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}

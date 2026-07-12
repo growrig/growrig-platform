@@ -10,7 +10,7 @@
 		changeStage,
 		completeGrow,
 		deleteGrow,
-		bulkCreatePlants,
+		createPlant,
 		movePlant,
 		updatePlant,
 		harvestPlant,
@@ -18,7 +18,7 @@
 		getCultivars,
 		cultivarImageURL
 	} from '$lib/api';
-	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, Cultivar } from '$lib/types';
+	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar } from '$lib/types';
 	import { titleCase, daysSince } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
@@ -109,12 +109,14 @@
 	let editingPlant = $state<PlantDetail | null>(null);
 	let epLabel = $state('');
 	let epCultivar = $state('');
+	let epTracking = $state<TrackingMode>('individual');
 	let epQuantity = $state(1);
 	let epBusy = $state(false);
 	function openEdit(plant: PlantDetail) {
 		editingPlant = plant;
 		epLabel = plant.label;
 		epCultivar = plant.cultivar;
+		epTracking = plant.tracking;
 		epQuantity = plant.quantity;
 		editOpen = true;
 	}
@@ -125,7 +127,8 @@
 			await updatePlant(editingPlant.id, {
 				label: epLabel.trim(),
 				cultivar: epCultivar.trim(),
-				quantity: editingPlant.tracking === 'group' ? epQuantity : undefined
+				tracking: epTracking,
+				quantity: epTracking === 'group' ? epQuantity : 1
 			});
 			editOpen = false;
 			await reload();
@@ -173,37 +176,55 @@
 		}
 	}
 
-	// --- add plants form ---
-	let apCount = $state(1);
+	// --- add plant form (one plant per submit: an individual, or a group) ---
 	let apTracking = $state<TrackingMode>('individual');
 	let apQuantity = $state(1);
 	let apLabel = $state('');
 	let apCultivar = $state('');
 	let apEnv = $state('');
+	let apPotSize = $state<number | null>(null);
+	let apPotUnit = $state<PotUnit>('L');
+	let apPotType = $state('');
 	let apBusy = $state(false);
 	const trackingItems = [
-		{ value: 'individual', label: 'Individual plants' },
+		{ value: 'individual', label: 'Individual plant' },
 		{ value: 'group', label: 'Group (tray / bed / batch)' }
+	];
+	const potUnitItems = [
+		{ value: 'L', label: 'liters (L)' },
+		{ value: 'gal', label: 'gallons' }
+	];
+	const potTypeItems = [
+		{ value: '', label: '—' },
+		{ value: 'fabric', label: 'Fabric' },
+		{ value: 'plastic', label: 'Plastic' },
+		{ value: 'terracotta', label: 'Terracotta' },
+		{ value: 'air-pot', label: 'Air pot' },
+		{ value: 'other', label: 'Other' }
 	];
 	$effect(() => {
 		if (addingPlants && !apEnv && environments.length) apEnv = environments[0].id;
 	});
-	async function addPlants() {
+	async function addPlant() {
 		if (!grow) return;
 		apBusy = true;
 		try {
-			await bulkCreatePlants(grow.id, {
-				count: apCount,
+			await createPlant(grow.id, {
 				tracking: apTracking,
-				quantityPer: apTracking === 'group' ? apQuantity : 1,
+				quantity: apTracking === 'group' ? apQuantity : 1,
 				label: apLabel,
 				cultivar: apCultivar,
-				environmentId: apEnv
+				environmentId: apEnv,
+				...(apPotSize && apPotSize > 0
+					? { potSize: apPotSize, potUnit: apPotUnit, potType: apPotType }
+					: {})
 			});
 			addingPlants = false;
-			apCount = 1;
 			apLabel = '';
 			apCultivar = '';
+			apQuantity = 1;
+			apPotSize = null;
+			apPotType = '';
 			await reload();
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Failed';
@@ -290,7 +311,7 @@
 						onclick={() => (addingPlants = true)}
 						class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
 					>
-						<Plus size={14} /> Add plants
+						<Plus size={14} /> Add plant
 					</button>
 				{/if}
 			</div>
@@ -306,6 +327,7 @@
 								<th class="px-4 py-2 font-medium">Plant</th>
 								<th class="px-4 py-2 font-medium">Status</th>
 								<th class="px-4 py-2 font-medium">Location</th>
+								<th class="px-4 py-2 font-medium">Pot</th>
 								<th class="px-4 py-2 font-medium">Age</th>
 								{#if isAdmin}<th class="px-4 py-2 font-medium">Actions</th>{/if}
 							</tr>
@@ -325,7 +347,7 @@
 											</div>
 											<div class="min-w-0 truncate">
 												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{p.cultivar || p.label || 'Plant'}</a>
-												{#if p.tracking === 'group'}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
+												{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
 											</div>
 										</div>
 									</td>
@@ -337,6 +359,7 @@
 											{p.currentEnvironmentName || '—'}
 										{/if}
 									</td>
+									<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}` : '—'}</td>
 									<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
 									{#if isAdmin}
 										<td class="px-4 py-2">
@@ -373,50 +396,51 @@
 	{#if isAdmin}
 		<GrowFormModal bind:open={editing} grow={grow} {presets} onSaved={reload} />
 
-		<Dialog bind:open={editOpen} title="Edit plant" description="Update this plant's label and cultivar.">
-
+		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label and cultivar. Each plant keeps its own id and history.">
 			<div class="space-y-4">
+				<div class="grid gap-3 sm:grid-cols-2">
+					<label class="block">
+						<span class="text-xs text-rig-400">Type</span>
+						<Select value={epTracking} onValueChange={(v) => (epTracking = v as TrackingMode)} items={trackingItems} class="mt-1" />
+					</label>
+					{#if epTracking === 'group'}
+						<label class="block">
+							<span class="text-xs text-rig-400">Plants in group</span>
+							<input type="number" min="1" bind:value={epQuantity} class="{field} mt-1" />
+						</label>
+					{/if}
+				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
 						<span class="text-xs text-rig-400">Label</span>
 						<input bind:value={epLabel} placeholder="Plant" class="{field} mt-1" />
 					</label>
 					<label class="block">
-						<span class="text-xs text-rig-400">Cultivar</span>
+						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
 						<Select value={epCultivar} onValueChange={(v) => (epCultivar = v)} items={cultivarItems(epCultivar)} class="mt-1" />
 					</label>
 				</div>
-				{#if editingPlant?.tracking === 'group'}
-					<label class="block">
-						<span class="text-xs text-rig-400">Plants in group</span>
-						<input type="number" min="1" bind:value={epQuantity} class="{field} mt-1" />
-					</label>
-				{/if}
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 					<Button variant="ghost" onclick={() => (editOpen = false)}>Cancel</Button>
-					<Button onclick={saveEdit} disabled={epBusy}>Save</Button>
+					<Button onclick={saveEdit} disabled={epBusy || (epTracking === 'group' && epQuantity < 1)}>Save</Button>
 				</div>
 			</div>
 		</Dialog>
 
-		<Dialog bind:open={addingPlants} title="Add plants" description="Bulk-create plant units and place them in an environment.">
+		<Dialog bind:open={addingPlants} title="Add a plant" description="Add one plant — an individual, or a group (tray / bed / batch). Each gets its own id and history.">
 			<div class="space-y-4">
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
-						<span class="text-xs text-rig-400">How many units</span>
-						<input type="number" min="1" bind:value={apCount} class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Tracking</span>
+						<span class="text-xs text-rig-400">Type</span>
 						<Select value={apTracking} onValueChange={(v) => (apTracking = v as TrackingMode)} items={trackingItems} class="mt-1" />
 					</label>
+					{#if apTracking === 'group'}
+						<label class="block">
+							<span class="text-xs text-rig-400">Plants in group</span>
+							<input type="number" min="1" bind:value={apQuantity} class="{field} mt-1" />
+						</label>
+					{/if}
 				</div>
-				{#if apTracking === 'group'}
-					<label class="block">
-						<span class="text-xs text-rig-400">Plants per group</span>
-						<input type="number" min="1" bind:value={apQuantity} class="{field} mt-1" />
-					</label>
-				{/if}
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
 						<span class="text-xs text-rig-400">Label</span>
@@ -431,9 +455,23 @@
 					<span class="text-xs text-rig-400">Place in</span>
 					<Select value={apEnv} onValueChange={(v) => (apEnv = v)} items={envItems} class="mt-1" />
 				</label>
+				<div class="grid gap-3 sm:grid-cols-3">
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span>
+						<input type="number" min="0" step="any" bind:value={apPotSize} placeholder="e.g. 11" class="{field} mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Unit</span>
+						<Select value={apPotUnit} onValueChange={(v) => (apPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" />
+					</label>
+					<label class="block">
+						<span class="text-xs text-rig-400">Pot type</span>
+						<Select value={apPotType} onValueChange={(v) => (apPotType = v)} items={potTypeItems} class="mt-1" />
+					</label>
+				</div>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 					<Button variant="ghost" onclick={() => (addingPlants = false)}>Cancel</Button>
-					<Button onclick={addPlants} disabled={apBusy || apCount < 1}><Sprout size={15} /> Add</Button>
+					<Button onclick={addPlant} disabled={apBusy || (apTracking === 'group' && apQuantity < 1)}><Sprout size={15} /> Add plant</Button>
 				</div>
 			</div>
 		</Dialog>

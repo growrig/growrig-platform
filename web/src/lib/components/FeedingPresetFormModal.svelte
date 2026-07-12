@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FeedingPreset, FeedingProduct, FeedingPhase, Species } from '$lib/types';
+	import type { FeedingPreset, FeedingProduct, Species } from '$lib/types';
 	import { createFeedingPreset, updateFeedingPreset, type FeedingPresetInput } from '$lib/api';
 	import { Button, Dialog } from '$lib/components/ui';
 	import { titleCase } from '$lib/format';
@@ -10,16 +10,25 @@
 
 	interface Props {
 		open?: boolean;
-		/** Provided to edit (user preset) or duplicate (built-in preset); omit to create. */
+		/** Provided to edit an existing user preset; omit to create. */
 		preset?: FeedingPreset;
 		species: Species[];
+		/** Built-in presets offered as a starting point in create mode. */
+		templates?: FeedingPreset[];
 		/** Preselect a species (create mode). */
 		defaultSpecies?: string;
 		onSaved?: (p: FeedingPreset) => void;
 	}
-	let { open = $bindable(false), preset, species, defaultSpecies, onSaved }: Props = $props();
+	let {
+		open = $bindable(false),
+		preset,
+		species,
+		templates = [],
+		defaultSpecies,
+		onSaved
+	}: Props = $props();
 
-	// A local phase/week shape whose doses hold numbers as edited (may be empty).
+	// Local editable shapes: dose values may be blank while typing.
 	type Week = { doses: Record<string, number | null> };
 	type Phase = { name: string; stage: string; weeks: Week[] };
 
@@ -30,25 +39,26 @@
 	let unit = $state('ml/L');
 	let products = $state<FeedingProduct[]>([]);
 	let phases = $state<Phase[]>([]);
+	let templateId = $state('');
 	let busy = $state(false);
 	let err = $state('');
 
-	// Built-ins are read-only: editing one means duplicating into a new user preset.
-	const isDuplicate = $derived(preset?.source === 'builtin');
-	const isEdit = $derived(!!preset && preset.source === 'user');
+	const isEdit = $derived(!!preset);
 	const selected = $derived(species.find((s) => s.id === speciesId));
 	const stages = $derived(selected?.stages ?? []);
 	const canSave = $derived(!!name.trim() && !!speciesId);
-
-	const title = $derived(
-		isEdit ? 'Edit feeding preset' : isDuplicate ? 'Duplicate feeding preset' : 'New feeding preset'
+	// Templates for the picker: narrow to the chosen species once one is set.
+	const templateOptions = $derived(
+		speciesId ? templates.filter((t) => t.species === speciesId) : templates
 	);
+
+	const title = $derived(isEdit ? 'Edit feeding preset' : 'New feeding preset');
 
 	// Reseed on open.
 	$effect(() => {
 		if (!open) return;
 		speciesId = preset?.species ?? defaultSpecies ?? '';
-		name = preset ? (isDuplicate ? `${preset.name} (copy)` : preset.name) : '';
+		name = preset?.name ?? '';
 		brand = preset?.brand ?? '';
 		description = preset?.description ?? '';
 		unit = preset?.unit || 'ml/L';
@@ -58,8 +68,25 @@
 			stage: ph.stage ?? '',
 			weeks: (ph.weeks ?? []).map((wk) => ({ doses: { ...wk.doses } }))
 		}));
+		templateId = '';
 		err = '';
 	});
+
+	// Prefill everything but the name from the chosen built-in template.
+	function applyTemplate() {
+		const t = templates.find((x) => x.id === templateId);
+		if (!t) return;
+		speciesId = t.species;
+		brand = t.brand;
+		description = t.description;
+		unit = t.unit || 'ml/L';
+		products = (t.products ?? []).map((p) => ({ ...p }));
+		phases = (t.phases ?? []).map((ph) => ({
+			name: ph.name,
+			stage: ph.stage ?? '',
+			weeks: (ph.weeks ?? []).map((wk) => ({ doses: { ...wk.doses } }))
+		}));
+	}
 
 	function nextProductKey(): string {
 		const used = new Set(products.map((p) => p.key));
@@ -73,7 +100,6 @@
 	function removeProduct(i: number) {
 		const key = products[i].key;
 		products = products.filter((_, k) => k !== i);
-		// Drop that product's doses from every week.
 		for (const ph of phases) for (const wk of ph.weeks) delete wk.doses[key];
 	}
 
@@ -130,7 +156,6 @@
 						})
 					}))
 			};
-			// Duplicating a built-in always creates a new user preset.
 			const saved = isEdit ? await updateFeedingPreset(preset!.id, input) : await createFeedingPreset(input);
 			open = false;
 			onSaved?.(saved);
@@ -141,8 +166,12 @@
 		}
 	}
 
+	// Full-width top fields keep w-full; row inputs must NOT (w-full fights flex
+	// sizing and collapses the name inputs), so they use `cell` + explicit widths.
 	const field =
 		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const cell =
+		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
 	const iconBtn = 'rounded p-1.5 text-rig-400 transition-colors hover:text-rig-100 disabled:opacity-30';
 </script>
 
@@ -154,11 +183,6 @@
 >
 	<div class="space-y-5">
 		{#if err}<p class="text-xs text-danger">{err}</p>{/if}
-		{#if isDuplicate}
-			<p class="rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-xs text-rig-400">
-				This is a built-in preset. Saving creates your own editable copy.
-			</p>
-		{/if}
 
 		<!-- Core fields -->
 		<div class="grid gap-3 sm:grid-cols-2">
@@ -173,6 +197,23 @@
 					{#each species as sp (sp.id)}<option value={sp.id}>{sp.label}</option>{/each}
 				</select>
 			</label>
+		</div>
+
+		<!-- Start from a built-in schedule (create mode only). -->
+		{#if !isEdit && templateOptions.length}
+			<label class="block rounded-lg border border-rig-800 bg-rig-900/40 p-3">
+				<span class="text-xs font-semibold uppercase tracking-wide text-leaf">Start from a built-in preset</span>
+				<select bind:value={templateId} onchange={applyTemplate} class="{field} mt-1.5">
+					<option value="">Start blank</option>
+					{#each templateOptions as t (t.id)}
+						<option value={t.id}>{t.name}{t.brand ? ` — ${t.brand}` : ''}</option>
+					{/each}
+				</select>
+				<span class="mt-1 block text-[11px] text-rig-500">Fills the products, phases and weeks below — you can edit everything after.</span>
+			</label>
+		{/if}
+
+		<div class="grid gap-3 sm:grid-cols-2">
 			<label class="block">
 				<span class="text-xs text-rig-400">Brand <span class="text-rig-600">(optional)</span></span>
 				<input bind:value={brand} placeholder="e.g. BioBizz" class="{field} mt-1" />
@@ -203,14 +244,19 @@
 				<p class="text-xs text-rig-500">Add the nutrient lines this schedule doses (e.g. Bio·Grow, Bio·Bloom).</p>
 			{:else}
 				<div class="space-y-1.5">
+					<div class="flex items-center gap-2 px-0.5 text-[11px] text-rig-500">
+						<span class="flex-1">Product name</span>
+						<span class="w-20 shrink-0">Unit</span>
+						<span class="w-7 shrink-0"></span>
+					</div>
 					{#each products as p, i (p.key)}
 						<div class="flex items-center gap-2">
-							<input bind:value={p.label} placeholder="Product name" class="{field} flex-1" />
+							<input bind:value={p.label} placeholder="e.g. Bio·Grow" class="{cell} min-w-0 flex-1" />
 							<input
 								bind:value={p.unit}
 								placeholder={unit || 'unit'}
-								class="{field} w-24"
-								title="Unit override (blank = default)"
+								class="{cell} w-20 shrink-0 text-center"
+								title="Unit override (blank uses the default)"
 							/>
 							<button type="button" onclick={() => removeProduct(i)} aria-label="Remove product" class={iconBtn}>
 								<Trash2 size={14} />
@@ -240,8 +286,8 @@
 			{#each phases as phase, pi (pi)}
 				<div class="rounded-lg border border-rig-800 bg-rig-900/40 p-3">
 					<div class="mb-2 flex items-center gap-2">
-						<input bind:value={phase.name} placeholder="Phase name" class="{field} flex-1" />
-						<select bind:value={phase.stage} class="{field} w-40 capitalize" title="Linked stage (optional)">
+						<input bind:value={phase.name} placeholder="Phase name" class="{cell} min-w-0 flex-1" />
+						<select bind:value={phase.stage} class="{cell} w-40 shrink-0 capitalize" title="Linked stage (optional)">
 							<option value="">No stage link</option>
 							{#each stages as st (st.name)}<option value={st.name}>{titleCase(st.name)}</option>{/each}
 						</select>
@@ -332,9 +378,7 @@
 
 		<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 			<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
-			<Button onclick={save} disabled={busy || !canSave}>
-				{isEdit ? 'Save' : isDuplicate ? 'Save copy' : 'Create'}
-			</Button>
+			<Button onclick={save} disabled={busy || !canSave}>{isEdit ? 'Save' : 'Create'}</Button>
 		</div>
 	</div>
 </Dialog>

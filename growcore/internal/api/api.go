@@ -97,8 +97,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/cultivars/{id}", s.requireAuth(s.getCultivar))
 	mux.HandleFunc("GET /api/cultivars/{id}/image", s.requireAuth(s.getCultivarImage))
 	mux.HandleFunc("GET /api/feedings", s.requireAuth(s.getFeedingPresets))
-	// {id...} so built-in ids ("<species>/<slug>") with a slash still route.
-	mux.HandleFunc("GET /api/feedings/{id...}", s.requireAuth(s.getFeedingPreset))
+	// Built-in presets, offered only as templates to seed a new user preset.
+	mux.HandleFunc("GET /api/feeding-templates", s.requireAuth(s.getFeedingTemplates))
+	mux.HandleFunc("GET /api/feedings/{id}", s.requireAuth(s.getFeedingPreset))
 
 	// Per-environment read.
 	mux.HandleFunc("GET /api/environments/{id}/history", s.requireEnvRead(s.getHistory))
@@ -123,6 +124,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/grows/{id}/plants", s.requireAdmin(s.createPlants))
 	mux.HandleFunc("PUT /api/plants/{id}", s.requireAdmin(s.updatePlant))
 	mux.HandleFunc("POST /api/plants/{id}/move", s.requireAdmin(s.movePlant))
+	mux.HandleFunc("POST /api/plants/{id}/repot", s.requireAdmin(s.repotPlant))
 	mux.HandleFunc("POST /api/plants/{id}/harvest", s.requireAdmin(s.setPlantStatus(domain.PlantHarvested, "Harvested")))
 	mux.HandleFunc("POST /api/plants/{id}/remove", s.requireAdmin(s.setPlantStatus(domain.PlantRemoved, "Removed")))
 	mux.HandleFunc("POST /api/cultivars", s.requireAdmin(s.createCultivar))

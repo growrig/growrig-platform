@@ -2,6 +2,7 @@
 /growcore
 /growcore-bin
 environments/
+feedings/
 
 # SQLite databases
 *.db

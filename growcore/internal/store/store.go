@@ -21,9 +21,10 @@ import (
 )
 
 type Store struct {
-	db        *sql.DB
-	configDir string
-	syncing   bool
+	db         *sql.DB
+	configDir  string
+	feedingDir string
+	syncing    bool
 }
 
 // Open opens (creating if needed) the SQLite database at path and applies the
@@ -34,7 +35,11 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // modernc/sqlite is safest single-writer
-	s := &Store{db: db, configDir: filepath.Join(filepath.Dir(path), "environments")}
+	s := &Store{
+		db:         db,
+		configDir:  filepath.Join(filepath.Dir(path), "environments"),
+		feedingDir: filepath.Join(filepath.Dir(path), "feedings"),
+	}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -120,6 +125,16 @@ CREATE TABLE IF NOT EXISTS plant_placements (
 );
 CREATE INDEX IF NOT EXISTS idx_placements_unit ON plant_placements (plant_unit_id);
 CREATE INDEX IF NOT EXISTS idx_placements_env_open ON plant_placements (environment_id, ended_at);
+CREATE TABLE IF NOT EXISTS plant_pots (
+    id             TEXT PRIMARY KEY,
+    plant_unit_id  TEXT NOT NULL,
+    size           REAL NOT NULL DEFAULT 0,
+    unit           TEXT NOT NULL DEFAULT '',   -- 'L' or 'gal'
+    type           TEXT NOT NULL DEFAULT '',   -- pot material/kind
+    started_at     INTEGER NOT NULL DEFAULT 0,
+    ended_at       INTEGER                     -- NULL = current pot
+);
+CREATE INDEX IF NOT EXISTS idx_pots_unit ON plant_pots (plant_unit_id);
 CREATE TABLE IF NOT EXISTS cultivars (
     id          TEXT PRIMARY KEY,
     species     TEXT NOT NULL DEFAULT '',
@@ -132,16 +147,6 @@ CREATE TABLE IF NOT EXISTS cultivars (
     created_at  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_cultivars_species ON cultivars (species);
-CREATE TABLE IF NOT EXISTS feeding_presets (
-    id          TEXT PRIMARY KEY,
-    species     TEXT NOT NULL DEFAULT '',
-    name        TEXT NOT NULL DEFAULT '',
-    brand       TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    body        TEXT NOT NULL DEFAULT '{}', -- JSON: {unit, products[], phases[]}
-    created_at  INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_feeding_presets_species ON feeding_presets (species);
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,
@@ -886,6 +891,65 @@ func (s *Store) MovePlant(unitID, toEnvID string, at time.Time) error {
 		`INSERT INTO plant_placements (id, plant_unit_id, environment_id, started_at, ended_at, position)
 		 VALUES (?, ?, ?, ?, NULL, '')`,
 		newID("place"), unitID, toEnvID, at.UnixMilli()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// --- Plant pots (repot history, mirroring placements) ---
+
+const potCols = `id, plant_unit_id, size, unit, type, started_at, ended_at`
+
+func scanPot(scan func(dst ...any) error) (domain.PlantPot, error) {
+	var p domain.PlantPot
+	var started int64
+	var ended sql.NullInt64
+	if err := scan(&p.ID, &p.PlantUnitID, &p.Size, &p.Unit, &p.Type, &started, &ended); err != nil {
+		return domain.PlantPot{}, err
+	}
+	p.StartedAt = time.UnixMilli(started)
+	if ended.Valid {
+		t := time.UnixMilli(ended.Int64)
+		p.EndedAt = &t
+	}
+	return p, nil
+}
+
+// PotsForUnit returns a unit's full repot history, newest first.
+func (s *Store) PotsForUnit(unitID string) ([]domain.PlantPot, error) {
+	rows, err := s.db.Query(`SELECT `+potCols+` FROM plant_pots WHERE plant_unit_id=? ORDER BY started_at DESC`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantPot
+	for rows.Next() {
+		p, err := scanPot(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// Repot transactionally closes a unit's current pot (if any) and opens a new one
+// of the given size/unit/type at time at — recording a repot in the history.
+func (s *Store) Repot(unitID string, size float64, unit, potType string, at time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE plant_pots SET ended_at=? WHERE plant_unit_id=? AND ended_at IS NULL`,
+		at.UnixMilli(), unitID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO plant_pots (id, plant_unit_id, size, unit, type, started_at, ended_at)
+		 VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+		newID("pot"), unitID, size, unit, potType, at.UnixMilli()); err != nil {
 		return err
 	}
 	return tx.Commit()

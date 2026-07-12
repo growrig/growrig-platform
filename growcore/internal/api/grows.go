@@ -191,9 +191,11 @@ type placementView struct {
 
 type plantDetail struct {
 	domain.PlantUnit
-	CurrentEnvironmentID   string           `json:"currentEnvironmentId"`
-	CurrentEnvironmentName string           `json:"currentEnvironmentName"`
-	Placements             []placementView  `json:"placements"`
+	CurrentEnvironmentID   string            `json:"currentEnvironmentId"`
+	CurrentEnvironmentName string            `json:"currentEnvironmentName"`
+	Placements             []placementView   `json:"placements"`
+	CurrentPot             *domain.PlantPot  `json:"currentPot,omitempty"`
+	Pots                   []domain.PlantPot `json:"pots"`
 }
 
 type growDetail struct {
@@ -248,6 +250,10 @@ func (s *Server) getGrow(w http.ResponseWriter, r *http.Request) {
 				pd.CurrentEnvironmentName = envName[p.EnvironmentID]
 			}
 		}
+		if pd.Pots, pd.CurrentPot, err = s.potsFor(u.ID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
 		detail.Plants = append(detail.Plants, pd)
 	}
 	writeJSON(w, http.StatusOK, detail)
@@ -257,10 +263,32 @@ func (s *Server) getGrow(w http.ResponseWriter, r *http.Request) {
 
 type plantView struct {
 	domain.PlantUnit
-	GrowName               string          `json:"growName"`
-	CurrentEnvironmentID   string          `json:"currentEnvironmentId"`
-	CurrentEnvironmentName string          `json:"currentEnvironmentName"`
-	Placements             []placementView `json:"placements"`
+	GrowName               string            `json:"growName"`
+	CurrentEnvironmentID   string            `json:"currentEnvironmentId"`
+	CurrentEnvironmentName string            `json:"currentEnvironmentName"`
+	Placements             []placementView   `json:"placements"`
+	CurrentPot             *domain.PlantPot  `json:"currentPot,omitempty"`
+	Pots                   []domain.PlantPot `json:"pots"`
+}
+
+// potsFor returns a unit's repot history (newest first) and its current (open)
+// pot, if any.
+func (s *Server) potsFor(unitID string) ([]domain.PlantPot, *domain.PlantPot, error) {
+	pots, err := s.store.PotsForUnit(unitID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pots == nil {
+		pots = []domain.PlantPot{}
+	}
+	var current *domain.PlantPot
+	for i := range pots {
+		if pots[i].EndedAt == nil {
+			current = &pots[i]
+			break
+		}
+	}
+	return pots, current, nil
 }
 
 func (s *Server) getPlant(w http.ResponseWriter, r *http.Request) {
@@ -294,16 +322,34 @@ func (s *Server) getPlant(w http.ResponseWriter, r *http.Request) {
 			pv.CurrentEnvironmentName = envName[p.EnvironmentID]
 		}
 	}
+	if pv.Pots, pv.CurrentPot, err = s.potsFor(unit.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, pv)
 }
 
-type bulkPlantsBody struct {
-	Count         int                 `json:"count"`
+// plantBody creates one plant record: either a single individual plant, or one
+// group (tray/bed/batch) whose Quantity is how many plants it holds. Each call
+// makes exactly one unit with its own id and placement history.
+type plantBody struct {
 	Tracking      domain.TrackingMode `json:"tracking"`
-	QuantityPer   int                 `json:"quantityPer"`
+	Quantity      int                 `json:"quantity"` // plants in the group; ignored for individuals
 	Label         string              `json:"label"`
 	Cultivar      string              `json:"cultivar"`
 	EnvironmentID string              `json:"environmentId"`
+	// Optional initial pot; PotSize > 0 opens the plant's first pot record.
+	PotSize float64 `json:"potSize"`
+	PotUnit string  `json:"potUnit"`
+	PotType string  `json:"potType"`
+}
+
+// potUnit normalizes a pot volume unit to "L" or "gal" (default "L").
+func potUnit(u string) string {
+	if strings.EqualFold(strings.TrimSpace(u), "gal") {
+		return "gal"
+	}
+	return "L"
 }
 
 func (s *Server) createPlants(w http.ResponseWriter, r *http.Request) {
@@ -316,18 +362,22 @@ func (s *Server) createPlants(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errBody("grow not found"))
 		return
 	}
-	var b bulkPlantsBody
+	var b plantBody
 	if err := decode(r, &b); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if b.Count <= 0 {
-		writeJSON(w, http.StatusBadRequest, errBody("count must be positive"))
-		return
-	}
 	tracking := b.Tracking
 	if tracking != domain.TrackIndividual && tracking != domain.TrackGroup {
-		tracking = domain.TrackGroup
+		tracking = domain.TrackIndividual
+	}
+	// Individuals are always a single plant; a group holds its Quantity of plants.
+	quantity := 1
+	if tracking == domain.TrackGroup {
+		quantity = b.Quantity
+		if quantity < 1 {
+			quantity = 1
+		}
 	}
 	if b.EnvironmentID != "" {
 		envs, err := s.store.Environments()
@@ -348,19 +398,30 @@ func (s *Server) createPlants(w http.ResponseWriter, r *http.Request) {
 			label = "Plant"
 		}
 	}
-	units, err := s.store.BulkCreatePlants(grow.ID, b.Count, tracking, b.QuantityPer, label, strings.TrimSpace(b.Cultivar), b.EnvironmentID, time.Now())
+	// One record per call: each plant (individual or group) gets its own id and
+	// placement history.
+	now := time.Now()
+	units, err := s.store.BulkCreatePlants(grow.ID, 1, tracking, quantity, label, strings.TrimSpace(b.Cultivar), b.EnvironmentID, now)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.growActivity(grow.ID, b.EnvironmentID, "info", "configuration", "Added plants to "+grow.Name)
-	writeJSON(w, http.StatusOK, units)
+	// Optional starting pot, opening the plant's repot history.
+	if b.PotSize > 0 {
+		if err := s.store.Repot(units[0].ID, b.PotSize, potUnit(b.PotUnit), strings.TrimSpace(b.PotType), now); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	s.growActivity(grow.ID, b.EnvironmentID, "info", "configuration", "Added a plant to "+grow.Name)
+	writeJSON(w, http.StatusOK, units[0])
 }
 
 type updatePlantBody struct {
-	Label    string `json:"label"`
-	Cultivar string `json:"cultivar"`
-	Quantity *int   `json:"quantity"` // pointer: omitted leaves quantity unchanged
+	Label    string              `json:"label"`
+	Cultivar string              `json:"cultivar"`
+	Tracking domain.TrackingMode `json:"tracking"` // omitted/invalid leaves it unchanged
+	Quantity *int                `json:"quantity"` // pointer: omitted leaves quantity unchanged
 }
 
 // updatePlant edits a plant unit's per-unit attributes (label, cultivar, and —
@@ -383,7 +444,13 @@ func (s *Server) updatePlant(w http.ResponseWriter, r *http.Request) {
 	}
 	unit.Label = strings.TrimSpace(b.Label)
 	unit.Cultivar = strings.TrimSpace(b.Cultivar)
-	if b.Quantity != nil && unit.Tracking == domain.TrackGroup && *b.Quantity > 0 {
+	if b.Tracking == domain.TrackIndividual || b.Tracking == domain.TrackGroup {
+		unit.Tracking = b.Tracking
+	}
+	// Individuals are always a single plant; groups carry their quantity.
+	if unit.Tracking == domain.TrackIndividual {
+		unit.Quantity = 1
+	} else if b.Quantity != nil && *b.Quantity > 0 {
 		unit.Quantity = *b.Quantity
 	}
 	if err := s.store.SavePlantUnit(unit); err != nil {
@@ -427,6 +494,41 @@ func (s *Server) movePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.growActivity(unit.GrowID, b.EnvironmentID, "info", "configuration", "Moved "+plantLabel(unit)+" here")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type repotBody struct {
+	Size float64 `json:"size"`
+	Unit string  `json:"unit"`
+	Type string  `json:"type"`
+}
+
+// repotPlant records a repot: it closes the plant's current pot and opens a new
+// one, keeping the size history (mirrors movePlant).
+func (s *Server) repotPlant(w http.ResponseWriter, r *http.Request) {
+	unit, ok, err := s.store.PlantUnit(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errBody("plant not found"))
+		return
+	}
+	var b repotBody
+	if err := decode(r, &b); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if b.Size <= 0 {
+		writeJSON(w, http.StatusBadRequest, errBody("pot size must be positive"))
+		return
+	}
+	if err := s.store.Repot(unit.ID, b.Size, potUnit(b.Unit), strings.TrimSpace(b.Type), time.Now()); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.growActivity(unit.GrowID, "", "info", "configuration", "Repotted "+plantLabel(unit))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

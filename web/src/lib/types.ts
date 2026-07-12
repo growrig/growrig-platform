@@ -86,10 +86,25 @@ export interface PlacementView extends PlantPlacement {
 	environmentName: string;
 }
 
+export type PotUnit = 'L' | 'gal';
+
+/** One pot a plant lived in for a span of time (repot history). */
+export interface PlantPot {
+	id: string;
+	plantUnitId: string;
+	size: number;
+	unit: PotUnit;
+	type?: string;
+	startedAt: string;
+	endedAt?: string; // absent = current pot
+}
+
 export interface PlantDetail extends PlantUnit {
 	currentEnvironmentId: string;
 	currentEnvironmentName: string;
 	placements: PlacementView[];
+	currentPot?: PlantPot;
+	pots: PlantPot[];
 }
 
 export interface PlantView extends PlantUnit {
@@ -97,6 +112,8 @@ export interface PlantView extends PlantUnit {
 	currentEnvironmentId: string;
 	currentEnvironmentName: string;
 	placements: PlacementView[];
+	currentPot?: PlantPot;
+	pots: PlantPot[];
 }
 
 export interface GrowDetail extends Grow {

@@ -108,6 +108,20 @@ type PlantPlacement struct {
 	Position      string     `json:"position,omitempty"` // optional, e.g. "A1"
 }
 
+// PlantPot records that a plant lived in a pot of a given size for a span of
+// time, mirroring PlantPlacement: the current pot has a nil EndedAt, and
+// repotting closes it and opens a new one — so a plant carries a repot history.
+// Size is the volume in Unit ("L" or "gal"); Type is the pot material/kind.
+type PlantPot struct {
+	ID          string     `json:"id"`
+	PlantUnitID string     `json:"plantUnitId"`
+	Size        float64    `json:"size"`
+	Unit        string     `json:"unit"` // "L" or "gal"
+	Type        string     `json:"type,omitempty"`
+	StartedAt   time.Time  `json:"startedAt"`
+	EndedAt     *time.Time `json:"endedAt,omitempty"` // nil = current
+}
+
 // --- Live/view types for the dashboard and environment views ---
 
 // GrowEnvRef names one environment a grow currently occupies.
