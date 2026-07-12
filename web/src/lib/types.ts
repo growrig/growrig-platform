@@ -56,6 +56,12 @@ export interface GrowEnvRef {
 	name: string;
 }
 
+/** Count of active plants of one cultivar within a grow (for card thumbnails). */
+export interface GrowCultivarRef {
+	cultivar: string;
+	count: number;
+}
+
 /** Compact live view of an environment's control grow. */
 export interface GrowSummary {
 	id: string;
@@ -73,6 +79,7 @@ export interface GrowView extends Grow {
 	totalDays: number;
 	plantCount: number;
 	environments: GrowEnvRef[];
+	cultivars: GrowCultivarRef[];
 }
 
 export interface PlacementView extends PlantPlacement {
@@ -107,6 +114,46 @@ export interface EnvPlantsGroup {
 
 /** Built-in editable stage sequences per crop family (GET /api/stage-presets). */
 export type StagePresets = Record<string, string[]>;
+
+// --- Species catalog & cultivars (YAML-defined; GET /api/species) ---
+
+export type AttrType = 'text' | 'number' | 'percent' | 'enum';
+
+/** One species-specific cultivar field declared in a species' YAML. */
+export interface SpeciesAttribute {
+	key: string;
+	label: string;
+	type: AttrType;
+	options?: string[];
+	unit?: string;
+}
+
+export interface SpeciesStage {
+	name: string;
+	lightHours: number;
+}
+
+/** A crop family: its ordered stages and cultivar attribute schema. */
+export interface Species {
+	id: string;
+	label: string;
+	stages: SpeciesStage[];
+	cultivarAttributes?: SpeciesAttribute[];
+}
+
+/** A user-defined strain/variety within a species. */
+export interface Cultivar {
+	id: string;
+	species: string;
+	name: string;
+	creator: string;
+	description: string;
+	/** Species-specific values keyed by the species' attribute keys. */
+	attributes: Record<string, string>;
+	/** MIME type of the stored image, or absent when there is none. */
+	imageType?: string;
+	createdAt: string;
+}
 
 export type LightScheduleMode = 'off' | 'phase' | 'custom';
 

@@ -2,14 +2,15 @@
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { climateTone, titleCase, toneClass, valueNow, vpdZone } from '$lib/format';
-	import { cameraProxyURL, createEnvironment, getInfo, getLocations, loadDemo, weather } from '$lib/api';
+	import { cameraProxyURL, createEnvironment, getCultivars, getInfo, getLocations, loadDemo, weather } from '$lib/api';
 	import { onMount } from 'svelte';
-	import type { EnvironmentView, GrowView, Location, Weather } from '$lib/types';
+	import type { Cultivar, EnvironmentView, GrowView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
 	import { Dialog, Select } from '$lib/components/ui';
 	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
 	import EnvironmentDetailsDialog from '$lib/components/EnvironmentDetailsDialog.svelte';
 	import CameraPreview from '$lib/components/CameraPreview.svelte';
+	import GrowCard from '$lib/components/GrowCard.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Thermometer from '@lucide/svelte/icons/thermometer';
@@ -29,6 +30,7 @@
 
 	let locations = $state<Location[]>([]);
 	let weatherByLoc = $state<Record<string, Weather>>({});
+	let cultivars = $state<Cultivar[]>([]);
 	let addingLocation = $state(false);
 
 	// "New Lung Room" modal — a room is just a name plus an optional parent site,
@@ -201,6 +203,7 @@
 		} catch {
 			/* ignore */
 		}
+		getCultivars().then((c) => (cultivars = c)).catch(() => {});
 		// One weather fetch per sited location (with coordinates) for the header strip.
 		for (const loc of locations) {
 			if (!hasCoords(loc)) continue;
@@ -365,28 +368,7 @@
 
 <!-- Active grow card for the dashboard's Active Grows section. -->
 {#snippet growCard(g: GrowView)}
-	<a
-		href="/grows/{g.id}"
-		class="block rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600"
-	>
-		<div class="mb-2 flex items-center justify-between gap-2">
-			<h3 class="font-semibold">{g.name}</h3>
-			<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">{g.stage || '—'}</span>
-		</div>
-		<div class="flex items-center justify-between text-sm text-rig-400">
-			<span>{titleCase(g.species) || 'No species set'}</span>
-			<span class="tabular-nums">day {g.totalDays}</span>
-		</div>
-		<div class="mt-2 flex items-center gap-3 text-xs text-rig-500">
-			<span class="inline-flex items-center gap-1"><Sprout size={12} /> {g.plantCount} plants</span>
-			<span>·</span>
-			<span>{g.stageDays}d in {g.stage}</span>
-			{#if g.environments.length}
-				<span>·</span>
-				<span class="inline-flex items-center gap-1"><MapPin size={11} /> {g.environments.map((e) => e.name).join(', ')}</span>
-			{/if}
-		</div>
-	</a>
+	<GrowCard grow={g} {cultivars} />
 {/snippet}
 
 <!-- Outdoor weather strip for a located site. -->

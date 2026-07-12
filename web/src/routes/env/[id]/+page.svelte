@@ -111,9 +111,7 @@
 		}
 	}
 
-	const healthTone = (h: string) =>
-		h === 'online' ? 'bg-leaf/15 text-leaf' : h === 'stale' ? 'bg-warn/15 text-warn' : 'bg-danger/15 text-danger';
-	const roleLabel: Record<string, string> = {
+const roleLabel: Record<string, string> = {
 		exhaust: 'Exhaust',
 		intake: 'Intake',
 		circulation: 'Circulation',
@@ -147,20 +145,19 @@
 	<p class="text-rig-400">Environment not found. <a href="/" class="text-leaf hover:underline">Go back</a></p>
 {:else}
 	<div class="space-y-6">
-		<div class="flex items-start justify-between">
-			<div class="flex items-center gap-3">
-				<div>
+			<div class="flex items-start justify-between">
+			<div>
+				<div class="flex flex-wrap items-center gap-2">
 					<h1 class="text-2xl font-semibold">{env.name}</h1>
-					{#if env.model}<p class="text-sm text-rig-400">{env.model}</p>{/if}
+					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400">{env.kind}</span>
+				</div>
+				{#if env.model}<p class="mt-1 text-sm text-rig-400">{env.model}</p>{/if}
 					{#if env.airSource || dims || vol}
 						<p class="text-sm text-rig-400">
 							{#if env.airSource}<span>in</span>{' '}<a href="/env/{env.airSource.id}" class="text-rig-300 underline decoration-rig-600 underline-offset-2 transition-colors hover:text-leaf hover:decoration-leaf">{env.airSource.name}</a>{/if}{#if dims}<span>{env.airSource ? ', ' : ''}{dims}</span>{#if vol}{' '}<span>({vol.toFixed(2)} m³)</span>{/if}{:else if vol}<span>{env.airSource ? ', ' : ''}{vol.toFixed(2)} m³</span>{/if}
 						</p>
 					{/if}
 				</div>
-				<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400">{env.kind}</span>
-				<span class="rounded-full px-2 py-0.5 text-xs {healthTone(env.health)}">{env.health}</span>
-			</div>
 			<div class="flex items-center gap-3">
 				{#if env.kind === 'tent'}
 					<span class="hidden text-sm text-rig-400 sm:inline">target {env.targetTempC}°C · {env.targetHumidity}% RH{#if env.targetCO2 > 0} · {env.targetCO2} ppm{/if}</span>
@@ -176,6 +173,10 @@
 
 		<div class:grid={env.cameras?.length} class="gap-6 lg:grid-cols-2">
 			<div class="space-y-6">
+				<!-- Current occupants grouped by grow (named here, so the control-grow
+				     card below need not repeat it). -->
+				<EnvironmentOccupancy environmentId={env.id} />
+
 				{#if env.kind === 'tent'}
 					<ControlGrowCard
 						environmentId={env.id}
@@ -187,9 +188,6 @@
 						defaults={lightingDefaults}
 					/>
 				{/if}
-
-				<!-- Current occupants grouped by grow -->
-				<EnvironmentOccupancy environmentId={env.id} />
 			</div>
 
 			<!-- Cameras sit beside grow controls and occupants on wide screens. -->

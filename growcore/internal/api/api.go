@@ -85,6 +85,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/grows", s.requireAuth(s.getGrows))
 	mux.HandleFunc("GET /api/grows/{id}", s.requireAuth(s.getGrow))
 	mux.HandleFunc("GET /api/plants/{id}", s.requireAuth(s.getPlant))
+	mux.HandleFunc("GET /api/species", s.requireAuth(s.getSpecies))
+	mux.HandleFunc("GET /api/cultivars", s.requireAuth(s.getCultivars))
+	mux.HandleFunc("GET /api/cultivars/{id}", s.requireAuth(s.getCultivar))
+	mux.HandleFunc("GET /api/cultivars/{id}/image", s.requireAuth(s.getCultivarImage))
 
 	// Per-environment read.
 	mux.HandleFunc("GET /api/environments/{id}/history", s.requireEnvRead(s.getHistory))
@@ -111,6 +115,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/plants/{id}/move", s.requireAdmin(s.movePlant))
 	mux.HandleFunc("POST /api/plants/{id}/harvest", s.requireAdmin(s.setPlantStatus(domain.PlantHarvested, "Harvested")))
 	mux.HandleFunc("POST /api/plants/{id}/remove", s.requireAdmin(s.setPlantStatus(domain.PlantRemoved, "Removed")))
+	mux.HandleFunc("POST /api/cultivars", s.requireAdmin(s.createCultivar))
+	mux.HandleFunc("PUT /api/cultivars/{id}", s.requireAdmin(s.updateCultivar))
+	mux.HandleFunc("DELETE /api/cultivars/{id}", s.requireAdmin(s.deleteCultivar))
 
 	// Admin only (configuration & user management).
 	mux.HandleFunc("GET /api/catalog", s.requireAdmin(s.getCatalog))

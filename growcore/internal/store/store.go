@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS plant_placements (
 );
 CREATE INDEX IF NOT EXISTS idx_placements_unit ON plant_placements (plant_unit_id);
 CREATE INDEX IF NOT EXISTS idx_placements_env_open ON plant_placements (environment_id, ended_at);
+CREATE TABLE IF NOT EXISTS cultivars (
+    id          TEXT PRIMARY KEY,
+    species     TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL DEFAULT '',
+    creator     TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    attributes  TEXT NOT NULL DEFAULT '{}', -- JSON map keyed by the species' attribute keys
+    image_data  BLOB,
+    image_type  TEXT NOT NULL DEFAULT '',   -- '' = no image
+    created_at  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_cultivars_species ON cultivars (species);
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,

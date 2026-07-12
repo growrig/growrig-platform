@@ -2,9 +2,8 @@
 	import type { Grow, GrowSummary, LightSchedule, StageLightDefaults } from '$lib/types';
 	import LightingModal from '$lib/components/LightingModal.svelte';
 	import { nextTransition } from '$lib/photoperiod';
-	import { relTime, titleCase } from '$lib/format';
+	import { relTime } from '$lib/format';
 	import Sun from '@lucide/svelte/icons/sun';
-	import Sprout from '@lucide/svelte/icons/sprout';
 
 	interface Props {
 		environmentId: string;
@@ -54,29 +53,15 @@
 	</div>
 	<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-4">
 		{#if grow}
-			<div class="flex items-center justify-between">
-				<div>
-					<a href="/grows/{grow.id}" class="text-lg font-semibold hover:text-leaf">{grow.name || 'Unnamed grow'}</a>
-					<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-rig-400">
-						<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">{grow.stage || '—'}</span>
-						<span>day {grow.totalDays}</span>
-						<span class="text-rig-600">·</span>
-						<span>{grow.stageDays}d in {grow.stage}</span>
-						<span class="text-rig-600">·</span>
-						<span class="inline-flex items-center gap-1"><Sprout size={13} /> {grow.plantCount} plants</span>
-					</div>
-					{#if grow.species}
-						<div class="mt-1 text-xs text-rig-500 capitalize">
-							{titleCase(grow.species)}
-						</div>
-					{/if}
-					<div class="mt-2 flex items-center gap-1.5 text-sm text-rig-400">
-						<Sun size={14} class={schedule && schedule.mode !== 'off' ? 'text-warn' : 'text-rig-600'} />
-						<span>{lightingSummary}</span>
-					</div>
+			<!-- The occupants panel above already names the grow; here we only surface
+			     the lighting schedule this grow's stage drives. -->
+			<div class="flex items-center justify-between gap-3">
+				<div class="flex items-center gap-1.5 text-sm text-rig-400">
+					<Sun size={14} class={schedule && schedule.mode !== 'off' ? 'text-warn' : 'text-rig-600'} />
+					<span>{lightingSummary}</span>
 				</div>
 				{#if canEdit}
-					<button onclick={() => (editing = true)} class="rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 hover:border-rig-500">Edit</button>
+					<button onclick={() => (editing = true)} class="shrink-0 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 hover:border-rig-500">Edit</button>
 				{/if}
 			</div>
 		{:else}

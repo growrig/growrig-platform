@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getEnvironmentPlants } from '$lib/api';
-	import type { EnvPlantsGroup } from '$lib/types';
-	import { titleCase } from '$lib/format';
+	import { getEnvironmentPlants, getCultivars } from '$lib/api';
+	import type { EnvPlantsGroup, Cultivar, GrowCultivarRef } from '$lib/types';
+	import CultivarThumbnails from '$lib/components/CultivarThumbnails.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 
 	interface Props {
@@ -11,16 +11,36 @@
 	let { environmentId }: Props = $props();
 
 	let groups = $state<EnvPlantsGroup[]>([]);
+	let cultivars = $state<Cultivar[]>([]);
 
 	function reload() {
 		getEnvironmentPlants(environmentId)
 			.then((g) => (groups = g))
+			.catch(() => {});
+		getCultivars()
+			.then((c) => (cultivars = c))
 			.catch(() => {});
 	}
 	onMount(reload);
 
 	function countPlants(units: EnvPlantsGroup['units']): number {
 		return units.filter((u) => u.status === 'active').reduce((n, u) => n + u.quantity, 0);
+	}
+
+	// Aggregate active units into per-cultivar counts, in first-seen order.
+	function cultivarRefs(units: EnvPlantsGroup['units']): GrowCultivarRef[] {
+		const refs: GrowCultivarRef[] = [];
+		const idx = new Map<string, number>();
+		for (const u of units) {
+			if (u.status !== 'active') continue;
+			const key = u.cultivar;
+			if (idx.has(key)) refs[idx.get(key)!].count += u.quantity;
+			else {
+				idx.set(key, refs.length);
+				refs.push({ cultivar: key, count: u.quantity });
+			}
+		}
+		return refs;
 	}
 </script>
 
@@ -37,17 +57,8 @@
 							<span class="inline-flex items-center gap-1"><Sprout size={13} /> {countPlants(g.units)}</span>
 						</div>
 					</div>
-					<div class="mt-3 flex flex-wrap gap-2">
-						{#each g.units as u (u.id)}
-							<a
-								href="/plants/{u.id}"
-								class="rounded-md border border-rig-800 bg-rig-900/40 px-2.5 py-1 text-xs text-rig-300 transition-colors hover:border-rig-600"
-							>
-								{u.label || 'Plant'}
-								{#if u.tracking === 'group'}<span class="text-rig-500"> ×{u.quantity}</span>{/if}
-								{#if u.status !== 'active'}<span class="ml-1 text-rig-600">· {titleCase(u.status)}</span>{/if}
-							</a>
-						{/each}
+					<div class="mt-3">
+						<CultivarThumbnails refs={cultivarRefs(g.units)} {cultivars} />
 					</div>
 				</div>
 			{/each}

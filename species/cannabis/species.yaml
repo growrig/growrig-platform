@@ -1,0 +1,21 @@
+# Cannabis species definition.
+#
+# `stages` is the ordered cultivation sequence (and the per-stage default daily
+# light hours used to seed the photoperiod editor). `cultivarAttributes`
+# declares the species-specific fields a cultivar of this species carries; the
+# cultivar form renders them dynamically from this list.
+label: Cannabis
+stages:
+  - { name: seedling, lightHours: 18 }
+  - { name: vegetative, lightHours: 18 }
+  - { name: flowering, lightHours: 12 }
+  - { name: flush, lightHours: 12 }
+  - { name: drying, lightHours: 0 }
+  - { name: cure, lightHours: 0 }
+cultivarAttributes:
+  - { key: genetics, label: Genetics, type: enum, options: [sativa, indica, hybrid] }
+  - { key: floweringType, label: Flowering type, type: enum, options: [photoperiod, autoflowering] }
+  - { key: seedType, label: Seed type, type: enum, options: [feminized, regular] }
+  - { key: thc, label: THC, type: percent }
+  - { key: cbd, label: CBD, type: percent }
+  - { key: floweringWeeks, label: Flowering time, type: number, unit: weeks }

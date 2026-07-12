@@ -14,9 +14,11 @@
 		movePlant,
 		updatePlant,
 		harvestPlant,
-		removePlant
+		removePlant,
+		getCultivars,
+		cultivarImageURL
 	} from '$lib/api';
-	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode } from '$lib/types';
+	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, Cultivar } from '$lib/types';
 	import { titleCase, daysSince } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
@@ -32,8 +34,17 @@
 	let grow = $state<GrowDetail | null>(null);
 	let environments = $state<Environment[]>([]);
 	let presets = $state<StagePresets>({});
+	let cultivars = $state<Cultivar[]>([]);
 	let err = $state('');
 	let loading = $state(true);
+
+	// Cultivars defined for this grow's species, offered as suggestions when
+	// binding a cultivar to plants (freeform entry is still allowed).
+	const speciesCultivars = $derived(
+		grow ? cultivars.filter((c) => c.species === grow!.species) : []
+	);
+	// Resolve a plant's cultivar name to its record for the row thumbnail.
+	const cultivarByName = $derived(new Map(cultivars.map((c) => [c.name, c])));
 
 	async function reload() {
 		if (!id) return;
@@ -50,9 +61,23 @@
 		reload();
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
+		getCultivars().then((c) => (cultivars = c)).catch(() => {});
 	});
 
 	const envItems = $derived(environments.map((e) => ({ value: e.id, label: e.name })));
+
+	// Cultivar dropdown items for this grow's species. `current` is included even
+	// if it's a legacy freeform value not in the library, so editing never loses it.
+	function cultivarItems(current: string) {
+		const items = [{ value: '', label: '— None —' }];
+		const names = new Set<string>();
+		for (const c of speciesCultivars) {
+			items.push({ value: c.name, label: c.name });
+			names.add(c.name);
+		}
+		if (current && !names.has(current)) items.push({ value: current, label: `${current} (custom)` });
+		return items;
+	}
 	const stageItems = $derived((grow?.stages ?? []).map((s) => ({ value: s, label: titleCase(s) })));
 
 	let editing = $state(false);
@@ -278,7 +303,6 @@
 						<thead class="border-b border-rig-800 text-left text-xs uppercase tracking-wide text-rig-500">
 							<tr>
 								<th class="px-4 py-2 font-medium">Plant</th>
-								<th class="px-4 py-2 font-medium">Cultivar</th>
 								<th class="px-4 py-2 font-medium">Status</th>
 								<th class="px-4 py-2 font-medium">Location</th>
 								<th class="px-4 py-2 font-medium">Age</th>
@@ -287,12 +311,23 @@
 						</thead>
 						<tbody>
 							{#each grow.plants as p (p.id)}
+								{@const cv = cultivarByName.get(p.cultivar)}
 								<tr class="border-b border-rig-800/60 last:border-0">
 									<td class="px-4 py-2">
-										<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{p.label || 'Plant'}</a>
-										{#if p.tracking === 'group'}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
+										<div class="flex items-center gap-3">
+											<div class="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-rig-700 bg-rig-950">
+												{#if cv?.imageType}
+													<img src={cultivarImageURL(cv.id)} alt={p.cultivar} class="h-full w-full object-cover" />
+												{:else}
+													<div class="flex h-full w-full items-center justify-center text-rig-600"><Sprout size={15} /></div>
+												{/if}
+											</div>
+											<div class="min-w-0 truncate">
+												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{p.cultivar || p.label || 'Plant'}</a>
+												{#if p.tracking === 'group'}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
+											</div>
+										</div>
 									</td>
-									<td class="px-4 py-2 text-rig-300">{p.cultivar || '—'}</td>
 									<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
 									<td class="px-4 py-2 text-rig-300">
 										{#if isAdmin && p.status === 'active'}
@@ -342,7 +377,7 @@
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Cultivar</span>
-						<input bind:value={epCultivar} placeholder="e.g. Genovese" class="{field} mt-1" />
+						<Select value={epCultivar} onValueChange={(v) => (epCultivar = v)} items={cultivarItems(epCultivar)} class="mt-1" />
 					</label>
 				</div>
 				{#if editingPlant?.tracking === 'group'}
@@ -383,7 +418,7 @@
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
-						<input bind:value={apCultivar} placeholder="e.g. Genovese" class="{field} mt-1" />
+						<Select value={apCultivar} onValueChange={(v) => (apCultivar = v)} items={cultivarItems(apCultivar)} class="mt-1" />
 					</label>
 				</div>
 				<label class="block">

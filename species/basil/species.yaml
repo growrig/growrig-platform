@@ -1,0 +1,7 @@
+label: Basil
+stages:
+  - { name: seedling, lightHours: 18 }
+  - { name: growth, lightHours: 18 }
+  - { name: harvest, lightHours: 12 }
+cultivarAttributes:
+  - { key: daysToMaturity, label: Days to maturity, type: number, unit: days }

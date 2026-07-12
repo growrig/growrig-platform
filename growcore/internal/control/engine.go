@@ -131,10 +131,24 @@ func (e *Engine) step(dt time.Duration) error {
 	// grow currently occupies (via its units' open placements).
 	unitByID := map[string]domain.PlantUnit{}
 	plantCountByGrow := map[string]int{}
+	// Per-grow breakdown of active plants by cultivar, in first-seen order, for
+	// the plant thumbnails on the grow card.
+	cultByGrow := map[string][]domain.GrowCultivarRef{}
+	cultIndex := map[string]map[string]int{}
 	for _, u := range units {
 		unitByID[u.ID] = u
-		if u.Status == domain.PlantActive {
-			plantCountByGrow[u.GrowID] += u.Quantity
+		if u.Status != domain.PlantActive {
+			continue
+		}
+		plantCountByGrow[u.GrowID] += u.Quantity
+		if cultIndex[u.GrowID] == nil {
+			cultIndex[u.GrowID] = map[string]int{}
+		}
+		if idx, ok := cultIndex[u.GrowID][u.Cultivar]; ok {
+			cultByGrow[u.GrowID][idx].Count += u.Quantity
+		} else {
+			cultIndex[u.GrowID][u.Cultivar] = len(cultByGrow[u.GrowID])
+			cultByGrow[u.GrowID] = append(cultByGrow[u.GrowID], domain.GrowCultivarRef{Cultivar: u.Cultivar, Count: u.Quantity})
 		}
 	}
 	growEnvs := map[string][]domain.GrowEnvRef{}
@@ -402,6 +416,7 @@ func (e *Engine) step(dt time.Duration) error {
 			TotalDays:    domain.DaysSince(g.StartedAt, now),
 			PlantCount:   plantCountByGrow[g.ID],
 			Environments: growEnvs[g.ID],
+			Cultivars:    cultByGrow[g.ID],
 		})
 	}
 	snap := domain.Snapshot{Time: now, Environments: views, Grows: growViews}

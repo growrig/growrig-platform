@@ -1,0 +1,9 @@
+label: Tomato
+stages:
+  - { name: seedling, lightHours: 18 }
+  - { name: growth, lightHours: 18 }
+  - { name: flowering, lightHours: 12 }
+  - { name: fruiting, lightHours: 12 }
+cultivarAttributes:
+  - { key: growthHabit, label: Growth habit, type: enum, options: [determinate, indeterminate] }
+  - { key: daysToMaturity, label: Days to maturity, type: number, unit: days }

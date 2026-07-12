@@ -9,6 +9,7 @@ import type {
 	BindingKind,
 	CameraType,
 	CatalogProduct,
+	Cultivar,
 	DeviceSeries,
 	DiscoveredEntity,
 	Environment,
@@ -25,6 +26,7 @@ import type {
 	Location,
 	PlantUnit,
 	PlantView,
+	Species,
 	StagePresets,
 	TrackingMode,
 	User,
@@ -324,6 +326,41 @@ export const removePlant = (plantID: string) =>
 
 export const getEnvironmentPlants = (envID: string) =>
 	json<EnvPlantsGroup[]>(`/api/environments/${encodeURIComponent(envID)}/plants`);
+
+// --- species catalog & cultivars ---
+
+export const getSpecies = () => json<Species[]>('/api/species');
+
+/** Cultivars, optionally filtered to a single species. */
+export const getCultivars = (species?: string) =>
+	json<Cultivar[]>(`/api/cultivars${species ? `?species=${encodeURIComponent(species)}` : ''}`);
+
+export const getCultivar = (id: string) => json<Cultivar>(`/api/cultivars/${encodeURIComponent(id)}`);
+
+export interface CultivarInput {
+	species: string;
+	name: string;
+	creator: string;
+	description: string;
+	attributes: Record<string, string>;
+	/** Optional data URL to set/replace the image; omit to leave unchanged. */
+	image?: string;
+	/** Set on update to clear an existing image. */
+	removeImage?: boolean;
+}
+
+export const createCultivar = (c: CultivarInput) =>
+	json<Cultivar>('/api/cultivars', { method: 'POST', body: JSON.stringify(c) });
+
+export const updateCultivar = (id: string, c: CultivarInput) =>
+	json<Cultivar>(`/api/cultivars/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(c) });
+
+export const deleteCultivar = (id: string) =>
+	req(`/api/cultivars/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** Authenticated same-origin URL for a cultivar's stored image. */
+export const cultivarImageURL = (id: string): string =>
+	authenticatedMediaURL(`/api/cultivars/${encodeURIComponent(id)}/image`);
 
 export const setControlGrow = (envID: string, growId: string) =>
 	json<Environment>(`/api/environments/${encodeURIComponent(envID)}/control-grow`, {

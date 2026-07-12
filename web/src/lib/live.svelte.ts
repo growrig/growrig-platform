@@ -82,7 +82,7 @@ class LiveState {
 			this.lastError = null;
 			this.#sendPing();
 			if (this.#pingTimer) clearInterval(this.#pingTimer);
-			this.#pingTimer = setInterval(() => this.#sendPing(), 5000);
+			this.#pingTimer = setInterval(() => this.#sendPing(), 15_000);
 		};
 		ws.onmessage = (ev) => {
 			try {

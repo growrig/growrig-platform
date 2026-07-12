@@ -107,7 +107,7 @@
 					<span class="grid h-7 w-7 place-items-center rounded-md bg-rig-500 text-rig-950">
 						<Sprout size={18} />
 					</span>
-					<span>GrowRig Hub</span>
+					<span>GrowRig</span>
 				</a>
 				<nav class="flex gap-1 text-sm">
 					{#each nav as item (item.href)}

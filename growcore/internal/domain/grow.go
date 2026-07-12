@@ -116,6 +116,14 @@ type GrowEnvRef struct {
 	Name string `json:"name"`
 }
 
+// GrowCultivarRef is the count of active plants of one cultivar within a grow,
+// used to render per-cultivar plant thumbnails on the grow card. Cultivar is the
+// cultivar name (may be empty for plants with no cultivar set).
+type GrowCultivarRef struct {
+	Cultivar string `json:"cultivar"`
+	Count    int    `json:"count"`
+}
+
 // GrowSummary is the compact live view of an environment's control grow.
 type GrowSummary struct {
 	ID         string `json:"id"`
@@ -131,10 +139,11 @@ type GrowSummary struct {
 // plant count and the environments it currently occupies.
 type GrowView struct {
 	Grow
-	StageDays    int          `json:"stageDays"`
-	TotalDays    int          `json:"totalDays"`
-	PlantCount   int          `json:"plantCount"`
-	Environments []GrowEnvRef `json:"environments"`
+	StageDays    int               `json:"stageDays"`
+	TotalDays    int               `json:"totalDays"`
+	PlantCount   int               `json:"plantCount"`
+	Environments []GrowEnvRef      `json:"environments"`
+	Cultivars    []GrowCultivarRef `json:"cultivars"`
 }
 
 // DaysSince returns whole days between then and now, floored at 0.

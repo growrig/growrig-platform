@@ -2,22 +2,27 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
-	import { getPlant, getEnvironments, movePlant, updatePlant, harvestPlant, removePlant } from '$lib/api';
-	import type { Environment, PlantView } from '$lib/types';
+	import { getPlant, getEnvironments, movePlant, updatePlant, harvestPlant, removePlant, getCultivars, cultivarImageURL } from '$lib/api';
+	import type { Environment, PlantView, Cultivar } from '$lib/types';
 	import { titleCase, daysSince } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Sprout from '@lucide/svelte/icons/sprout';
 
 	const id = $derived(page.params.id);
 	const isAdmin = $derived(auth.isAdmin);
 
 	let plant = $state<PlantView | null>(null);
 	let environments = $state<Environment[]>([]);
+	let cultivars = $state<Cultivar[]>([]);
 	let err = $state('');
 	let loading = $state(true);
+
+	// The plant's cultivar record (for its image), resolved by name.
+	const cultivar = $derived(plant ? cultivars.find((c) => c.name === plant!.cultivar) : undefined);
 
 	async function reload() {
 		if (!id) return;
@@ -33,6 +38,7 @@
 	onMount(() => {
 		reload();
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
+		getCultivars().then((c) => (cultivars = c)).catch(() => {});
 	});
 
 	const envItems = $derived(environments.map((e) => ({ value: e.id, label: e.name })));
@@ -120,16 +126,27 @@
 		{#if err}<p class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{err}</p>{/if}
 
 		<div class="flex flex-wrap items-start justify-between gap-3">
-			<div>
+			<div class="flex items-center gap-4">
+				<div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-rig-700 bg-rig-950">
+					{#if cultivar?.imageType}
+						<img src={cultivarImageURL(cultivar.id)} alt={plant.cultivar} class="h-full w-full object-cover" />
+					{:else}
+						<div class="flex h-full w-full items-center justify-center text-rig-600"><Sprout size={24} /></div>
+					{/if}
+				</div>
+				<div>
 				<div class="flex items-center gap-3">
-					<h1 class="text-2xl font-semibold">{plant.label || 'Plant'}</h1>
+					<h1 class="text-2xl font-semibold">
+						{plant.cultivar || plant.label || 'Plant'}{#if plant.tracking === 'group'}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
+					</h1>
 					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(plant.status)}">{plant.status}</span>
 				</div>
 				<p class="mt-1 text-sm text-rig-400">
-					{#if plant.cultivar}{plant.cultivar} · {/if}{plant.tracking === 'group' ? `Group of ${plant.quantity}` : 'Individually tracked'}
+					{plant.tracking === 'group' ? `Group of ${plant.quantity}` : 'Individually tracked'}
 					· in <a href="/grows/{plant.growId}" class="text-leaf hover:underline">{plant.growName}</a>
 					· {daysSince(plant.createdAt)}d old
 				</p>
+				</div>
 			</div>
 			{#if isAdmin}
 				<div class="flex flex-wrap items-center gap-2">

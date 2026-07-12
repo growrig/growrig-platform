@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig-platform/growcore/internal/species"
 )
 
 // --- Grows ---
@@ -23,7 +24,7 @@ func (s *Server) getGrows(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStagePresets(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, domain.StagePresets)
+	writeJSON(w, http.StatusOK, species.StagePresets())
 }
 
 type growBody struct {
@@ -36,10 +37,12 @@ type growBody struct {
 // speciesStages validates a species against the predefined presets and returns
 // its (auto-derived) stage sequence. Species is the single source of truth for
 // stages; a grow cannot use an unknown crop family.
-func speciesStages(species string) (key string, stages []string, ok bool) {
-	key = strings.ToLower(strings.TrimSpace(species))
-	stages, ok = domain.StagePresets[key]
-	return key, stages, ok
+func speciesStages(name string) (key string, stages []string, ok bool) {
+	sp, found := species.Get(name)
+	if !found {
+		return strings.ToLower(strings.TrimSpace(name)), nil, false
+	}
+	return sp.ID, sp.StageNames(), true
 }
 
 func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
