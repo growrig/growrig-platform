@@ -155,6 +155,46 @@ export interface Cultivar {
 	createdAt: string;
 }
 
+// --- Feeding presets (nutrient schedules; GET /api/feedings) ---
+
+/** One nutrient line in a schedule. `unit` overrides the preset default. */
+export interface FeedingProduct {
+	key: string;
+	label: string;
+	unit?: string;
+}
+
+/** One week of dosing: product key -> amount in that product's unit. */
+export interface FeedingWeek {
+	doses: Record<string, number>;
+}
+
+/** A named span of the schedule; `stage` optionally links it to a species stage. */
+export interface FeedingPhase {
+	name: string;
+	stage?: string;
+	weeks: FeedingWeek[];
+}
+
+/**
+ * A nutrient feeding schedule: products dosed per week across phases. Built-in
+ * presets (`source: 'builtin'`) come from species/<id>/feedings.yaml and are
+ * read-only; user presets (`source: 'user'`) are created in-app.
+ */
+export interface FeedingPreset {
+	id: string;
+	species: string;
+	name: string;
+	brand: string;
+	description: string;
+	source: 'builtin' | 'user';
+	/** Default dose unit, e.g. "ml/L". */
+	unit: string;
+	products: FeedingProduct[];
+	phases: FeedingPhase[];
+	createdAt: string;
+}
+
 export type LightScheduleMode = 'off' | 'phase' | 'custom';
 
 export interface LightSchedule {

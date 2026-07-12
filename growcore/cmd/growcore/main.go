@@ -28,6 +28,7 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/camera"
 	"github.com/growrig/growrig-platform/growcore/internal/config"
 	"github.com/growrig/growrig-platform/growcore/internal/control"
+	"github.com/growrig/growrig-platform/growcore/internal/domain"
 	"github.com/growrig/growrig-platform/growcore/internal/ha"
 	"github.com/growrig/growrig-platform/growcore/internal/sim"
 	"github.com/growrig/growrig-platform/growcore/internal/store"
@@ -67,6 +68,12 @@ func main() {
 	engine := control.New(st, adapter, hub.Broadcast)
 	go engine.Run(ctx, cfg.Control.Interval.Std())
 
+	// A single, clean lifecycle marker per boot. The engine stays quiet for its
+	// settle window after start (see control.settleWindow), so a restart shows
+	// only this pair — "started" now, "stopped" on shutdown — instead of a burst
+	// of availability churn.
+	_ = st.AddActivity(domain.Activity{Level: "info", Type: "system", Message: "Grow Core started"})
+
 	var static http.Handler
 	if h, ok := webui.Handler(); ok {
 		static = h
@@ -93,6 +100,7 @@ func main() {
 
 	<-ctx.Done()
 	log.Println("shutting down…")
+	_ = st.AddActivity(domain.Activity{Level: "info", Type: "system", Message: "Grow Core stopped"})
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {

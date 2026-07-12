@@ -1,13 +1,42 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { live } from '$lib/live.svelte';
-	import { getInfo, CORE_URL, wsURL } from '$lib/api';
+	import { getInfo, CORE_URL, wsURL, clearActivity, restartCore } from '$lib/api';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { Button } from '$lib/components/ui';
 	import { fmtDateTime } from '$lib/datetime';
 
 	let adapter = $state<string>('…');
 	let infoError = $state<string | null>(null);
+	let actionError = $state<string | null>(null);
+	let clearing = $state(false);
+	let restarting = $state(false);
+
+	async function onClearActivity() {
+		if (!confirm('Clear the entire activity log? This cannot be undone.')) return;
+		clearing = true;
+		actionError = null;
+		try {
+			await clearActivity();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : String(e);
+		} finally {
+			clearing = false;
+		}
+	}
+
+	async function onRestart() {
+		if (!confirm('Restart Grow Core now? The service will be briefly unavailable.')) return;
+		restarting = true;
+		actionError = null;
+		try {
+			await restartCore();
+		} catch {
+			// The connection often drops as the server shuts down; that's expected.
+		}
+		// Leave the button in its "restarting" state; the live indicator will show
+		// reconnection once the service is back.
+	}
 
 	// A ticking clock so the "age" readouts stay live.
 	let now = $state(Date.now());
@@ -86,8 +115,20 @@
 				{statusMeta[live.status].label}
 			</span>
 		</div>
-		<Button variant="secondary" size="sm" onclick={loadInfo}>Refresh info</Button>
+		<div class="flex items-center gap-2">
+			<Button variant="secondary" size="sm" onclick={onClearActivity} disabled={clearing}>
+				{clearing ? 'Clearing…' : 'Clear activity log'}
+			</Button>
+			<Button variant="danger" size="sm" onclick={onRestart} disabled={restarting}>
+				{restarting ? 'Restarting…' : 'Restart'}
+			</Button>
+			<Button variant="secondary" size="sm" onclick={loadInfo}>Refresh info</Button>
+		</div>
 	</div>
+
+	{#if actionError}
+		<p class="rounded-md border border-danger/40 bg-danger/10 px-4 py-2 text-sm text-danger">{actionError}</p>
+	{/if}
 
 	<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 		<StatTile label="Environments" value={String(counts.environments)} tone="good" />

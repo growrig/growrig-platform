@@ -132,6 +132,16 @@ CREATE TABLE IF NOT EXISTS cultivars (
     created_at  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_cultivars_species ON cultivars (species);
+CREATE TABLE IF NOT EXISTS feeding_presets (
+    id          TEXT PRIMARY KEY,
+    species     TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL DEFAULT '',
+    brand       TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    body        TEXT NOT NULL DEFAULT '{}', -- JSON: {unit, products[], phases[]}
+    created_at  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_feeding_presets_species ON feeding_presets (species);
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,
@@ -1481,4 +1491,10 @@ func (s *Store) CountActivities(envID, growID string, levels []string) (int, err
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM activity_log`+clause, args...).Scan(&n)
 	return n, err
+}
+
+// ClearActivities removes every activity-log entry.
+func (s *Store) ClearActivities() error {
+	_, err := s.db.Exec(`DELETE FROM activity_log`)
+	return err
 }

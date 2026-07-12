@@ -96,6 +96,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/cultivars", s.requireAuth(s.getCultivars))
 	mux.HandleFunc("GET /api/cultivars/{id}", s.requireAuth(s.getCultivar))
 	mux.HandleFunc("GET /api/cultivars/{id}/image", s.requireAuth(s.getCultivarImage))
+	mux.HandleFunc("GET /api/feedings", s.requireAuth(s.getFeedingPresets))
+	// {id...} so built-in ids ("<species>/<slug>") with a slash still route.
+	mux.HandleFunc("GET /api/feedings/{id...}", s.requireAuth(s.getFeedingPreset))
 
 	// Per-environment read.
 	mux.HandleFunc("GET /api/environments/{id}/history", s.requireEnvRead(s.getHistory))
@@ -125,6 +128,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/cultivars", s.requireAdmin(s.createCultivar))
 	mux.HandleFunc("PUT /api/cultivars/{id}", s.requireAdmin(s.updateCultivar))
 	mux.HandleFunc("DELETE /api/cultivars/{id}", s.requireAdmin(s.deleteCultivar))
+	mux.HandleFunc("POST /api/feedings", s.requireAdmin(s.createFeedingPreset))
+	mux.HandleFunc("PUT /api/feedings/{id}", s.requireAdmin(s.updateFeedingPreset))
+	mux.HandleFunc("DELETE /api/feedings/{id}", s.requireAdmin(s.deleteFeedingPreset))
 
 	// Admin only (configuration & user management).
 	mux.HandleFunc("GET /api/catalog", s.requireAdmin(s.getCatalog))
@@ -152,6 +158,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings/signup", s.requireAdmin(s.getSignupSetting))
 	mux.HandleFunc("PUT /api/settings/signup", s.requireAdmin(s.setSignupSetting))
 	mux.HandleFunc("PUT /api/preferences", s.requireAdmin(s.putPreferences))
+	mux.HandleFunc("POST /api/admin/restart", s.requireAdmin(s.restart))
+	mux.HandleFunc("DELETE /api/activity", s.requireAdmin(s.clearActivity))
 	mux.HandleFunc("GET /api/admin/homeassistant", s.requireAdmin(s.getHomeAssistant))
 	mux.HandleFunc("POST /api/admin/homeassistant/reload", s.requireAdmin(s.reloadHomeAssistant))
 	mux.HandleFunc("POST /api/admin/homeassistant/update", s.requireAdmin(s.updateHomeAssistant))

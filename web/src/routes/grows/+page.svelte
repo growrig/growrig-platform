@@ -2,17 +2,28 @@
 	import { onMount } from 'svelte';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { getStagePresets, getSpecies, getCultivars, deleteCultivar, cultivarImageURL } from '$lib/api';
-	import type { GrowView, StagePresets, Species, Cultivar } from '$lib/types';
+	import {
+		getStagePresets,
+		getSpecies,
+		getCultivars,
+		deleteCultivar,
+		cultivarImageURL,
+		getFeedingPresets,
+		deleteFeedingPreset
+	} from '$lib/api';
+	import type { GrowView, StagePresets, Species, Cultivar, FeedingPreset } from '$lib/types';
 	import { titleCase } from '$lib/format';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
 	import CultivarFormModal from '$lib/components/CultivarFormModal.svelte';
+	import FeedingPresetFormModal from '$lib/components/FeedingPresetFormModal.svelte';
 	import GrowCard from '$lib/components/GrowCard.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Dna from '@lucide/svelte/icons/dna';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Copy from '@lucide/svelte/icons/copy';
+	import FlaskConical from '@lucide/svelte/icons/flask-conical';
 
 	const snap = $derived(live.snapshot);
 	const grows = $derived(snap?.grows ?? []);
@@ -28,16 +39,50 @@
 	let editingCultivar = $state<Cultivar | undefined>(undefined);
 	let cultivarModalOpen = $state(false);
 
+	// Feeding presets are reference data too (built-in + user), fetched over REST.
+	let feedings = $state<FeedingPreset[]>([]);
+	let editingFeeding = $state<FeedingPreset | undefined>(undefined);
+	let feedingModalOpen = $state(false);
+
 	const speciesById = $derived(new Map(species.map((s) => [s.id, s])));
 
 	onMount(() => {
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
 		getSpecies().then((s) => (species = s)).catch(() => {});
 		refreshCultivars();
+		refreshFeedings();
 	});
 
 	function refreshCultivars() {
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
+	}
+
+	function refreshFeedings() {
+		getFeedingPresets().then((f) => (feedings = f)).catch(() => {});
+	}
+
+	function newFeeding() {
+		editingFeeding = undefined;
+		feedingModalOpen = true;
+	}
+	// Edit a user preset, or duplicate a built-in one (the modal handles both).
+	function editFeeding(f: FeedingPreset) {
+		editingFeeding = f;
+		feedingModalOpen = true;
+	}
+	async function removeFeeding(f: FeedingPreset) {
+		if (!confirm(`Delete feeding preset “${f.name}”?`)) return;
+		try {
+			await deleteFeedingPreset(f.id);
+			refreshFeedings();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	// Total week count across a preset's phases, for the card summary.
+	function weekCount(f: FeedingPreset): number {
+		return (f.phases ?? []).reduce((n, ph) => n + (ph.weeks?.length ?? 0), 0);
 	}
 
 	function newCultivar() {
@@ -216,6 +261,100 @@
 		</div>
 		{/if}
 	</section>
+
+	<!-- Feeding presets: nutrient schedules (built-in + user), below cultivars. -->
+	<section>
+		<div class="mb-3 flex items-center justify-between gap-4">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+				Feeding presets{feedings.length ? ` · ${feedings.length}` : ''}
+			</h2>
+			{#if auth.isAdmin && feedings.length}
+				<button
+					onclick={newFeeding}
+					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-rig-500 hover:text-white"
+				>
+					<Plus size={14} /> New preset
+				</button>
+			{/if}
+		</div>
+		{#if feedings.length === 0}
+			<div class="rounded-xl border border-dashed border-rig-800 p-10 text-center">
+				<div class="mb-3 flex justify-center text-rig-500"><FlaskConical size={40} /></div>
+				<h3 class="mb-1 text-lg font-semibold">No feeding presets yet</h3>
+				<p class="mb-5 text-sm text-rig-400">Build nutrient schedules — products dosed per week across each phase of a grow.</p>
+				{#if auth.isAdmin}
+					<button
+						onclick={newFeeding}
+						class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+					>
+						Add a preset
+					</button>
+				{/if}
+			</div>
+		{:else}
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				{#each feedings as f (f.id)}
+					<div class="group relative flex flex-col overflow-hidden rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600">
+						<div class="flex items-start justify-between gap-2">
+							<div class="min-w-0">
+								<h3 class="truncate font-semibold">{f.name}</h3>
+								{#if f.brand}<p class="truncate text-xs text-rig-500">{f.brand}</p>{/if}
+							</div>
+							<div class="flex shrink-0 items-center gap-1">
+								{#if f.source === 'builtin'}
+									<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[11px] text-rig-300">Built-in</span>
+								{/if}
+								<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[11px] capitalize text-rig-300">
+									{speciesById.get(f.species)?.label ?? f.species}
+								</span>
+							</div>
+						</div>
+						<div class="mt-2 flex flex-wrap gap-1">
+							<span class="rounded bg-rig-800/70 px-1.5 py-0.5 text-[11px] text-rig-300">
+								<span class="text-rig-500">Products:</span> {f.products?.length ?? 0}
+							</span>
+							<span class="rounded bg-rig-800/70 px-1.5 py-0.5 text-[11px] text-rig-300">
+								<span class="text-rig-500">Phases:</span> {f.phases?.length ?? 0}
+							</span>
+							<span class="rounded bg-rig-800/70 px-1.5 py-0.5 text-[11px] text-rig-300">
+								<span class="text-rig-500">Weeks:</span> {weekCount(f)}
+							</span>
+						</div>
+						{#if f.description}<p class="mt-2 line-clamp-2 text-xs text-rig-400">{f.description}</p>{/if}
+						{#if (f.phases ?? []).length}
+							<div class="mt-2 flex flex-wrap gap-1">
+								{#each f.phases as ph (ph.name)}
+									<span class="rounded bg-rig-950 px-1.5 py-0.5 text-[10px] text-rig-400">
+										{ph.name}{ph.weeks?.length ? ` ·${ph.weeks.length}w` : ''}
+									</span>
+								{/each}
+							</div>
+						{/if}
+						{#if auth.isAdmin}
+							<div class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+								<button
+									onclick={() => editFeeding(f)}
+									aria-label={f.source === 'builtin' ? 'Duplicate preset' : 'Edit preset'}
+									class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-rig-100"
+								>
+									{#if f.source === 'builtin'}<Copy size={13} />{:else}<Pencil size={13} />{/if}
+								</button>
+								{#if f.source === 'user'}
+									<button
+										onclick={() => removeFeeding(f)}
+										aria-label="Delete preset"
+										class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-danger"
+									>
+										<Trash2 size={13} />
+									</button>
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
 </div>
 
 {#if auth.isAdmin}
@@ -225,5 +364,11 @@
 		cultivar={editingCultivar}
 		{species}
 		onSaved={refreshCultivars}
+	/>
+	<FeedingPresetFormModal
+		bind:open={feedingModalOpen}
+		preset={editingFeeding}
+		{species}
+		onSaved={refreshFeedings}
 	/>
 {/if}

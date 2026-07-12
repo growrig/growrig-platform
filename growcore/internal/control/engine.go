@@ -32,6 +32,14 @@ type Engine struct {
 	issueStates     map[string]bool
 	lastHealth      domain.ControllerHealth
 
+	// startedAt marks when the control loop began. For settleWindow after that,
+	// engine-generated activities are suppressed (see activity): the state maps
+	// above still update, so the engine re-establishes its baseline silently
+	// instead of logging a restart as a burst of "unavailable → reporting again"
+	// churn. Genuine lifecycle events ("Grow Core started/stopped") are logged
+	// separately by main and bypass this window.
+	startedAt time.Time
+
 	// schedMu guards lightOverrides, which a manual switch (HTTP goroutine) may
 	// write while the control loop reads it.
 	schedMu        sync.Mutex
@@ -44,7 +52,20 @@ func New(st *store.Store, adapter Adapter, onSnapshot func(domain.Snapshot)) *En
 		emergencyStates: map[string]bool{}, issueStates: map[string]bool{}, lightOverrides: map[string]time.Time{}}
 }
 
+// settleWindow is the grace period after start during which transient
+// state-change activities are seeded silently rather than logged, so a normal
+// restart or quit doesn't spew availability churn into the activity log. It
+// must comfortably outlast adapter/Home Assistant reconnection after a restart.
+const settleWindow = 30 * time.Second
+
+// settling reports whether the engine is still within its post-start settle
+// window. During it, activity() drops engine-generated events.
+func (e *Engine) settling() bool {
+	return time.Since(e.startedAt) < settleWindow
+}
+
 func (e *Engine) Run(ctx context.Context, interval time.Duration) {
+	e.startedAt = time.Now()
 	if err := e.step(interval); err != nil {
 		log.Printf("control: initial step: %v", err)
 	}
@@ -430,6 +451,12 @@ func (e *Engine) step(dt time.Duration) error {
 }
 
 func (e *Engine) activity(envID, deviceID, level, eventType, message string) {
+	// Suppress transient churn while settling after start (see startedAt). The
+	// callers still update their state maps, so only genuine post-settle changes
+	// are logged.
+	if e.settling() {
+		return
+	}
 	if err := e.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message}); err != nil {
 		log.Printf("activity: %v", err)
 	}

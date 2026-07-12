@@ -98,6 +98,21 @@ func All() []Species {
 	return loaded
 }
 
+// SourceFS returns the file system the species catalog is read from: the
+// repo-root species/ directory when present (so edits are live in development),
+// otherwise the tree embedded into the binary. Sibling loaders (e.g. feeding
+// schedules under species/<id>/feedings.yaml) reuse this so they resolve the
+// same tree without duplicating the embed or the disk-discovery logic.
+func SourceFS() fs.FS {
+	if dir := diskDir(); dir != "" {
+		return os.DirFS(dir)
+	}
+	if sub, err := fs.Sub(data, "data"); err == nil {
+		return sub
+	}
+	return nil
+}
+
 // Get returns the species with the given id (case-insensitive).
 func Get(id string) (Species, bool) {
 	once.Do(load)

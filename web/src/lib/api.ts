@@ -17,6 +17,9 @@ import type {
 	EnvAccess,
 	EnvPlantsGroup,
 	FanType,
+	FeedingPreset,
+	FeedingProduct,
+	FeedingPhase,
 	GeocodeResult,
 	Grow,
 	GrowDetail,
@@ -358,6 +361,34 @@ export const updateCultivar = (id: string, c: CultivarInput) =>
 export const deleteCultivar = (id: string) =>
 	req(`/api/cultivars/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
+// --- Feeding presets ---
+
+/** Built-in + user feeding presets, optionally filtered to a single species. */
+export const getFeedingPresets = (species?: string) =>
+	json<FeedingPreset[]>(`/api/feedings${species ? `?species=${encodeURIComponent(species)}` : ''}`);
+
+export const getFeedingPreset = (id: string) =>
+	json<FeedingPreset>(`/api/feedings/${id.split('/').map(encodeURIComponent).join('/')}`);
+
+export interface FeedingPresetInput {
+	species: string;
+	name: string;
+	brand: string;
+	description: string;
+	unit: string;
+	products: FeedingProduct[];
+	phases: FeedingPhase[];
+}
+
+export const createFeedingPreset = (p: FeedingPresetInput) =>
+	json<FeedingPreset>('/api/feedings', { method: 'POST', body: JSON.stringify(p) });
+
+export const updateFeedingPreset = (id: string, p: FeedingPresetInput) =>
+	json<FeedingPreset>(`/api/feedings/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(p) });
+
+export const deleteFeedingPreset = (id: string) =>
+	req(`/api/feedings/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
 /** Authenticated same-origin URL for a cultivar's stored image. */
 export const cultivarImageURL = (id: string): string =>
 	authenticatedMediaURL(`/api/cultivars/${encodeURIComponent(id)}/image`);
@@ -421,6 +452,13 @@ export interface ActivityPage {
 	items: Activity[];
 	total: number;
 }
+
+/** Clear the entire activity log (admin). */
+export const clearActivity = () => req('/api/activity', { method: 'DELETE' });
+
+/** Trigger a graceful restart of Grow Core (admin). Under a process supervisor
+ * the service comes back up on its own. */
+export const restartCore = () => req('/api/admin/restart', { method: 'POST' });
 
 export const getActivity = async (
 	opts: { environmentId?: string; growId?: string; levels?: string[]; limit?: number; offset?: number } = {}
