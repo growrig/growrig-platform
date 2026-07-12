@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { getCatalog, getDiscovery, createEnvironment, createBinding } from '$lib/api';
 	import type { CatalogProduct, DiscoveredEntity } from '$lib/types';
@@ -14,6 +15,9 @@
 	let saving = $state(false);
 
 	let name = $state('Lung Room');
+	// Optional site this room belongs to, prefilled from the dashboard's
+	// "Add new Lung Room" action (?location=…).
+	const locationId = page.url.searchParams.get('location') ?? '';
 	let devices = $state<BindingDraft[]>([]);
 	const usedEntities = $derived(new Set(devices.map((d) => d.entity)));
 
@@ -33,6 +37,7 @@
 				name,
 				kind: 'room',
 				airSourceId: '',
+				locationId,
 				targetTempC: 22,
 				targetHumidity: 50,
 				targetCO2: 0,

@@ -1,24 +1,126 @@
 <script lang="ts">
 	import { live } from '$lib/live.svelte';
+	import { auth } from '$lib/auth.svelte';
 	import { climateTone, toneClass, valueNow, vpdZone } from '$lib/format';
-	import { getInfo, getLocations, loadDemo, weather } from '$lib/api';
+	import { createEnvironment, getInfo, getLocations, loadDemo, weather } from '$lib/api';
 	import { onMount } from 'svelte';
 	import type { EnvironmentView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
+	import { Dialog, Select } from '$lib/components/ui';
+	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
+	import EnvironmentDetailsDialog from '$lib/components/EnvironmentDetailsDialog.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Thermometer from '@lucide/svelte/icons/thermometer';
 	import Droplets from '@lucide/svelte/icons/droplets';
 	import Gauge from '@lucide/svelte/icons/gauge';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Pencil from '@lucide/svelte/icons/pencil';
 
 	const snap = $derived(live.snapshot);
 
 	const healthDot = (h: string) =>
 		h === 'online' ? 'bg-leaf' : h === 'stale' ? 'bg-warn' : 'bg-danger';
 
+	// 0,0 is the sentinel for a location saved without coordinates.
+	const hasCoords = (loc: Location) => !(loc.lat === 0 && loc.lon === 0);
+
 	let locations = $state<Location[]>([]);
 	let weatherByLoc = $state<Record<string, Weather>>({});
+	let addingLocation = $state(false);
+
+	// "New Lung Room" modal — a room is just a name plus an optional parent site,
+	// prefilled with the location the user launched it from.
+	let addingRoom = $state(false);
+	let roomName = $state('Lung Room');
+	let roomLocationId = $state('');
+	let savingRoom = $state(false);
+	let roomError = $state('');
+
+	function openAddRoom(locId: string) {
+		roomName = 'Lung Room';
+		roomLocationId = locId;
+		roomError = '';
+		addingRoom = true;
+	}
+
+	async function saveRoom() {
+		if (!roomName.trim()) return;
+		savingRoom = true;
+		roomError = '';
+		try {
+			await createEnvironment({
+				name: roomName.trim(),
+				kind: 'room',
+				airSourceId: '',
+				locationId: roomLocationId,
+				targetTempC: 22,
+				targetHumidity: 50,
+				targetCO2: 0,
+				emergencyTempC: 35,
+				leafTempOffsetC: -2
+			});
+			// The live feed pushes the new room on its next reconciliation tick.
+			addingRoom = false;
+		} catch (e) {
+			roomError = e instanceof Error ? e.message : 'Failed to create room';
+		} finally {
+			savingRoom = false;
+		}
+	}
+
+	const locationItems = $derived([
+		{ value: '__none__', label: 'No location' },
+		...locations.map((l) => ({ value: l.id, label: l.name }))
+	]);
+
+	// "Edit environment" modal — reused from the settings page, opened per grow box.
+	let editEnv = $state<EnvironmentView | null>(null);
+	let envEditOpen = $state(false);
+	const roomEnvs = $derived((snap?.environments ?? []).filter((e) => e.kind === 'room'));
+
+	function openEditEnv(env: EnvironmentView) {
+		editEnv = env;
+		envEditOpen = true;
+	}
+
+	// Refresh the location list so a location added from the edit dialog appears.
+	async function refreshLocations() {
+		try {
+			locations = await getLocations();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	// When set, the location dialog is in edit mode for this site.
+	let editingLocation = $state<Location | null>(null);
+	let editOpen = $state(false);
+
+	function openEditLocation(loc: Location) {
+		editingLocation = loc;
+		editOpen = true;
+	}
+
+	// Refresh the location list after one is created or edited, and refresh
+	// weather so the header strip reflects any coordinate change.
+	async function onLocationSaved() {
+		addingLocation = false;
+		editOpen = false;
+		editingLocation = null;
+		try {
+			locations = await getLocations();
+		} catch {
+			/* ignore */
+		}
+		for (const loc of locations) {
+			if (!hasCoords(loc)) continue;
+			weather(loc.lat, loc.lon)
+				.then((w) => (weatherByLoc = { ...weatherByLoc, [loc.id]: w }))
+				.catch(() => {});
+		}
+	}
 
 	// Effective location per environment, inheriting a tent's air-source room's
 	// location when it has none of its own.
@@ -97,8 +199,9 @@
 		} catch {
 			/* ignore */
 		}
-		// One weather fetch per sited location for the header strip.
+		// One weather fetch per sited location (with coordinates) for the header strip.
 		for (const loc of locations) {
+			if (!hasCoords(loc)) continue;
 			weather(loc.lat, loc.lon)
 				.then((w) => (weatherByLoc = { ...weatherByLoc, [loc.id]: w }))
 				.catch(() => {});
@@ -138,22 +241,37 @@
 
 <!-- Grow box (tent) card — the leaf of the hierarchy. -->
 {#snippet box(env: EnvironmentView)}
-	<a
-		href="/env/{env.id}"
-		class="block rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600"
+	<!-- The whole card links to the env; a full-bleed overlay anchor keeps that
+	     tap target while letting the edit button live outside the anchor. -->
+	<div
+		class="group/box relative rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600"
 	>
-		<div class="mb-3 flex items-center justify-between gap-2">
-			<div class="flex items-center gap-2">
-				<span class="h-2 w-2 rounded-full {healthDot(env.health)}"></span>
-				<h3 class="font-semibold">{env.name}</h3>
+		<a href="/env/{env.id}" class="absolute inset-0 rounded-xl" aria-label="Open {env.name}"></a>
+		<div class="pointer-events-none relative">
+			<div class="mb-3 flex items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<span class="h-2 w-2 rounded-full {healthDot(env.health)}"></span>
+					<h3 class="font-semibold">{env.name}</h3>
+				</div>
+				<div class="flex items-center gap-2">
+					{#if auth.isAdmin}
+						<button
+							onclick={() => openEditEnv(env)}
+							title="Edit details"
+							aria-label="Edit details"
+							class="pointer-events-auto grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/box:opacity-100 hover:border-rig-500 hover:text-rig-100"
+						>
+							<Pencil size={13} />
+						</button>
+					{/if}
+					<span
+						class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400"
+					>
+						{env.kind}
+					</span>
+				</div>
 			</div>
-			<span
-				class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400"
-			>
-				{env.kind}
-			</span>
-		</div>
-		{#if env.hasTemp || env.hasHum || env.hasCO2}
+			{#if env.hasTemp || env.hasHum || env.hasCO2}
 			<div class="flex items-end justify-between">
 				<div>
 					<div
@@ -177,30 +295,51 @@
 					</div>
 				{/if}
 			</div>
-		{:else}
-			<p class="text-sm text-rig-500">no climate sensors yet</p>
-		{/if}
-	</a>
+			{:else}
+				<p class="text-sm text-rig-500">no climate sensors yet</p>
+			{/if}
+		</div>
+	</div>
 {/snippet}
 
 <!-- A room and the grow boxes it feeds air to. -->
 {#snippet roomBlock(node: RoomNode)}
 	<div class="rounded-2xl border border-rig-800 bg-rig-900/20 p-4 sm:p-5">
-		<a href="/env/{node.room.id}" class="group flex items-center justify-between gap-3">
+		<div class="group/roomhead flex items-center justify-between gap-3">
 			<div class="flex items-center gap-2">
 				<span class="h-2 w-2 rounded-full {healthDot(node.room.health)}"></span>
-				<h2 class="font-semibold">{node.room.name}</h2>
+				<a href="/env/{node.room.id}" class="font-semibold hover:text-rig-100">{node.room.name}</a>
 				<span
 					class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400"
 				>
 					{node.room.kind}
 				</span>
+				{#if auth.isAdmin}
+					<span class="ml-1 flex items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/roomhead:opacity-100">
+						<button
+							onclick={() => openEditEnv(node.room)}
+							title="Edit room"
+							aria-label="Edit room"
+							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+						>
+							<Pencil size={13} />
+						</button>
+						<a
+							href="/wizard/box?room={node.room.id}"
+							title="Add new tent"
+							aria-label="Add new tent"
+							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+						>
+							<Plus size={14} />
+						</a>
+					</span>
+				{/if}
 			</div>
-			<div class="flex items-center gap-2 text-rig-500">
+			<a href="/env/{node.room.id}" class="group flex items-center gap-2 text-rig-500">
 				{@render climate(node.room)}
 				<ChevronRight size={16} class="transition-transform group-hover:translate-x-0.5" />
-			</div>
-		</a>
+			</a>
+		</div>
 
 		<div class="mt-4 border-t border-rig-800/70 pt-4">
 			{#if node.boxes.length}
@@ -264,14 +403,35 @@
 	<div class="space-y-10">
 		{#each groups as group (group.key)}
 			<section>
-				<div class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+				<div class="group/loc mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 					<h1
-						class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide {group.located
+						class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide {group.located
 							? 'text-leaf'
 							: 'text-rig-500'}"
 					>
-						<MapPin size={14} />
-						{group.name}
+						<span class="flex items-center gap-1.5"><MapPin size={14} />{group.name}</span>
+						{#if auth.isAdmin}
+							<span
+								class="flex items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/loc:opacity-100"
+							>
+								{#if group.loc}
+									<button
+										onclick={() => group.loc && openEditLocation(group.loc)}
+										title="Edit location"
+										aria-label="Edit location"
+										class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+									>
+										<Pencil size={13} />
+									</button>
+								{/if}
+								<button
+									onclick={() => openAddRoom(group.loc?.id ?? '')}
+									class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100"
+								>
+									<Plus size={12} /> Add lung room
+								</button>
+							</span>
+						{/if}
 					</h1>
 					{#if group.loc && weatherByLoc[group.loc.id]}
 						{@render weatherStrip(weatherByLoc[group.loc.id])}
@@ -288,5 +448,73 @@
 				</div>
 			</section>
 		{/each}
+
+		{#if auth.isAdmin}
+			<div>
+				<button
+					onclick={() => (addingLocation = true)}
+					class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-rig-700 px-3 py-1.5 text-sm text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+				>
+					<Plus size={15} /> Add new location
+				</button>
+			</div>
+		{/if}
 	</div>
+{/if}
+
+{#if auth.isAdmin}
+	<Dialog bind:open={addingLocation} title="Add new location" size="lg">
+		<NewLocationForm onSaved={onLocationSaved} />
+	</Dialog>
+
+	<Dialog bind:open={editOpen} title="Edit location" size="lg">
+		{#if editingLocation}
+			{#key editingLocation.id}
+				<NewLocationForm location={editingLocation} onSaved={onLocationSaved} />
+			{/key}
+		{/if}
+	</Dialog>
+
+	{#if editEnv}
+		<EnvironmentDetailsDialog
+			env={editEnv}
+			rooms={roomEnvs}
+			{locations}
+			bind:open={envEditOpen}
+			onLocationCreated={refreshLocations}
+		/>
+	{/if}
+
+	<Dialog bind:open={addingRoom} title="New Lung Room" size="lg">
+		<div class="space-y-4">
+			<label class="block">
+				<span class="text-sm text-rig-400">Room name</span>
+				<input
+					bind:value={roomName}
+					class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none"
+				/>
+			</label>
+			<label class="block">
+				<span class="text-sm text-rig-400">Location <span class="text-rig-600">(optional)</span></span>
+				<Select
+					items={locationItems}
+					value={roomLocationId || '__none__'}
+					onValueChange={(v) => (roomLocationId = v === '__none__' ? '' : v)}
+					class="mt-1"
+				/>
+			</label>
+			{#if roomError}
+				<p class="text-sm text-danger">{roomError}</p>
+			{/if}
+			<div class="flex justify-end">
+				<button
+					onclick={saveRoom}
+					disabled={savingRoom || !roomName.trim()}
+					class="rounded-md bg-rig-500 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+				>
+					{savingRoom ? 'Creating…' : 'Create room'}
+				</button>
+			</div>
+		</div>
+	</Dialog>
 {/if}

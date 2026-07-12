@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		getCatalog,
@@ -34,6 +35,13 @@
 				getEnvironments(),
 				getPhases()
 			]);
+			// Prefill the air source when launched from a room's "Add new tent"
+			// action (?room=…).
+			const room = page.url.searchParams.get('room');
+			if (room && environments.some((e) => e.id === room && e.kind === 'room')) {
+				airMode = 'link';
+				roomId = room;
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load';
 		}

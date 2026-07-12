@@ -5,11 +5,8 @@
 	import { goto } from '$app/navigation';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { Button, DropdownMenu } from '$lib/components/ui';
+	import { Button } from '$lib/components/ui';
 	import Sprout from '@lucide/svelte/icons/sprout';
-	import Wind from '@lucide/svelte/icons/wind';
-	import Plug from '@lucide/svelte/icons/plug';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shield from '@lucide/svelte/icons/shield';
@@ -67,12 +64,6 @@
 		connecting: { label: 'Connecting', dot: 'bg-warn animate-pulse' },
 		offline: { label: 'Offline', dot: 'bg-danger' }
 	} as const;
-
-	const addItems = [
-		{ href: '/wizard/box', label: 'Grow Box', icon: Sprout },
-		{ href: '/wizard/room', label: 'Lung Room', icon: Wind },
-		{ href: '/wizard/device', label: 'Device', icon: Plug }
-	];
 </script>
 
 {#if isAuthRoute && auth.phase !== 'authed'}
@@ -99,7 +90,7 @@
 					<span class="grid h-7 w-7 place-items-center rounded-md bg-rig-500 text-rig-950">
 						<Sprout size={18} />
 					</span>
-					<span>GrowRig</span>
+					<span>GrowRig Hub</span>
 				</a>
 				<nav class="flex gap-1 text-sm">
 					{#each nav as item (item.href)}
@@ -114,16 +105,6 @@
 					{/each}
 				</nav>
 				<div class="ml-auto flex items-center gap-4">
-					{#if auth.isAdmin}
-						<DropdownMenu
-							items={addItems}
-							triggerClass="flex items-center gap-1 rounded-md bg-rig-500 px-3 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rig-400 focus-visible:ring-offset-2 focus-visible:ring-offset-rig-950"
-						>
-							{#snippet trigger()}
-								Add <ChevronDown size={14} />
-							{/snippet}
-						</DropdownMenu>
-					{/if}
 					<div class="flex items-center gap-2 text-sm text-rig-300">
 						<span class="h-2 w-2 rounded-full {statusMeta[live.status].dot}"></span>
 						{statusMeta[live.status].label}
