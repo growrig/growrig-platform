@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS bindings (
 	airflow_cfm    REAL NOT NULL DEFAULT 0,
 	static_pressure REAL NOT NULL DEFAULT 0,
 	starting_voltage REAL NOT NULL DEFAULT 0,
+	duct_size_inches REAL NOT NULL DEFAULT 0,
+	noise_dba       REAL NOT NULL DEFAULT 0,
+	fan_type        TEXT NOT NULL DEFAULT '',
     created        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_bindings_env ON bindings (environment_id);
@@ -200,6 +203,9 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "airflow_cfm", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "static_pressure", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "starting_voltage", "REAL NOT NULL DEFAULT 0"},
+		{"bindings", "duct_size_inches", "REAL NOT NULL DEFAULT 0"},
+		{"bindings", "noise_dba", "REAL NOT NULL DEFAULT 0"},
+		{"bindings", "fan_type", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "location_id", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "leaf_temp_offset", "REAL NOT NULL DEFAULT -2"},
 	} {
@@ -508,8 +514,8 @@ func (s *Store) DeleteEnvironment(id string) error {
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   device_id=excluded.device_id, device_name=excluded.device_name,
 		   power_controller_id=excluded.power_controller_id,
@@ -517,10 +523,11 @@ func (s *Store) SaveBinding(b domain.Binding) error {
 		   environment_id=excluded.environment_id, kind=excluded.kind, name=excluded.name,
 		   entity=excluded.entity, measurement=excluded.measurement, role=excluded.role,
 		   rpm_entity=excluded.rpm_entity, wattage=excluded.wattage, is_primary=excluded.is_primary,
-		   size_mm=excluded.size_mm, max_rpm=excluded.max_rpm, airflow_cfm=excluded.airflow_cfm,
-		   static_pressure=excluded.static_pressure, starting_voltage=excluded.starting_voltage`,
+		   fan_type=excluded.fan_type, size_mm=excluded.size_mm, max_rpm=excluded.max_rpm, airflow_cfm=excluded.airflow_cfm,
+		   static_pressure=excluded.static_pressure, starting_voltage=excluded.starting_voltage,
+		   duct_size_inches=excluded.duct_size_inches, noise_dba=excluded.noise_dba`,
 		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
-		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, time.Now().UnixNano(),
+		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, time.Now().UnixNano(),
 	)
 	if err != nil {
 		return err
@@ -601,7 +608,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage
+		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -612,7 +619,7 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 		var b domain.Binding
 		var kind, measurement, role string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)

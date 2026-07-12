@@ -1,6 +1,7 @@
 brand: Generic
 model: PC Fan (12V/PWM)
 connection: generic
+fanType: pc
 description: A physical PWM fan. Assign it to a separately installed controller channel.
 fanPresets:
   - id: arctic-p12

@@ -333,11 +333,14 @@ type Binding struct {
 	// Fan/controller only:
 	Role                Role    `json:"role,omitempty"`
 	RPMEntity           string  `json:"rpmEntity,omitempty"`
+	FanType             string  `json:"fanType,omitempty"`
 	SizeMM              int     `json:"sizeMm,omitempty"`
 	MaxRPM              int     `json:"maxRpm,omitempty"`
 	AirflowCFM          float64 `json:"airflowCfm,omitempty"`
 	StaticPressureMMH2O float64 `json:"staticPressureMmH2O,omitempty"`
 	StartingVoltage     float64 `json:"startingVoltage,omitempty"`
+	DuctSizeInches      float64 `json:"ductSizeInches,omitempty"`
+	NoiseDBA            float64 `json:"noiseDba,omitempty"`
 	// Light only:
 	Wattage float64 `json:"wattage,omitempty"` // rated power in watts; 0 = unknown
 	Primary bool    `json:"primary,omitempty"` // the box's main grow light (one per env)

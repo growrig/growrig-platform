@@ -209,7 +209,9 @@ func (e *Engine) step(dt time.Duration) error {
 					displayName = b.Name
 				}
 				cs := domain.ControlState{ID: b.ID, Name: displayName, Kind: domain.KindFan, Role: b.Role, Entity: channel.Entity, MaxRPM: b.MaxRPM}
-				if c.hasTemp {
+				connected := channel.Entity != ""
+				e.issue(env.ID+":fan:"+b.ID, !connected, env.ID, b.DeviceID, displayName+" has no controller channel assigned", displayName+" controller channel is connected")
+				if c.hasTemp && connected {
 					speed := ChannelSpeed(b.Role, env, c.tempC)
 					cs.DesiredSpeed = speed
 					err := e.adapter.SetFan(channel.Entity, speed)

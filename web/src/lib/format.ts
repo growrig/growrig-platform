@@ -1,4 +1,4 @@
-import type { Measurement } from './types';
+import type { Measurement, SeriesPoint } from './types';
 
 export type Tone = 'good' | 'warn' | 'danger' | 'muted';
 
@@ -49,6 +49,23 @@ export function volumeM3(widthCm: number, depthCm: number, heightCm: number): nu
 export function formatDimensions(widthCm: number, depthCm: number, heightCm: number): string {
 	if (widthCm <= 0 || depthCm <= 0 || heightCm <= 0) return '';
 	return `${widthCm} × ${depthCm} × ${heightCm} cm`;
+}
+
+// Value of the hourly series point nearest to now (the Open-Meteo weather
+// feed spans past readings plus forecast); undefined when the series is empty.
+export function valueNow(points: SeriesPoint[] | undefined): number | undefined {
+	if (!points?.length) return undefined;
+	const now = Date.now();
+	let best = points[0];
+	let bestDelta = Infinity;
+	for (const p of points) {
+		const delta = Math.abs(new Date(p.time).getTime() - now);
+		if (delta < bestDelta) {
+			bestDelta = delta;
+			best = p;
+		}
+	}
+	return best.value;
 }
 
 export function climateTone(tempC: number, target: number, emergency: number): Tone {

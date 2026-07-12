@@ -157,11 +157,14 @@ type bindingBody struct {
 	Measurement         domain.Measurement `json:"measurement"`
 	Role                domain.Role        `json:"role"`
 	RPMEntity           string             `json:"rpmEntity"`
+	FanType             string             `json:"fanType"`
 	SizeMM              int                `json:"sizeMm"`
 	MaxRPM              int                `json:"maxRpm"`
 	AirflowCFM          float64            `json:"airflowCfm"`
 	StaticPressureMMH2O float64            `json:"staticPressureMmH2O"`
 	StartingVoltage     float64            `json:"startingVoltage"`
+	DuctSizeInches      float64            `json:"ductSizeInches"`
+	NoiseDBA            float64            `json:"noiseDba"`
 	Wattage             float64            `json:"wattage"`
 	Primary             bool               `json:"primary"`
 }
@@ -310,9 +313,6 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 		}
 	case domain.KindFan:
 		binding.Entity = ""
-		if b.ControllerChannelID == "" {
-			return domain.Binding{}, fmt.Errorf("fan needs a controller channel")
-		}
 		binding.ControllerChannelID = b.ControllerChannelID
 		role := b.Role
 		if role == "" {
@@ -322,11 +322,16 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 			return domain.Binding{}, fmt.Errorf("unknown role %q", role)
 		}
 		binding.Role = role
-		if b.SizeMM < 0 || b.SizeMM > 1000 || b.MaxRPM < 0 || b.MaxRPM > 100000 || b.AirflowCFM < 0 || b.StaticPressureMMH2O < 0 || b.StartingVoltage < 0 || b.StartingVoltage > 48 {
+		if b.FanType != "" && b.FanType != "pc" && b.FanType != "inline" && b.FanType != "other" {
+			return domain.Binding{}, fmt.Errorf("unknown fan type %q", b.FanType)
+		}
+		binding.FanType = b.FanType
+		if b.SizeMM < 0 || b.SizeMM > 1000 || b.MaxRPM < 0 || b.MaxRPM > 100000 || b.AirflowCFM < 0 || b.StaticPressureMMH2O < 0 || b.StartingVoltage < 0 || b.StartingVoltage > 48 || b.DuctSizeInches < 0 || b.DuctSizeInches > 100 || b.NoiseDBA < 0 || b.NoiseDBA > 200 {
 			return domain.Binding{}, fmt.Errorf("fan specifications must be positive and within supported ranges")
 		}
 		binding.SizeMM, binding.MaxRPM, binding.AirflowCFM = b.SizeMM, b.MaxRPM, b.AirflowCFM
 		binding.StaticPressureMMH2O, binding.StartingVoltage = b.StaticPressureMMH2O, b.StartingVoltage
+		binding.DuctSizeInches, binding.NoiseDBA = b.DuctSizeInches, b.NoiseDBA
 	case domain.KindController:
 		role := b.Role
 		if role == "" {

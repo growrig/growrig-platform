@@ -28,11 +28,14 @@
 				entity: binding.entity,
 				role,
 				rpmEntity: binding.rpmEntity,
+				fanType: binding.fanType,
 				sizeMm: binding.sizeMm,
 				maxRpm: binding.maxRpm,
 				airflowCfm: binding.airflowCfm,
 				staticPressureMmH2O: binding.staticPressureMmH2O,
-				startingVoltage: binding.startingVoltage
+				startingVoltage: binding.startingVoltage,
+				ductSizeInches: binding.ductSizeInches,
+				noiseDba: binding.noiseDba
 			});
 			flash('ok', 'Role updated');
 			onChanged();

@@ -1,0 +1,16 @@
+brand: AC Infinity
+model: CLOUDLINE Series Inline Fan
+connection: generic
+fanType: inline
+description: AC Infinity CLOUDLINE duct fans. Assign the fan to a separately installed controller channel.
+fanPresets:
+  - id: cloudline-s6
+    label: AC Infinity CLOUDLINE S6
+    airflowCfm: 402
+    ductSizeInches: 6
+    noiseDba: 32
+provides:
+  - label: Inline fan
+    kind: fan
+    role: exhaust
+    entityDomain: ""

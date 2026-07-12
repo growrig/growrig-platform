@@ -30,6 +30,11 @@
 	const env = $derived(live.snapshot?.environments?.find((e) => e.id === id));
 
 	const fans = $derived(env?.controls?.filter((c) => c.kind === 'fan') ?? []);
+	const fanSections = $derived([
+		{ label: 'Ventilation', fans: fans.filter((fan) => fan.role === 'exhaust' || fan.role === 'intake') },
+		{ label: 'Circulation', fans: fans.filter((fan) => fan.role === 'circulation') },
+		{ label: 'Other fans', fans: fans.filter((fan) => !fan.role || fan.role === 'unassigned') }
+	].filter((section) => section.fans.length > 0));
 	const rpmProgress = (rpm: number, maxRpm?: number) => Math.min(100, Math.max(0, (rpm / (maxRpm || 2500)) * 100));
 	const lights = $derived(env?.controls?.filter((c) => c.kind === 'light') ?? []);
 	// Primary grow light first, then the rest.
@@ -314,12 +319,12 @@
 			</section>
 		{/if}
 
-		<!-- Controls -->
-		{#if fans.length}
+		<!-- Fans grouped by airflow purpose. -->
+		{#each fanSections as fanSection (fanSection.label)}
 			<section>
-				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Controls</h2>
+				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">{fanSection.label}</h2>
 				<div class="grid gap-3 sm:grid-cols-2">
-					{#each fans as fan (fan.id)}
+					{#each fanSection.fans as fan (fan.id)}
 						<div
 							role="button" tabindex="0"
 							onclick={() => openMetric({ kind: 'device', bindingId: fan.id, metric: 'rpm' }, `${fan.name} · speed`, 'rpm')}
@@ -352,7 +357,7 @@
 					{/each}
 				</div>
 			</section>
-		{/if}
+		{/each}
 
 		<!-- Cameras -->
 		{#if env.cameras?.length}

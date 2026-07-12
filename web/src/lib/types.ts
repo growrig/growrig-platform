@@ -7,6 +7,7 @@ export type Measurement = 'temperature' | 'humidity' | 'co2' | 'power';
 export type Health = 'online' | 'stale' | 'offline';
 export type Phase = 'seedling' | 'vegetative' | 'flowering' | 'flush' | 'drying' | 'cure';
 export type Category = 'tent' | 'controller' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
+export type FanType = 'pc' | 'inline' | 'other';
 
 export interface Cycle {
 	environmentId: string;
@@ -52,6 +53,8 @@ export interface FanPreset {
 	airflowCfm?: number;
 	staticPressureMmH2O?: number;
 	startingVoltage?: number;
+	ductSizeInches?: number;
+	noiseDba?: number;
 }
 
 export interface CatalogProduct {
@@ -68,6 +71,7 @@ export interface CatalogProduct {
 	provides?: BindingTemplate[];
 	maxChannels?: number;
 	fanPresets?: FanPreset[];
+	fanType?: FanType;
 }
 
 export interface Location {
@@ -120,11 +124,14 @@ export interface Binding {
 	measurement?: Measurement;
 	role?: Role;
 	rpmEntity?: string;
+	fanType?: FanType;
 	sizeMm?: number;
 	maxRpm?: number;
 	airflowCfm?: number;
 	staticPressureMmH2O?: number;
 	startingVoltage?: number;
+	ductSizeInches?: number;
+	noiseDba?: number;
 	wattage?: number;
 	primary?: boolean;
 }

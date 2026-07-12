@@ -74,6 +74,8 @@ type FanPreset struct {
 	AirflowCFM          float64 `json:"airflowCfm,omitempty" yaml:"airflowCfm,omitempty"`
 	StaticPressureMMH2O float64 `json:"staticPressureMmH2O,omitempty" yaml:"staticPressureMmH2O,omitempty"`
 	StartingVoltage     float64 `json:"startingVoltage,omitempty" yaml:"startingVoltage,omitempty"`
+	DuctSizeInches      float64 `json:"ductSizeInches,omitempty" yaml:"ductSizeInches,omitempty"`
+	NoiseDBA            float64 `json:"noiseDba,omitempty" yaml:"noiseDba,omitempty"`
 }
 
 // Product is a catalog entry.
@@ -91,6 +93,7 @@ type Product struct {
 	Provides      []BindingTemplate `json:"provides,omitempty"`
 	MaxChannels   int               `json:"maxChannels,omitempty"`
 	FanPresets    []FanPreset       `json:"fanPresets,omitempty"`
+	FanType       string            `json:"fanType,omitempty"`
 }
 
 // deviceFile is the on-disk YAML schema for a single device. Category and id
@@ -107,6 +110,7 @@ type deviceFile struct {
 	Provides      []BindingTemplate `yaml:"provides"`
 	MaxChannels   int               `yaml:"maxChannels"`
 	FanPresets    []FanPreset       `yaml:"fanPresets"`
+	FanType       string            `yaml:"fanType"`
 }
 
 // data holds the catalog tree synced from repo-root devices/ by `make build`.
@@ -254,6 +258,7 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 				Provides:      df.Provides,
 				MaxChannels:   df.MaxChannels,
 				FanPresets:    df.FanPresets,
+				FanType:       df.FanType,
 			})
 		}
 	}

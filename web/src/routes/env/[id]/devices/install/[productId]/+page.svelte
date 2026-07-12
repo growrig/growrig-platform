@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { createBinding, getBindings, getCatalog, getDiscovery, updateBinding } from '$lib/api';
-	import type { Binding, BindingTemplate, CatalogProduct, DiscoveredEntity, Role } from '$lib/types';
+	import type { Binding, BindingTemplate, CatalogProduct, DiscoveredEntity, FanType, Role } from '$lib/types';
 	import { Button, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import CheckCircle2 from '@lucide/svelte/icons/circle-check';
@@ -25,11 +25,15 @@
 	let fanRole = $state<Role>('unassigned');
 	let lightWattage = $state(100);
 	let fanPresetId = $state('__custom__');
+	let overrideFanSpecs = $state(false);
+	let fanType = $state<FanType>('other');
 	let fanSizeMm = $state(0);
 	let fanMaxRpm = $state(0);
 	let fanAirflowCfm = $state(0);
 	let fanStaticPressure = $state(0);
 	let fanStartingVoltage = $state(0);
+	let fanDuctSizeInches = $state(0);
+	let fanNoiseDba = $state(0);
 	let loading = $state(true);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -98,6 +102,8 @@
 				fanRole = product.provides?.find((template) => template.kind === 'fan')?.role ?? 'unassigned';
 				const light = product.provides?.find((template) => template.kind === 'light');
 				lightWattage = light?.wattage || 100;
+				fanType = product.fanType ?? 'other';
+				if (product.fanPresets?.length) selectFanPreset(product.fanPresets[0].id);
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Installation data could not be loaded';
@@ -119,7 +125,7 @@
 		return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 	});
 	const uniqueMappings = $derived(new Set(selected.filter(Boolean)).size === selected.filter(Boolean).length && new Set(selectedRPM.filter(Boolean)).size === selectedRPM.filter(Boolean).length);
-	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!(product.provides ?? []).some((template) => template.kind === 'fan') || !!controllerChannelId) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
+	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
 	const detectedName = $derived(discovered.find((entity) => entity.haDeviceId === selectedHADevice)?.deviceName);
 	const lights = $derived(bindings.filter((binding) => binding.environmentId === environmentId && binding.kind === 'light'));
 	const powerControllers = $derived.by(() => {
@@ -130,17 +136,26 @@
 		return [...devices.entries()].map(([id, name]) => ({ id, name }));
 	});
 	const controllerChannels = $derived(bindings.filter((binding) => binding.environmentId === environmentId && binding.kind === 'controller'));
-	const fanPresetItems = $derived([{ value: '__custom__', label: 'Custom specifications' }, ...(product?.fanPresets ?? []).map((preset) => ({ value: preset.id, label: preset.label }))]);
+	const fanPresetItems = $derived([...(product?.fanPresets ?? []).map((preset) => ({ value: preset.id, label: preset.label })), { value: '__custom__', label: 'Custom' }]);
+	const showFanSpecs = $derived(fanPresetId === '__custom__' || overrideFanSpecs);
 	function selectFanPreset(id: string) {
 		fanPresetId = id;
 		const preset = product?.fanPresets?.find((item) => item.id === id);
-		if (!preset) return;
+		if (!preset) {
+			overrideFanSpecs = true;
+			standaloneName = `${product?.brand ?? ''} ${product?.model ?? 'Custom fan'}`.trim();
+			fanSizeMm = fanMaxRpm = fanAirflowCfm = fanStaticPressure = fanStartingVoltage = fanDuctSizeInches = fanNoiseDba = 0;
+			return;
+		}
+		overrideFanSpecs = false;
 		standaloneName = preset.label;
 		fanSizeMm = preset.sizeMm ?? 0;
 		fanMaxRpm = preset.maxRpm ?? 0;
 		fanAirflowCfm = preset.airflowCfm ?? 0;
 		fanStaticPressure = preset.staticPressureMmH2O ?? 0;
 		fanStartingVoltage = preset.startingVoltage ?? 0;
+		fanDuctSizeInches = preset.ductSizeInches ?? 0;
+		fanNoiseDba = preset.noiseDba ?? 0;
 	}
 
 	async function install() {
@@ -162,11 +177,14 @@
 					entity: selected[i] ?? '',
 					measurement: template.measurement,
 					role: template.kind === 'fan' ? fanRole : template.role,
+					fanType: template.kind === 'fan' ? fanType : undefined,
 					sizeMm: template.kind === 'fan' ? fanSizeMm || undefined : undefined,
 					maxRpm: template.kind === 'fan' ? fanMaxRpm || undefined : undefined,
 					airflowCfm: template.kind === 'fan' ? fanAirflowCfm || undefined : undefined,
 					staticPressureMmH2O: template.kind === 'fan' ? fanStaticPressure || undefined : undefined,
 					startingVoltage: template.kind === 'fan' ? fanStartingVoltage || undefined : undefined,
+					ductSizeInches: template.kind === 'fan' ? fanDuctSizeInches || undefined : undefined,
+					noiseDba: template.kind === 'fan' ? fanNoiseDba || undefined : undefined,
 					rpmEntity: template.kind === 'controller' ? selectedRPM[i] || undefined : undefined,
 					wattage: template.kind === 'light' ? lightWattage : template.wattage
 				});
@@ -303,21 +321,28 @@
 			{#if (product.provides ?? []).some((template) => template.kind === 'fan')}
 				{#if product.fanPresets?.length}
 					<label class="mt-4 block"><span class="text-sm text-rig-300">Fan model</span><Select value={fanPresetId} onValueChange={selectFanPreset} items={fanPresetItems} class="mt-1" /></label>
+					{#if fanPresetId !== '__custom__'}
+						<label class="mt-3 flex cursor-pointer items-center gap-2 text-sm text-rig-400"><input type="checkbox" bind:checked={overrideFanSpecs} class="h-4 w-4 accent-green-500" />Override preset specifications</label>
+					{/if}
 				{/if}
+				{#if showFanSpecs}
 				<div class="mt-4 grid gap-3 sm:grid-cols-2">
 					<label><span class="text-sm text-rig-300">Fan size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanSizeMm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mm</span></div></label>
 					<label><span class="text-sm text-rig-300">Maximum speed <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanMaxRpm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">RPM</span></div></label>
 					<label><span class="text-sm text-rig-300">Airflow <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanAirflowCfm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">CFM</span></div></label>
 					<label><span class="text-sm text-rig-300">Static pressure <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.01" bind:value={fanStaticPressure} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-20 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mmH₂O</span></div></label>
 					<label><span class="text-sm text-rig-300">Starting voltage <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" max="48" step="0.1" bind:value={fanStartingVoltage} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">V</span></div></label>
+					<label><span class="text-sm text-rig-300">Duct size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanDuctSizeInches} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">in</span></div></label>
+					<label><span class="text-sm text-rig-300">Noise <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanNoiseDba} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">dBA</span></div></label>
 				</div>
+				{/if}
 				<label class="mt-4 block">
 					<span class="text-sm text-rig-300">Role</span>
 					<Select value={fanRole} onValueChange={(value) => (fanRole = value as Role)} items={[{ value: 'unassigned', label: 'Unassigned' }, { value: 'exhaust', label: 'Exhaust' }, { value: 'intake', label: 'Intake' }, { value: 'circulation', label: 'Circulation' }]} class="mt-1" />
 				</label>
 				<label class="mt-4 block">
-					<span class="text-sm text-rig-300">Controller channel</span>
-					<Select bind:value={controllerChannelId} placeholder="Choose a channel…" items={controllerChannels.map((channel) => ({ value: channel.id, label: `${channel.deviceName} — ${channel.name}` }))} class="mt-1" />
+					<span class="text-sm text-rig-300">Controller channel <span class="text-rig-600">(optional)</span></span>
+					<Select bind:value={controllerChannelId} placeholder="None — assign later" items={controllerChannels.map((channel) => ({ value: channel.id, label: `${channel.deviceName} — ${channel.name}` }))} class="mt-1" />
 				</label>
 			{/if}
 		</section>

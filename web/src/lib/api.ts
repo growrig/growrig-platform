@@ -11,6 +11,7 @@ import type {
 	DiscoveredEntity,
 	Environment,
 	EnvironmentKind,
+	FanType,
 	GeocodeResult,
 	Info,
 	Location,
@@ -154,11 +155,14 @@ export interface BindingInput {
 	measurement?: Measurement;
 	role?: Role;
 	rpmEntity?: string;
+	fanType?: FanType;
 	sizeMm?: number;
 	maxRpm?: number;
 	airflowCfm?: number;
 	staticPressureMmH2O?: number;
 	startingVoltage?: number;
+	ductSizeInches?: number;
+	noiseDba?: number;
 	wattage?: number;
 	primary?: boolean;
 }

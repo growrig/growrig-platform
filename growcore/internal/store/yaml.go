@@ -78,11 +78,14 @@ type capabilityDocument struct {
 	Measurement         domain.Measurement `yaml:"measurement,omitempty"`
 	Role                domain.Role        `yaml:"role,omitempty"`
 	RPMEntity           string             `yaml:"rpmEntity,omitempty"`
+	FanType             string             `yaml:"fanType,omitempty"`
 	SizeMM              int                `yaml:"sizeMm,omitempty"`
 	MaxRPM              int                `yaml:"maxRpm,omitempty"`
 	AirflowCFM          float64            `yaml:"airflowCfm,omitempty"`
 	StaticPressureMMH2O float64            `yaml:"staticPressureMmH2O,omitempty"`
 	StartingVoltage     float64            `yaml:"startingVoltage,omitempty"`
+	DuctSizeInches      float64            `yaml:"ductSizeInches,omitempty"`
+	NoiseDBA            float64            `yaml:"noiseDba,omitempty"`
 	Wattage             float64            `yaml:"wattage,omitempty"`
 	Primary             bool               `yaml:"primary,omitempty"`
 }
@@ -139,7 +142,7 @@ func (s *Store) syncYAMLConfig() error {
 					ID: cap.ID, DeviceID: dev.ID, DeviceName: dev.Name,
 					PowerControllerID: dev.PowerControllerID, ControllerChannelID: dev.ControllerChannelID,
 					EnvironmentID: doc.ID, Kind: cap.Kind, Name: cap.Name, Entity: cap.Entity,
-					Measurement: cap.Measurement, Role: cap.Role, RPMEntity: cap.RPMEntity, SizeMM: cap.SizeMM, MaxRPM: cap.MaxRPM, AirflowCFM: cap.AirflowCFM, StaticPressureMMH2O: cap.StaticPressureMMH2O, StartingVoltage: cap.StartingVoltage,
+					Measurement: cap.Measurement, Role: cap.Role, RPMEntity: cap.RPMEntity, FanType: cap.FanType, SizeMM: cap.SizeMM, MaxRPM: cap.MaxRPM, AirflowCFM: cap.AirflowCFM, StaticPressureMMH2O: cap.StaticPressureMMH2O, StartingVoltage: cap.StartingVoltage, DuctSizeInches: cap.DuctSizeInches, NoiseDBA: cap.NoiseDBA,
 					Wattage: cap.Wattage, Primary: cap.Primary,
 				}
 				if err := s.SaveBinding(b); err != nil {
@@ -191,7 +194,7 @@ func (s *Store) writeEnvironmentConfig(envID string) error {
 		}
 		dev.Capabilities = append(dev.Capabilities, capabilityDocument{
 			ID: b.ID, Kind: b.Kind, Name: b.Name, Entity: b.Entity,
-			Measurement: b.Measurement, Role: b.Role, RPMEntity: b.RPMEntity, SizeMM: b.SizeMM, MaxRPM: b.MaxRPM, AirflowCFM: b.AirflowCFM, StaticPressureMMH2O: b.StaticPressureMMH2O, StartingVoltage: b.StartingVoltage,
+			Measurement: b.Measurement, Role: b.Role, RPMEntity: b.RPMEntity, FanType: b.FanType, SizeMM: b.SizeMM, MaxRPM: b.MaxRPM, AirflowCFM: b.AirflowCFM, StaticPressureMMH2O: b.StaticPressureMMH2O, StartingVoltage: b.StartingVoltage, DuctSizeInches: b.DuctSizeInches, NoiseDBA: b.NoiseDBA,
 			Wattage: b.Wattage, Primary: b.Primary,
 		})
 	}
