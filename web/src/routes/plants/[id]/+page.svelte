@@ -2,9 +2,9 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
-	import { getPlant, getEnvironments, movePlant, repotPlant, updatePlant, harvestPlant, removePlant, getCultivars, cultivarImageURL } from '$lib/api';
-	import type { Environment, PlantView, PlantPot, Cultivar, TrackingMode, PotUnit } from '$lib/types';
-	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName } from '$lib/format';
+	import { getPlant, getGrow, getEnvironments, movePlant, repotPlant, updatePlant, harvestPlant, removePlant, getCultivars, cultivarImageURL } from '$lib/api';
+	import type { Environment, PlantView, PlantDetail, PlantPot, Cultivar, TrackingMode, PotUnit } from '$lib/types';
+	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -22,6 +22,7 @@
 	const isAdmin = $derived(auth.isAdmin);
 
 	let plant = $state<PlantView | null>(null);
+	let growPlants = $state<PlantDetail[]>([]);
 	let environments = $state<Environment[]>([]);
 	let cultivars = $state<Cultivar[]>([]);
 	let err = $state('');
@@ -29,11 +30,18 @@
 
 	// The plant's cultivar record (for its image), resolved by name.
 	const cultivar = $derived(plant ? cultivars.find((c) => c.name === plant!.cultivar) : undefined);
+	const plantNumber = $derived(plant ? plantNumbersById(growPlants).get(plant.id) : undefined);
 
 	async function reload() {
 		if (!id) return;
 		try {
 			plant = await getPlant(id);
+			try {
+				const grow = await getGrow(plant.growId);
+				growPlants = grow.plants;
+			} catch {
+				growPlants = [];
+			}
 			err = '';
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Failed to load plant';
@@ -159,7 +167,7 @@
 	}
 
 	async function harvest() {
-		if (!plant || !confirm(`Harvest ${plantDisplayName(plant)}?`)) return;
+		if (!plant || !confirm(`Harvest ${plantDisplayName(plant, plantNumber)}?`)) return;
 		try {
 			await harvestPlant(plant.id);
 			await reload();
@@ -213,7 +221,7 @@
 				<div>
 				<div class="flex items-center gap-3">
 					<h1 class="text-2xl font-semibold">
-						{plantDisplayName(plant)}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
+						{plantDisplayName(plant, plantNumber)}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
 					</h1>
 					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(plant.status)}">{plant.status}</span>
 				</div>

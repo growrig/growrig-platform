@@ -20,15 +20,50 @@ export function defaultPlantLabel(tracking: TrackingMode = 'individual'): string
 	return tracking === 'group' ? 'Group' : 'Plant';
 }
 
-/** Name shown in lists and headings: cultivar, then custom label, then the default. */
-export function plantDisplayName(p: {
+/** Grouping key for per-grow plant numbering (cultivar, else custom label, else default). */
+export function plantNumberingKey(p: {
 	cultivar?: string;
 	label?: string;
 	tracking?: TrackingMode;
 }): string {
 	if (p.cultivar?.trim()) return p.cultivar.trim();
-	if (p.label?.trim()) return p.label.trim();
+	const label = p.label?.trim();
+	if (label && label !== defaultPlantLabel(p.tracking)) return label;
 	return defaultPlantLabel(p.tracking);
+}
+
+/** Assigns #1, #2, … within each numbering group, ordered by creation time. */
+export function plantNumbersById<
+	T extends { id: string; createdAt: string; cultivar?: string; label?: string; tracking?: TrackingMode }
+>(plants: T[]): Map<string, number> {
+	const sorted = [...plants].sort(
+		(a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+	);
+	const counts = new Map<string, number>();
+	const out = new Map<string, number>();
+	for (const p of sorted) {
+		const key = plantNumberingKey(p);
+		const n = (counts.get(key) ?? 0) + 1;
+		counts.set(key, n);
+		out.set(p.id, n);
+	}
+	return out;
+}
+
+/** Name shown in lists and headings: cultivar, then custom label, then the default. */
+export function plantDisplayName(
+	p: {
+		cultivar?: string;
+		label?: string;
+		tracking?: TrackingMode;
+	},
+	number?: number
+): string {
+	let base: string;
+	if (p.cultivar?.trim()) base = p.cultivar.trim();
+	else if (p.label?.trim()) base = p.label.trim();
+	else base = defaultPlantLabel(p.tracking);
+	return number != null ? `${base} #${number}` : base;
 }
 
 export function formatValue(measurement: Measurement, value: number): string {

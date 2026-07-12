@@ -20,7 +20,7 @@
 		cultivarImageURL
 	} from '$lib/api';
 	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar } from '$lib/types';
-	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName } from '$lib/format';
+	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
@@ -82,6 +82,7 @@
 		return items;
 	}
 	const stageItems = $derived((grow?.stages ?? []).map((s) => ({ value: s, label: titleCase(s) })));
+	const plantNumbers = $derived(plantNumbersById(grow?.plants ?? []));
 
 	let editing = $state(false);
 	let addingPlants = $state(false);
@@ -182,7 +183,7 @@
 	}
 
 	async function harvest(plant: PlantDetail) {
-		if (!confirm(`Harvest ${plantDisplayName(plant)}?`)) return;
+		if (!confirm(`Harvest ${plantDisplayName(plant, plantNumbers.get(plant.id))}?`)) return;
 		try {
 			await harvestPlant(plant.id);
 			await reload();
@@ -191,7 +192,7 @@
 		}
 	}
 	async function discard(plant: PlantDetail) {
-		if (!confirm(`Remove ${plant.label || 'this plant'}?`)) return;
+		if (!confirm(`Remove ${plantDisplayName(plant, plantNumbers.get(plant.id))}?`)) return;
 		try {
 			await removePlant(plant.id);
 			await reload();
@@ -389,7 +390,7 @@
 												{/if}
 											</div>
 											<div class="min-w-0 truncate">
-												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{plantDisplayName(p)}</a>
+												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{plantDisplayName(p, plantNumbers.get(p.id))}</a>
 												{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
 											</div>
 										</div>
