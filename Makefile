@@ -11,6 +11,7 @@
 #   make dev-web                   run the SvelteKit dev server
 #   make build        build the web app, embed it, and produce a single binary
 #   make run          build then run the single binary (simulator)
+#   make addon        cross-compile binaries for the manual HA add-on (addon/growrig)
 #   make test         Go tests + web type-check
 #   make clean        remove build artifacts and local databases
 
@@ -102,6 +103,26 @@ build: embed catalog-embed
 .PHONY: run
 run: build
 	./$(BIN) -config $(CONFIG_SIM)
+
+# --- Home Assistant add-on (manual install) ---
+
+# Cross-compile the arch-matched binaries the local HA add-on ships in bin/.
+# Each is a static (CGO-free) Linux binary with the web UI + catalogue embedded.
+# HA arch -> GOARCH[/GOARM]: aarch64=arm64, amd64=amd64, armv7=arm/7.
+ADDON_DIR = addon/growrig
+ADDON_BIN = $(ADDON_DIR)/bin
+
+.PHONY: addon
+addon: embed catalog-embed
+	@mkdir -p $(ADDON_BIN)
+	@set -e; \
+	for spec in "aarch64 arm64 " "amd64 amd64 " "armv7 arm 7"; do \
+	  set -- $$spec; ha=$$1; goarch=$$2; goarm=$$3; \
+	  echo "building $(ADDON_BIN)/growcore.$$ha (GOARCH=$$goarch GOARM=$$goarm)"; \
+	  (cd growcore && CGO_ENABLED=0 GOOS=linux GOARCH=$$goarch GOARM=$$goarm \
+	    go build -trimpath -ldflags "-s -w" -o ../$(ADDON_BIN)/growcore.$$ha ./cmd/growcore); \
+	done
+	@echo "add-on binaries ready in $(ADDON_BIN)/ — copy $(ADDON_DIR)/ to your HAOS /addons share"
 
 # --- quality ---
 

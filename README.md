@@ -61,6 +61,23 @@ it elsewhere, set `VITE_GROWCORE_URL` (see [`web/.env.example`](web/.env.example
 Open the dashboard, go to **Setup**, and lower the temperature target below the
 current reading — the exhaust fan will ramp up on the dashboard within a second.
 
+## Install on Home Assistant
+
+Grow Core ships as a **local Home Assistant OS add-on** in
+[`addon/growrig/`](addon/growrig/). Build the arch-matched binaries and copy the
+folder onto your HAOS host:
+
+```bash
+make addon        # cross-compiles addon/growrig/bin/growcore.{aarch64,amd64,armv7}
+```
+
+Copy `addon/growrig/` to the `addons` share (`/addons/growrig/`), then in Home
+Assistant open **Settings → Add-ons → Add-on Store → ⋮ → Check for updates** and
+install **GrowRig — Grow Core** from *Local add-ons*. The add-on reaches Home
+Assistant through the Supervisor proxy (no token needed) and serves the
+dashboard on host port `8099` by default. See
+[`addon/growrig/README.md`](addon/growrig/README.md) for details.
+
 ## Configuration
 
 Grow Core is configured with YAML. The same binary runs in three modes,

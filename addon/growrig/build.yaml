@@ -1,0 +1,9 @@
+# Base images for the local add-on build. The Supervisor picks the entry that
+# matches the host architecture and passes it to the Dockerfile as BUILD_FROM.
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+  amd64: ghcr.io/home-assistant/amd64-base:latest
+  armv7: ghcr.io/home-assistant/armv7-base:latest
+labels:
+  org.opencontainers.image.title: "GrowRig — Grow Core"
+  org.opencontainers.image.source: "https://github.com/growrig/growrig-platform"

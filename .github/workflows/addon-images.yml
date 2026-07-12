@@ -1,0 +1,95 @@
+# Build and publish the GrowRig add-on images to GHCR.
+#
+# These per-arch images are what the public `growrig-ha-addons` repository installs
+# (its config.yaml sets `image: ghcr.io/growrig/growcore-{arch}`), so no one has
+# to compile on their Home Assistant device. The same thin Dockerfile used for
+# the local manual install (addon/growrig/) is reused here — CI just runs
+# `make addon` to produce the embedded binaries first, then buildx wraps each
+# one onto the matching Home Assistant base image.
+#
+# Trigger: push a tag like `v0.1.0` (image tag becomes `0.1.0` + `latest`), or
+# run manually via workflow_dispatch with an explicit version.
+name: Publish add-on images
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image tag to publish (e.g. 0.1.0)"
+        required: true
+
+concurrency:
+  group: addon-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: growrig
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Cross-compile embedded binaries
+        run: make addon # -> addon/growrig/bin/growcore.{aarch64,amd64,armv7}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push per-arch images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # HA arch -> buildx platform. The base image is arch-specific, so the
+          # platform must match it (QEMU emulates non-native builds).
+          for entry in "aarch64 linux/arm64" "amd64 linux/amd64" "armv7 linux/arm/v7"; do
+            set -- $entry; ha=$1; platform=$2
+            image="${REGISTRY}/${NAMESPACE}/growcore-${ha}"
+            echo "::group::${image}:${VERSION} (${platform})"
+            docker buildx build \
+              --platform "${platform}" \
+              --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ha}-base:latest" \
+              --build-arg "BUILD_ARCH=${ha}" \
+              --label "org.opencontainers.image.source=https://github.com/${NAMESPACE}/growrig-platform" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --tag "${image}:${VERSION}" \
+              --tag "${image}:latest" \
+              --push \
+              addon/growrig
+            echo "::endgroup::"
+          done

@@ -1,0 +1,35 @@
+# Home Assistant add-on manifest for GrowRig — Grow Core.
+#
+# This add-on ships a prebuilt Grow Core binary (with the Grow App Web UI and
+# device catalogue embedded). It runs inside Home Assistant OS and reaches Home
+# Assistant through the Supervisor proxy, so it needs no long-lived token —
+# `homeassistant_api: true` grants it a per-run Supervisor token.
+#
+# The dashboard + API are served on container port 8080, mapped to host port
+# 8099 by default (change it under the add-on's Network tab). Open it from the
+# add-on page's "OPEN WEB UI" button.
+name: GrowRig — Grow Core
+version: "0.1.0"
+slug: growrig
+description: Grow Core control engine and Grow App Web dashboard for GrowRig.
+url: https://github.com/growrig/growrig-platform
+# Prebuilt binaries are cross-compiled by `make addon` for these HA arches.
+arch:
+  - aarch64
+  - amd64
+  - armv7
+# init: false lets the container CMD (run.sh) run directly instead of the base
+# image's s6 init — the simplest reliable entrypoint for a single binary.
+init: false
+# Grant a Supervisor token + access to the Home Assistant Core API proxy.
+homeassistant_api: true
+host_network: false
+ports:
+  8080/tcp: 8099
+ports_description:
+  8080/tcp: Grow App Web dashboard + REST/WebSocket API
+webui: "http://[HOST]:[PORT:8080/tcp]/"
+options:
+  control_interval: "2s"
+schema:
+  control_interval: str
