@@ -1,7 +1,7 @@
 // Client-side mirror of Grow Core's photoperiod logic (growcore/internal/domain
 // LightSchedule). Used to draw light-ON bands on the timeline — including the
 // projected future, since the schedule is deterministic from wall-clock time.
-import type { LightSchedule, Phase, PhotoperiodDefaults } from './types';
+import type { LightSchedule, StageLightDefaults } from './types';
 
 export interface Interval {
 	start: number; // epoch ms
@@ -23,16 +23,16 @@ function parseHHMM(s: string | undefined): number | null {
 	return h * 60 + mm;
 }
 
-/** Hours of light for the given phase under this schedule. */
+/** Hours of light for the given stage under this schedule. */
 export function effectiveOnHours(
 	sched: LightSchedule,
-	phase: Phase,
-	defaults: PhotoperiodDefaults
+	stage: string,
+	defaults: StageLightDefaults
 ): number {
 	if (sched.mode === 'custom') return clampHours(sched.onHours);
-	const override = sched.phaseOnHours?.[phase];
+	const override = sched.stageOnHours?.[stage];
 	if (override != null) return clampHours(override);
-	return defaults[phase] ?? 18;
+	return defaults[stage] ?? 18;
 }
 
 export interface Transition {
@@ -44,12 +44,12 @@ export interface Transition {
  *  flips (mode off, or an always-on / always-off duration). */
 export function nextTransition(
 	sched: LightSchedule | undefined,
-	phase: Phase,
-	defaults: PhotoperiodDefaults,
+	stage: string,
+	defaults: StageLightDefaults,
 	now: number
 ): Transition | null {
 	if (!sched || sched.mode === 'off') return null;
-	const hours = effectiveOnHours(sched, phase, defaults);
+	const hours = effectiveOnHours(sched, stage, defaults);
 	if (hours <= 0 || hours >= 24) return null;
 	const onAt = parseHHMM(sched.lightsOnAt);
 	if (onAt == null) return null;
@@ -70,13 +70,13 @@ export function nextTransition(
 /** Light-ON intervals intersecting [start, end], per the current schedule. */
 export function lightIntervals(
 	sched: LightSchedule | undefined,
-	phase: Phase,
-	defaults: PhotoperiodDefaults,
+	stage: string,
+	defaults: StageLightDefaults,
 	start: number,
 	end: number
 ): Interval[] {
 	if (!sched || sched.mode === 'off') return [];
-	const hours = effectiveOnHours(sched, phase, defaults);
+	const hours = effectiveOnHours(sched, stage, defaults);
 	if (hours <= 0) return [];
 	if (hours >= 24) return [{ start, end }];
 	const onAt = parseHHMM(sched.lightsOnAt);

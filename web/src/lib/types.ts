@@ -5,18 +5,108 @@ export type EnvironmentKind = 'tent' | 'room';
 export type BindingKind = 'sensor' | 'fan' | 'controller' | 'light' | 'power' | 'camera';
 export type Measurement = 'temperature' | 'humidity' | 'co2' | 'power';
 export type Health = 'online' | 'stale' | 'offline';
-export type Phase = 'seedling' | 'vegetative' | 'flowering' | 'flush' | 'drying' | 'cure';
 export type Category = 'tent' | 'controller' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
 export type FanType = 'pc' | 'inline' | 'other';
+export type CameraType = 'mjpeg' | 'snapshot';
 
-export interface Cycle {
-	environmentId: string;
-	strain: string;
+// --- Cultivation layer (grows, plant units, placements) ---
+
+export type GrowStatus = 'active' | 'completed' | 'archived';
+export type TrackingMode = 'individual' | 'group';
+export type PlantStatus = 'active' | 'harvested' | 'removed' | 'archived';
+
+export interface Grow {
+	id: string;
+	name: string;
+	/** A predefined crop family; drives the stage sequence. */
+	species: string;
+	/** Current stage name (one of `stages`). */
+	stage: string;
+	/** Ordered stage sequence, derived from `species`. */
+	stages: string[];
 	startedAt: string;
-	phase: Phase;
-	phaseStarted: string;
+	stageStarted: string;
+	status: GrowStatus;
 	notes: string;
 }
+
+export interface PlantUnit {
+	id: string;
+	growId: string;
+	label: string;
+	/** Cultivar is per-unit, so one grow can mix cultivars. */
+	cultivar: string;
+	tracking: TrackingMode;
+	quantity: number;
+	status: PlantStatus;
+	createdAt: string;
+}
+
+export interface PlantPlacement {
+	id: string;
+	plantUnitId: string;
+	environmentId: string;
+	startedAt: string;
+	endedAt?: string; // absent = current
+	position?: string;
+}
+
+export interface GrowEnvRef {
+	id: string;
+	name: string;
+}
+
+/** Compact live view of an environment's control grow. */
+export interface GrowSummary {
+	id: string;
+	name: string;
+	species: string;
+	stage: string;
+	stageDays: number;
+	totalDays: number;
+	plantCount: number;
+}
+
+/** Dashboard "Active Grows" view: a grow plus derived counts and locations. */
+export interface GrowView extends Grow {
+	stageDays: number;
+	totalDays: number;
+	plantCount: number;
+	environments: GrowEnvRef[];
+}
+
+export interface PlacementView extends PlantPlacement {
+	environmentName: string;
+}
+
+export interface PlantDetail extends PlantUnit {
+	currentEnvironmentId: string;
+	currentEnvironmentName: string;
+	placements: PlacementView[];
+}
+
+export interface PlantView extends PlantUnit {
+	growName: string;
+	currentEnvironmentId: string;
+	currentEnvironmentName: string;
+	placements: PlacementView[];
+}
+
+export interface GrowDetail extends Grow {
+	stageDays: number;
+	totalDays: number;
+	plantCount: number;
+	plants: PlantDetail[];
+}
+
+/** Current occupants of an environment, grouped by grow. */
+export interface EnvPlantsGroup {
+	grow: Grow;
+	units: PlantUnit[];
+}
+
+/** Built-in editable stage sequences per crop family (GET /api/stage-presets). */
+export type StagePresets = Record<string, string[]>;
 
 export type LightScheduleMode = 'off' | 'phase' | 'custom';
 
@@ -27,12 +117,12 @@ export interface LightSchedule {
 	lightsOnAt: string;
 	/** On-duration used in custom mode. */
 	onHours: number;
-	/** Per-phase on-hour overrides for phase mode; phases absent use defaults. */
-	phaseOnHours: Partial<Record<Phase, number>>;
+	/** Per-stage on-hour overrides for phase mode; stages absent use defaults. */
+	stageOnHours: Record<string, number>;
 }
 
-/** Recommended hours of light per phase (from GET /api/lighting/defaults). */
-export type PhotoperiodDefaults = Partial<Record<Phase, number>>;
+/** Recommended hours of light per known stage (GET /api/lighting/defaults). */
+export type StageLightDefaults = Record<string, number>;
 
 export interface BindingTemplate {
 	label: string;
@@ -105,6 +195,7 @@ export interface Environment {
 	kind: EnvironmentKind;
 	airSourceId: string;
 	locationId: string;
+	controlGrowId: string;
 	model: string;
 	widthCm: number;
 	depthCm: number;
@@ -139,6 +230,8 @@ export interface Binding {
 	noiseDba?: number;
 	wattage?: number;
 	primary?: boolean;
+	streamUrl?: string;
+	cameraType?: CameraType;
 }
 
 export interface DiscoveredEntity {
@@ -182,7 +275,10 @@ export interface ControlState {
 export interface CameraRef {
 	id: string;
 	name: string;
-	entity: string;
+	entity?: string;
+	/** Generic (non-Home-Assistant) camera stream. */
+	streamUrl?: string;
+	cameraType?: CameraType;
 }
 
 export interface AirSourceView {
@@ -208,13 +304,14 @@ export interface EnvironmentView extends Environment {
 	controls: ControlState[];
 	cameras: CameraRef[];
 	airSource?: AirSourceView;
-	cycle?: Cycle;
+	grow?: GrowSummary;
 	schedule?: LightSchedule;
 }
 
 export interface Snapshot {
 	time: string;
 	environments: EnvironmentView[];
+	grows: GrowView[];
 }
 
 export interface Reading {

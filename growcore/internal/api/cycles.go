@@ -10,59 +10,6 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/sim"
 )
 
-type cycleBody struct {
-	Strain    string       `json:"strain"`
-	StartedAt string       `json:"startedAt"` // RFC3339 or YYYY-MM-DD; empty = now
-	Phase     domain.Phase `json:"phase"`
-	Notes     string       `json:"notes"`
-}
-
-func (s *Server) putCycle(w http.ResponseWriter, r *http.Request) {
-	var b cycleBody
-	if err := decode(r, &b); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	if !validPhase(b.Phase) {
-		writeJSON(w, http.StatusBadRequest, errBody("unknown phase"))
-		return
-	}
-	envs, err := s.store.Environments()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	id := r.PathValue("id")
-	if !containsEnv(envs, id) {
-		writeJSON(w, http.StatusNotFound, errBody("environment not found"))
-		return
-	}
-	cycle := domain.Cycle{
-		EnvironmentID: id,
-		Strain:        b.Strain,
-		StartedAt:     parseDate(b.StartedAt),
-		Phase:         b.Phase,
-		PhaseStarted:  time.Now(),
-		Notes:         b.Notes,
-	}
-	if err := s.store.SaveCycle(cycle); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	s.activity(id, "", "info", "configuration", "Started or updated grow cycle for "+cycle.Strain)
-	writeJSON(w, http.StatusOK, cycle)
-}
-
-func (s *Server) deleteCycle(w http.ResponseWriter, r *http.Request) {
-	envID := r.PathValue("id")
-	if err := s.store.DeleteCycle(envID); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	s.activity(envID, "", "info", "configuration", "Ended grow cycle")
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // postDemo seeds the simulator's demo tent + lung room into an empty database,
 // so users can explore the app instantly. Only valid in simulator mode.
 func (s *Server) postDemo(w http.ResponseWriter, r *http.Request) {
@@ -92,12 +39,36 @@ func (s *Server) postDemo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A sample cycle so the demo shows the full picture.
-	_ = s.store.SaveCycle(domain.Cycle{
-		EnvironmentID: sim.TentID, Strain: "Demo Kush",
-		StartedAt: time.Now().AddDate(0, 0, -21), Phase: domain.PhaseVegetative, PhaseStarted: time.Now().AddDate(0, 0, -7),
-	})
+	// A sample grow with a few plants placed in the tent, nominated as its
+	// control grow, so the demo shows the full cultivation picture.
+	grow := domain.Grow{
+		ID: id("Demo Kush", "grow"), Name: "Demo Kush", Species: "cannabis",
+		Stage: "vegetative", Stages: domain.StagePresets["cannabis"],
+		StartedAt: time.Now().AddDate(0, 0, -21), StageStarted: time.Now().AddDate(0, 0, -7),
+		Status: domain.GrowActive,
+	}
+	if err := s.store.SaveGrow(grow); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if _, err := s.store.BulkCreatePlants(grow.ID, 4, domain.TrackIndividual, 1, "Plant", "Demo Kush", sim.TentID, grow.StartedAt); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if env, ok := findEnvByID(demoEnvs, sim.TentID); ok {
+		env.ControlGrowID = grow.ID
+		_ = s.store.SaveEnvironment(env)
+	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+func findEnvByID(envs []domain.Environment, id string) (domain.Environment, bool) {
+	for _, e := range envs {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return domain.Environment{}, false
 }
 
 func (s *Server) getSchedule(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +84,7 @@ type scheduleBody struct {
 	Mode         domain.LightScheduleMode `json:"mode"`
 	LightsOnAt   string                   `json:"lightsOnAt"`
 	OnHours      float64                  `json:"onHours"`
-	PhaseOnHours map[domain.Phase]float64 `json:"phaseOnHours"`
+	StageOnHours map[string]float64       `json:"stageOnHours"`
 }
 
 func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
@@ -140,10 +111,10 @@ func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errBody("environment not found"))
 		return
 	}
-	phaseOn := map[domain.Phase]float64{}
-	for p, h := range b.PhaseOnHours {
-		if validPhase(p) {
-			phaseOn[p] = h
+	stageOn := map[string]float64{}
+	for stage, h := range b.StageOnHours {
+		if strings.TrimSpace(stage) != "" {
+			stageOn[stage] = h
 		}
 	}
 	onAt := strings.TrimSpace(b.LightsOnAt)
@@ -155,7 +126,7 @@ func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
 		Mode:          b.Mode,
 		LightsOnAt:    onAt,
 		OnHours:       b.OnHours,
-		PhaseOnHours:  phaseOn,
+		StageOnHours:  stageOn,
 	}
 	if err := s.store.SaveLightSchedule(sched); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -166,9 +137,9 @@ func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 // getLightingDefaults returns the recommended photoperiod (hours of light) for
-// each grow phase, used to seed the schedule editor.
+// known growth stages, used to seed the schedule editor.
 func (s *Server) getLightingDefaults(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, domain.PhotoperiodDefaults)
+	writeJSON(w, http.StatusOK, domain.DefaultStageLightHours)
 }
 
 func validScheduleMode(m domain.LightScheduleMode) bool {
@@ -186,15 +157,6 @@ func validHHMM(s string) bool {
 		return false
 	}
 	return h >= 0 && h <= 23 && m >= 0 && m <= 59
-}
-
-func validPhase(p domain.Phase) bool {
-	for _, x := range domain.AllPhases {
-		if x == p {
-			return true
-		}
-	}
-	return false
 }
 
 // parseDate accepts RFC3339 or YYYY-MM-DD, defaulting to now.

@@ -73,3 +73,25 @@ export function climateTone(tempC: number, target: number, emergency: number): T
 	if (tempC - target >= 2) return 'warn';
 	return 'good';
 }
+
+// Whole days between an ISO timestamp and now, floored at 0.
+export function daysSince(iso?: string): number {
+	if (!iso) return 0;
+	return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+}
+
+// A short relative duration for a millisecond span, e.g. "2h 5m" or "now".
+export function relTime(ms: number): string {
+	const min = Math.max(0, Math.round(ms / 60_000));
+	const h = Math.floor(min / 60);
+	const m = min % 60;
+	if (min < 1) return 'now';
+	if (h === 0) return `${m}m`;
+	if (m === 0) return `${h}h`;
+	return `${h}h ${m}m`;
+}
+
+// Title-case a stage/species token for display.
+export function titleCase(s: string): string {
+	return s ? s[0].toUpperCase() + s.slice(1) : s;
+}

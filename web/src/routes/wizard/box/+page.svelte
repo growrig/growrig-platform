@@ -6,13 +6,14 @@
 		getCatalog,
 		getDiscovery,
 		getEnvironments,
-		getPhases,
+		getStagePresets,
 		createEnvironment,
 		updateEnvironment,
 		createBinding,
-		setCycle
+		createGrow,
+		setControlGrow
 	} from '$lib/api';
-	import type { CatalogProduct, DiscoveredEntity, Environment, Phase } from '$lib/types';
+	import type { CatalogProduct, DiscoveredEntity, Environment, StagePresets } from '$lib/types';
 	import { volumeM3 } from '$lib/format';
 	import CatalogDevicePicker, { type BindingDraft } from '$lib/components/CatalogDevicePicker.svelte';
 	import KindIcon from '$lib/components/KindIcon.svelte';
@@ -23,17 +24,17 @@
 	let catalog = $state<CatalogProduct[]>([]);
 	let discovered = $state<DiscoveredEntity[]>([]);
 	let environments = $state<Environment[]>([]);
-	let phases = $state<Phase[]>([]);
+	let presets = $state<StagePresets>({});
 	let error = $state<string | null>(null);
 	let saving = $state(false);
 
 	onMount(async () => {
 		try {
-			[catalog, discovered, environments, phases] = await Promise.all([
+			[catalog, discovered, environments, presets] = await Promise.all([
 				getCatalog(),
 				getDiscovery(),
 				getEnvironments(),
-				getPhases()
+				getStagePresets()
 			]);
 			// Prefill the air source when launched from a room's "Add new tent"
 			// action (?room=…).
@@ -47,7 +48,7 @@
 		}
 	});
 
-	const steps = ['Box', 'Climate', 'Devices', 'Air source', 'Cycle'];
+	const steps = ['Box', 'Climate', 'Devices', 'Air source', 'Grow'];
 	let step = $state(0);
 
 	// Draft
@@ -65,9 +66,12 @@
 	let airMode = $state<'none' | 'create' | 'link'>('none');
 	let roomName = $state('Lung Room');
 	let roomId = $state('');
-	let strain = $state('');
+	let growName = $state('');
+	let species = $state('');
 	let startDate = $state(new Date().toISOString().slice(0, 10));
-	let phase = $state<Phase>('vegetative');
+	// Stage sequence is derived from the chosen (predefined) species. Cultivar is
+	// tracked per plant, so it isn't set here.
+	const growStages = $derived(presets[species.trim().toLowerCase()] ?? []);
 
 	// Flatten every tent driver's products into concrete selectable models.
 	const tentModels = $derived(
@@ -132,8 +136,14 @@
 				await createBinding({ environmentId: tent.id, ...d });
 			}
 
-			if (strain.trim()) {
-				await setCycle(tent.id, { strain, startedAt: startDate, phase, notes: '' });
+			if (growName.trim() && species) {
+				const grow = await createGrow({
+					name: growName.trim(),
+					species,
+					startedAt: startDate,
+					notes: ''
+				});
+				await setControlGrow(tent.id, grow.id);
 			}
 
 			await goto(`/env/${tent.id}`);
@@ -254,21 +264,29 @@
 			</div>
 		{:else if step === 4}
 			<div class="space-y-4">
-				<p class="text-sm text-rig-400">Start a grow cycle now, or leave the strain blank to skip.</p>
+				<p class="text-sm text-rig-400">Start a grow now and make it this tent's control grow, or leave the name blank to skip.</p>
 				<label class="block">
-					<span class="text-sm text-rig-400">Strain</span>
-					<input bind:value={strain} placeholder="e.g. Blue Dream" class="{field} mt-1" />
+					<span class="text-sm text-rig-400">Grow name</span>
+					<input bind:value={growName} placeholder="e.g. Summer tomatoes" class="{field} mt-1" />
 				</label>
 				<div class="grid gap-4 sm:grid-cols-2">
+					<label class="block">
+						<span class="text-sm text-rig-400">Species</span>
+						<select bind:value={species} class="{field} mt-1 capitalize">
+							<option value="">Select a species…</option>
+							{#each Object.keys(presets) as k (k)}<option value={k} class="capitalize">{k}</option>{/each}
+						</select>
+					</label>
 					<label class="block">
 						<span class="text-sm text-rig-400">Start date</span>
 						<input type="date" bind:value={startDate} class="{field} mt-1" />
 					</label>
-					<label class="block">
-						<span class="text-sm text-rig-400">Phase</span>
-						<Select value={phase} onValueChange={(value) => (phase = value as Phase)} items={phases.map((p) => ({ value: p, label: p[0].toUpperCase() + p.slice(1) }))} class="mt-1" />
-					</label>
 				</div>
+				{#if growStages.length}
+					<p class="text-xs text-rig-500">Stages: {growStages.join(' → ')} · set automatically from the species. Cultivar is set per plant.</p>
+				{:else if growName.trim()}
+					<p class="text-xs text-warn">Pick a species to start the grow.</p>
+				{/if}
 			</div>
 		{/if}
 	</div>

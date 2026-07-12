@@ -3,8 +3,9 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { createBinding, getBindings, getCatalog, getDiscovery, updateBinding } from '$lib/api';
-	import type { Binding, BindingTemplate, CatalogProduct, DiscoveredEntity, FanType, Role } from '$lib/types';
+	import type { Binding, BindingTemplate, CameraType, CatalogProduct, DiscoveredEntity, FanType, Role } from '$lib/types';
 	import { Button, Select } from '$lib/components/ui';
+	import CameraPreview from '$lib/components/CameraPreview.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import CheckCircle2 from '@lucide/svelte/icons/circle-check';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
@@ -34,6 +35,8 @@
 	let fanStartingVoltage = $state(0);
 	let fanDuctSizeInches = $state(0);
 	let fanNoiseDba = $state(0);
+	let cameraStreamUrl = $state('');
+	let cameraType = $state<CameraType>('snapshot');
 	let loading = $state(true);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -125,7 +128,11 @@
 		return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 	});
 	const uniqueMappings = $derived(new Set(selected.filter(Boolean)).size === selected.filter(Boolean).length && new Set(selectedRPM.filter(Boolean)).size === selectedRPM.filter(Boolean).length);
-	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
+	// A generic camera (a camera product without a Home Assistant integration)
+	// streams from a URL the grower supplies here, instead of an HA entity.
+	const isGenericCamera = $derived(!!product && !product.haIntegration && (product.provides ?? []).some((template) => template.kind === 'camera'));
+	const cameraUrlValid = $derived(/^https?:\/\//.test(cameraStreamUrl.trim()));
+	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!isGenericCamera || cameraUrlValid) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
 	const detectedName = $derived(discovered.find((entity) => entity.haDeviceId === selectedHADevice)?.deviceName);
 	const lights = $derived(bindings.filter((binding) => binding.environmentId === environmentId && binding.kind === 'light'));
 	const powerControllers = $derived.by(() => {
@@ -175,7 +182,7 @@
 					controllerChannelId: template.kind === 'fan' ? controllerChannelId : undefined,
 					environmentId: environmentId!,
 					kind: template.kind,
-					name: template.kind === 'light' ? deviceName : template.label,
+					name: template.kind === 'light' || template.kind === 'camera' ? deviceName : template.label,
 					entity: selected[i] ?? '',
 					measurement: template.measurement,
 					role: template.kind === 'fan' ? fanRole : template.role,
@@ -188,7 +195,9 @@
 					ductSizeInches: template.kind === 'fan' ? fanDuctSizeInches || undefined : undefined,
 					noiseDba: template.kind === 'fan' ? fanNoiseDba || undefined : undefined,
 					rpmEntity: template.kind === 'controller' ? selectedRPM[i] || undefined : undefined,
-					wattage: template.kind === 'light' ? lightWattage : template.wattage
+					wattage: template.kind === 'light' ? lightWattage : template.wattage,
+					streamUrl: template.kind === 'camera' && isGenericCamera ? cameraStreamUrl.trim() : undefined,
+					cameraType: template.kind === 'camera' && isGenericCamera ? cameraType : undefined
 				});
 			}
 			if (assignedLightId) {
@@ -305,6 +314,23 @@
 				<span class="text-sm text-rig-300">Name</span>
 				<input bind:value={standaloneName} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-rig-500 focus:outline-none" />
 			</label>
+			{#if isGenericCamera}
+				<label class="mt-4 block">
+					<span class="text-sm text-rig-300">Stream URL</span>
+					<input bind:value={cameraStreamUrl} placeholder="http://192.168.1.50/snapshot.jpg" class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 font-mono text-xs focus:border-rig-500 focus:outline-none" />
+					<span class="mt-1 block text-xs text-rig-500">An MJPEG stream or a JPEG snapshot URL. The browser renders it directly — RTSP is not supported.</span>
+				</label>
+				<label class="mt-4 block">
+					<span class="text-sm text-rig-300">Stream type</span>
+					<Select value={cameraType} onValueChange={(value) => (cameraType = value as CameraType)} items={[{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' }, { value: 'mjpeg', label: 'MJPEG stream' }]} class="mt-1" />
+				</label>
+				{#if cameraUrlValid}
+					<div class="mt-4">
+						<span class="text-sm text-rig-300">Preview</span>
+						<div class="mt-1 max-w-sm"><CameraPreview url={cameraStreamUrl.trim()} type={cameraType} /></div>
+					</div>
+				{/if}
+			{/if}
 			{#if (product.provides ?? []).some((template) => template.kind === 'light')}
 				{#if product.products?.length}
 					<label class="mt-4 block"><span class="text-sm text-rig-300">Light model</span><Select value={productVariantId} onValueChange={selectVariant} items={productVariantItems} class="mt-1" /></label>

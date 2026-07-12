@@ -167,6 +167,8 @@ type bindingBody struct {
 	NoiseDBA            float64            `json:"noiseDba"`
 	Wattage             float64            `json:"wattage"`
 	Primary             bool               `json:"primary"`
+	StreamURL           string             `json:"streamUrl"`
+	CameraType          string             `json:"cameraType"`
 }
 
 func (s *Server) createBinding(w http.ResponseWriter, r *http.Request) {
@@ -272,7 +274,10 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	if strings.TrimSpace(b.Name) == "" {
 		return domain.Binding{}, fmt.Errorf("name is required")
 	}
-	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan {
+	// Entity is required except for fixtures (lights), fans, and generic cameras
+	// that supply a stream URL instead of a Home Assistant entity.
+	genericCamera := b.Kind == domain.KindCamera && strings.TrimSpace(b.StreamURL) != ""
+	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan && !genericCamera {
 		return domain.Binding{}, fmt.Errorf("entity is required")
 	}
 	envs, err := s.store.Environments()
@@ -352,7 +357,19 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	case domain.KindPower:
 		// A switchable power controller capability.
 	case domain.KindCamera:
-		// no extra fields
+		// A generic camera streams from a URL instead of a Home Assistant entity.
+		if url := strings.TrimSpace(b.StreamURL); url != "" {
+			if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+				return domain.Binding{}, fmt.Errorf("camera stream URL must start with http:// or https://")
+			}
+			ct := domain.CameraType(b.CameraType)
+			if ct != domain.CameraMJPEG && ct != domain.CameraSnapshot {
+				return domain.Binding{}, fmt.Errorf("camera type must be %q or %q", domain.CameraMJPEG, domain.CameraSnapshot)
+			}
+			binding.StreamURL = url
+			binding.CameraType = ct
+			binding.Entity = "" // generic cameras never bind to Home Assistant
+		}
 	default:
 		return domain.Binding{}, fmt.Errorf("unknown binding kind %q", b.Kind)
 	}

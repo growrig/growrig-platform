@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { climateTone, toneClass, valueNow, vpdZone } from '$lib/format';
+	import { climateTone, titleCase, toneClass, valueNow, vpdZone } from '$lib/format';
 	import { createEnvironment, getInfo, getLocations, loadDemo, weather } from '$lib/api';
 	import { onMount } from 'svelte';
-	import type { EnvironmentView, Location, Weather } from '$lib/types';
+	import type { EnvironmentView, GrowView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
 	import { Dialog, Select } from '$lib/components/ui';
 	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
@@ -185,6 +185,7 @@
 	});
 
 	const hasEnvs = $derived((snap?.environments ?? []).length > 0);
+	const activeGrows = $derived((snap?.grows ?? []).filter((g) => g.status === 'active'));
 
 	let isSimulator = $state(false);
 	let loadingDemo = $state(false);
@@ -353,6 +354,32 @@
 	</div>
 {/snippet}
 
+<!-- Active grow card for the dashboard's Active Grows section. -->
+{#snippet growCard(g: GrowView)}
+	<a
+		href="/grows/{g.id}"
+		class="block rounded-xl border border-rig-800 bg-rig-900/50 p-4 transition-colors hover:border-rig-600"
+	>
+		<div class="mb-2 flex items-center justify-between gap-2">
+			<h3 class="font-semibold">{g.name}</h3>
+			<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">{g.stage || '—'}</span>
+		</div>
+		<div class="flex items-center justify-between text-sm text-rig-400">
+			<span>{titleCase(g.species) || 'No species set'}</span>
+			<span class="tabular-nums">day {g.totalDays}</span>
+		</div>
+		<div class="mt-2 flex items-center gap-3 text-xs text-rig-500">
+			<span class="inline-flex items-center gap-1"><Sprout size={12} /> {g.plantCount} plants</span>
+			<span>·</span>
+			<span>{g.stageDays}d in {g.stage}</span>
+			{#if g.environments.length}
+				<span>·</span>
+				<span class="inline-flex items-center gap-1"><MapPin size={11} /> {g.environments.map((e) => e.name).join(', ')}</span>
+			{/if}
+		</div>
+	</a>
+{/snippet}
+
 <!-- Outdoor weather strip for a located site. -->
 {#snippet weatherStrip(w: Weather)}
 	{@const t = valueNow(w.temp)}
@@ -448,6 +475,25 @@
 				</div>
 			</section>
 		{/each}
+
+		<!-- Active Grows — the cultivation layer, below the physical locations. -->
+		<section>
+			<div class="mb-4 flex items-center justify-between gap-4">
+				<h1 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-leaf">
+					<Sprout size={14} /> Active Grows
+				</h1>
+				<a href="/grows" class="text-xs text-rig-500 hover:text-leaf">Manage grows</a>
+			</div>
+			{#if activeGrows.length}
+				<div class="grid gap-3 sm:grid-cols-2">
+					{#each activeGrows as g (g.id)}{@render growCard(g)}{/each}
+				</div>
+			{:else}
+				<div class="rounded-xl border border-dashed border-rig-800 p-6 text-center text-sm text-rig-500">
+					No active grows. <a href="/grows" class="text-leaf hover:underline">Start a grow</a> to track plants across your environments.
+				</div>
+			{/if}
+		</section>
 
 		{#if auth.isAdmin}
 			<div>

@@ -5,7 +5,9 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,8 +85,40 @@ CREATE TABLE IF NOT EXISTS light_schedules (
     mode           TEXT NOT NULL DEFAULT 'off',
     lights_on_at   TEXT NOT NULL DEFAULT '06:00',
     on_hours       REAL NOT NULL DEFAULT 18,
-    phase_on_hours TEXT NOT NULL DEFAULT '{}'
+    phase_on_hours TEXT NOT NULL DEFAULT '{}' -- JSON map keyed by stage name
 );
+CREATE TABLE IF NOT EXISTS grows (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL DEFAULT '',
+    species       TEXT NOT NULL DEFAULT '',
+    stage         TEXT NOT NULL DEFAULT '',
+    stages        TEXT NOT NULL DEFAULT '[]', -- JSON array of stage names
+    started_at    INTEGER NOT NULL DEFAULT 0,
+    stage_started INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'active',
+    notes         TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS plant_units (
+    id         TEXT PRIMARY KEY,
+    grow_id    TEXT NOT NULL,
+    label      TEXT NOT NULL DEFAULT '',
+    cultivar   TEXT NOT NULL DEFAULT '',
+    tracking   TEXT NOT NULL DEFAULT 'group',
+    quantity   INTEGER NOT NULL DEFAULT 1,
+    status     TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_plant_units_grow ON plant_units (grow_id);
+CREATE TABLE IF NOT EXISTS plant_placements (
+    id             TEXT PRIMARY KEY,
+    plant_unit_id  TEXT NOT NULL,
+    environment_id TEXT NOT NULL,
+    started_at     INTEGER NOT NULL DEFAULT 0,
+    ended_at       INTEGER, -- NULL = current placement
+    position       TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_placements_unit ON plant_placements (plant_unit_id);
+CREATE INDEX IF NOT EXISTS idx_placements_env_open ON plant_placements (environment_id, ended_at);
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,
@@ -243,6 +277,10 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "fan_type", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "location_id", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "leaf_temp_offset", "REAL NOT NULL DEFAULT -2"},
+		{"environments", "control_grow_id", "TEXT NOT NULL DEFAULT ''"},
+		{"plant_units", "cultivar", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "stream_url", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "camera_type", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
@@ -258,6 +296,94 @@ DROP TABLE IF EXISTS devices;
 	if _, err := s.db.Exec(`UPDATE bindings SET device_name='DIY ESP32 controller'
 		WHERE device_name='DIY ESP32 dual PC-fan controller'`); err != nil {
 		return err
+	}
+	if err := s.migrateCyclesToGrows(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// migrateCyclesToGrows converts pre-Grows cannabis cycles into crop-neutral
+// grows the first time the new schema is applied. Each cycle becomes an active
+// grow (species "cannabis", cultivar = strain, current stage = the cycle's
+// phase) whose environment is nominated as the control grow, plus a single
+// group plant unit placed in that environment. It is a no-op once any grow
+// exists, and silently skips if the legacy cycles table is absent.
+func (s *Store) migrateCyclesToGrows() error {
+	var hasCycles int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cycles'`).Scan(&hasCycles); err != nil {
+		return err
+	}
+	if hasCycles == 0 {
+		return nil
+	}
+	var grows int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM grows`).Scan(&grows); err != nil {
+		return err
+	}
+	if grows > 0 {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT environment_id, strain, started_at, phase, phase_started FROM cycles`)
+	if err != nil {
+		return err
+	}
+	type legacy struct {
+		envID, strain, phase string
+		started, phaseStart  int64
+	}
+	var cycles []legacy
+	for rows.Next() {
+		var l legacy
+		if err := rows.Scan(&l.envID, &l.strain, &l.started, &l.phase, &l.phaseStart); err != nil {
+			rows.Close()
+			return err
+		}
+		cycles = append(cycles, l)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, l := range cycles {
+		stage := l.phase
+		if stage == "" {
+			stage = "vegetative"
+		}
+		grow := domain.Grow{
+			ID:           newID("grow"),
+			Name:         l.strain,
+			Species:      "cannabis",
+			Stage:        stage,
+			Stages:       domain.StagePresets["cannabis"],
+			StartedAt:    time.UnixMilli(l.started),
+			StageStarted: time.UnixMilli(l.phaseStart),
+			Status:       domain.GrowActive,
+		}
+		if grow.Name == "" {
+			grow.Name = "Grow"
+		}
+		if err := s.SaveGrow(grow); err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`UPDATE environments SET control_grow_id=? WHERE id=?`, grow.ID, l.envID); err != nil {
+			return err
+		}
+		unit := domain.PlantUnit{
+			ID: newID("plant"), GrowID: grow.ID, Label: "Plants", Cultivar: l.strain,
+			Tracking: domain.TrackGroup, Quantity: 1, Status: domain.PlantActive,
+			CreatedAt: grow.StartedAt,
+		}
+		if err := s.SavePlantUnit(unit); err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(
+			`INSERT INTO plant_placements (id, plant_unit_id, environment_id, started_at, ended_at, position)
+			 VALUES (?, ?, ?, ?, NULL, '')`,
+			newID("place"), unit.ID, l.envID, grow.StartedAt.UnixMilli()); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -292,16 +418,16 @@ func (s *Store) SaveEnvironment(e domain.Environment) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT INTO environments
-		   (id, name, kind, air_source, location_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, kind=excluded.kind, air_source=excluded.air_source,
-		   location_id=excluded.location_id, model=excluded.model,
+		   location_id=excluded.location_id, control_grow_id=excluded.control_grow_id, model=excluded.model,
 		   width_cm=excluded.width_cm, depth_cm=excluded.depth_cm, height_cm=excluded.height_cm,
 		   target_temp=excluded.target_temp, target_humidity=excluded.target_humidity,
 		   target_co2=excluded.target_co2, emergency_temp=excluded.emergency_temp,
 		   leaf_temp_offset=excluded.leaf_temp_offset`,
-		e.ID, e.Name, string(e.Kind), e.AirSourceID, e.LocationID, e.Model,
+		e.ID, e.Name, string(e.Kind), e.AirSourceID, e.LocationID, e.ControlGrowID, e.Model,
 		e.WidthCm, e.DepthCm, e.HeightCm,
 		e.TargetTempC, e.TargetHumidity, e.TargetCO2, e.EmergencyTempC, e.LeafTempOffsetC,
 	)
@@ -326,7 +452,7 @@ func (s *Store) UpdateTargets(id string, targetTemp, targetHumidity float64) err
 
 func (s *Store) Environments() ([]domain.Environment, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, kind, air_source, location_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset
+		`SELECT id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset
 		 FROM environments ORDER BY kind DESC, name`) // tents before rooms
 	if err != nil {
 		return nil, err
@@ -336,7 +462,7 @@ func (s *Store) Environments() ([]domain.Environment, error) {
 	for rows.Next() {
 		var e domain.Environment
 		var kind string
-		if err := rows.Scan(&e.ID, &e.Name, &kind, &e.AirSourceID, &e.LocationID, &e.Model, &e.WidthCm, &e.DepthCm, &e.HeightCm,
+		if err := rows.Scan(&e.ID, &e.Name, &kind, &e.AirSourceID, &e.LocationID, &e.ControlGrowID, &e.Model, &e.WidthCm, &e.DepthCm, &e.HeightCm,
 			&e.TargetTempC, &e.TargetHumidity, &e.TargetCO2, &e.EmergencyTempC, &e.LeafTempOffsetC); err != nil {
 			return nil, err
 		}
@@ -396,52 +522,346 @@ func (s *Store) DeleteLocation(id string) error {
 	return err
 }
 
-// --- Cycles ---
+// newID returns a store-generated identifier with the given prefix, used for
+// entities created inside the store (bulk plant units, placements).
+func newID(prefix string) string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return prefix + "-" + hex.EncodeToString(b)
+}
 
-func (s *Store) SaveCycle(c domain.Cycle) error {
-	_, err := s.db.Exec(
-		`INSERT INTO cycles (environment_id, strain, started_at, phase, phase_started, notes)
-		 VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(environment_id) DO UPDATE SET
-		   strain=excluded.strain, started_at=excluded.started_at,
-		   phase=excluded.phase, phase_started=excluded.phase_started, notes=excluded.notes`,
-		c.EnvironmentID, c.Strain, c.StartedAt.UnixMilli(), string(c.Phase), c.PhaseStarted.UnixMilli(), c.Notes,
+// --- Grows ---
+
+func (s *Store) SaveGrow(g domain.Grow) error {
+	stages, err := json.Marshal(g.Stages)
+	if err != nil {
+		return err
+	}
+	if g.Status == "" {
+		g.Status = domain.GrowActive
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO grows (id, name, species, stage, stages, started_at, stage_started, status, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   name=excluded.name, species=excluded.species,
+		   stage=excluded.stage, stages=excluded.stages, started_at=excluded.started_at,
+		   stage_started=excluded.stage_started, status=excluded.status, notes=excluded.notes`,
+		g.ID, g.Name, g.Species, g.Stage, string(stages),
+		g.StartedAt.UnixMilli(), g.StageStarted.UnixMilli(), string(g.Status), g.Notes,
 	)
 	return err
 }
 
-func (s *Store) DeleteCycle(envID string) error {
-	_, err := s.db.Exec(`DELETE FROM cycles WHERE environment_id=?`, envID)
-	return err
+func scanGrow(scan func(dst ...any) error) (domain.Grow, error) {
+	var g domain.Grow
+	var stagesJSON, status string
+	var started, stageStarted int64
+	if err := scan(&g.ID, &g.Name, &g.Species, &g.Stage, &stagesJSON, &started, &stageStarted, &status, &g.Notes); err != nil {
+		return domain.Grow{}, err
+	}
+	if stagesJSON != "" {
+		_ = json.Unmarshal([]byte(stagesJSON), &g.Stages)
+	}
+	g.StartedAt = time.UnixMilli(started)
+	g.StageStarted = time.UnixMilli(stageStarted)
+	g.Status = domain.GrowStatus(status)
+	return g, nil
 }
 
-func (s *Store) Cycles() ([]domain.Cycle, error) {
-	rows, err := s.db.Query(
-		`SELECT environment_id, strain, started_at, phase, phase_started, notes FROM cycles`)
+const growCols = `id, name, species, stage, stages, started_at, stage_started, status, notes`
+
+func (s *Store) Grows() ([]domain.Grow, error) {
+	rows, err := s.db.Query(`SELECT ` + growCols + ` FROM grows ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.Cycle
+	var out []domain.Grow
 	for rows.Next() {
-		var c domain.Cycle
-		var started, phaseStarted int64
-		var phase string
-		if err := rows.Scan(&c.EnvironmentID, &c.Strain, &started, &phase, &phaseStarted, &c.Notes); err != nil {
+		g, err := scanGrow(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
-		c.StartedAt = time.UnixMilli(started)
-		c.PhaseStarted = time.UnixMilli(phaseStarted)
-		c.Phase = domain.Phase(phase)
-		out = append(out, c)
+		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) Grow(id string) (domain.Grow, bool, error) {
+	g, err := scanGrow(s.db.QueryRow(`SELECT `+growCols+` FROM grows WHERE id=?`, id).Scan)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Grow{}, false, nil
+	}
+	if err != nil {
+		return domain.Grow{}, false, err
+	}
+	return g, true, nil
+}
+
+// DeleteGrow removes a grow together with its plant units and placements, and
+// clears it from any environment that used it as the control grow.
+func (s *Store) DeleteGrow(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`DELETE FROM plant_placements WHERE plant_unit_id IN (SELECT id FROM plant_units WHERE grow_id=?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM plant_units WHERE grow_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE environments SET control_grow_id='' WHERE control_grow_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM grows WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// --- Plant units ---
+
+func (s *Store) SavePlantUnit(u domain.PlantUnit) error {
+	if u.Status == "" {
+		u.Status = domain.PlantActive
+	}
+	if u.Quantity <= 0 {
+		u.Quantity = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO plant_units (id, grow_id, label, cultivar, tracking, quantity, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   grow_id=excluded.grow_id, label=excluded.label, cultivar=excluded.cultivar,
+		   tracking=excluded.tracking, quantity=excluded.quantity, status=excluded.status,
+		   created_at=excluded.created_at`,
+		u.ID, u.GrowID, u.Label, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli(),
+	)
+	return err
+}
+
+func scanPlantUnit(scan func(dst ...any) error) (domain.PlantUnit, error) {
+	var u domain.PlantUnit
+	var tracking, status string
+	var created int64
+	if err := scan(&u.ID, &u.GrowID, &u.Label, &u.Cultivar, &tracking, &u.Quantity, &status, &created); err != nil {
+		return domain.PlantUnit{}, err
+	}
+	u.Tracking = domain.TrackingMode(tracking)
+	u.Status = domain.PlantStatus(status)
+	u.CreatedAt = time.UnixMilli(created)
+	return u, nil
+}
+
+const unitCols = `id, grow_id, label, cultivar, tracking, quantity, status, created_at`
+
+// PlantUnits returns the units belonging to a grow, oldest first.
+func (s *Store) PlantUnits(growID string) ([]domain.PlantUnit, error) {
+	rows, err := s.db.Query(`SELECT `+unitCols+` FROM plant_units WHERE grow_id=? ORDER BY created_at`, growID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantUnit
+	for rows.Next() {
+		u, err := scanPlantUnit(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// PlantUnitsAll returns every plant unit (used by the control engine to build
+// per-grow plant counts).
+func (s *Store) PlantUnitsAll() ([]domain.PlantUnit, error) {
+	rows, err := s.db.Query(`SELECT ` + unitCols + ` FROM plant_units`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantUnit
+	for rows.Next() {
+		u, err := scanPlantUnit(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PlantUnit(id string) (domain.PlantUnit, bool, error) {
+	u, err := scanPlantUnit(s.db.QueryRow(`SELECT `+unitCols+` FROM plant_units WHERE id=?`, id).Scan)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.PlantUnit{}, false, nil
+	}
+	if err != nil {
+		return domain.PlantUnit{}, false, err
+	}
+	return u, true, nil
+}
+
+// --- Plant placements ---
+
+func scanPlacement(scan func(dst ...any) error) (domain.PlantPlacement, error) {
+	var p domain.PlantPlacement
+	var started int64
+	var ended sql.NullInt64
+	if err := scan(&p.ID, &p.PlantUnitID, &p.EnvironmentID, &started, &ended, &p.Position); err != nil {
+		return domain.PlantPlacement{}, err
+	}
+	p.StartedAt = time.UnixMilli(started)
+	if ended.Valid {
+		t := time.UnixMilli(ended.Int64)
+		p.EndedAt = &t
+	}
+	return p, nil
+}
+
+const placementCols = `id, plant_unit_id, environment_id, started_at, ended_at, position`
+
+// PlacementsForUnit returns a unit's full placement history, newest first.
+func (s *Store) PlacementsForUnit(unitID string) ([]domain.PlantPlacement, error) {
+	rows, err := s.db.Query(`SELECT `+placementCols+` FROM plant_placements WHERE plant_unit_id=? ORDER BY started_at DESC`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantPlacement
+	for rows.Next() {
+		p, err := scanPlacement(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// CurrentPlacements returns every open placement (ended_at IS NULL): where each
+// plant unit lives right now.
+func (s *Store) CurrentPlacements() ([]domain.PlantPlacement, error) {
+	rows, err := s.db.Query(`SELECT ` + placementCols + ` FROM plant_placements WHERE ended_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantPlacement
+	for rows.Next() {
+		p, err := scanPlacement(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PlantsInEnvironment returns the plant units currently placed in an
+// environment (units with an open placement there).
+func (s *Store) PlantsInEnvironment(envID string) ([]domain.PlantUnit, error) {
+	rows, err := s.db.Query(
+		`SELECT u.id, u.grow_id, u.label, u.cultivar, u.tracking, u.quantity, u.status, u.created_at
+		 FROM plant_units u
+		 JOIN plant_placements p ON p.plant_unit_id=u.id
+		 WHERE p.environment_id=? AND p.ended_at IS NULL
+		 ORDER BY u.grow_id, u.created_at`, envID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PlantUnit
+	for rows.Next() {
+		u, err := scanPlantUnit(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// BulkCreatePlants creates n plant units for a grow in one transaction, each
+// with an opening placement in the given environment. quantityPer sets the
+// group size of each unit (1 for individually-tracked plants). It returns the
+// created units.
+func (s *Store) BulkCreatePlants(growID string, n int, tracking domain.TrackingMode, quantityPer int, labelPrefix, cultivar, envID string, at time.Time) ([]domain.PlantUnit, error) {
+	if n <= 0 {
+		return nil, fmt.Errorf("count must be positive")
+	}
+	if quantityPer <= 0 {
+		quantityPer = 1
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	units := make([]domain.PlantUnit, 0, n)
+	for i := 0; i < n; i++ {
+		label := labelPrefix
+		if n > 1 {
+			label = fmt.Sprintf("%s %d", labelPrefix, i+1)
+		}
+		u := domain.PlantUnit{
+			ID: newID("plant"), GrowID: growID, Label: label, Cultivar: cultivar,
+			Tracking: tracking, Quantity: quantityPer, Status: domain.PlantActive, CreatedAt: at,
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO plant_units (id, grow_id, label, cultivar, tracking, quantity, status, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.ID, u.GrowID, u.Label, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli()); err != nil {
+			return nil, err
+		}
+		if envID != "" {
+			if _, err := tx.Exec(
+				`INSERT INTO plant_placements (id, plant_unit_id, environment_id, started_at, ended_at, position)
+				 VALUES (?, ?, ?, ?, NULL, '')`,
+				newID("place"), u.ID, envID, at.UnixMilli()); err != nil {
+				return nil, err
+			}
+		}
+		units = append(units, u)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return units, nil
+}
+
+// MovePlant transactionally closes a unit's current placement and opens a new
+// one in toEnvID at time at. It is a no-op error if the unit does not exist.
+// The returned bool reports whether an existing placement was closed.
+func (s *Store) MovePlant(unitID, toEnvID string, at time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		`UPDATE plant_placements SET ended_at=? WHERE plant_unit_id=? AND ended_at IS NULL`,
+		at.UnixMilli(), unitID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO plant_placements (id, plant_unit_id, environment_id, started_at, ended_at, position)
+		 VALUES (?, ?, ?, ?, NULL, '')`,
+		newID("place"), unitID, toEnvID, at.UnixMilli()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // --- Light schedules ---
 
 func (s *Store) SaveLightSchedule(sched domain.LightSchedule) error {
-	phases, err := json.Marshal(sched.PhaseOnHours)
+	phases, err := json.Marshal(sched.StageOnHours)
 	if err != nil {
 		return err
 	}
@@ -500,21 +920,21 @@ func (s *Store) DeleteLightSchedule(envID string) error {
 // scanLightSchedule decodes the mode/on-at/hours/phase-overrides columns via
 // the given scan function into a schedule (EnvironmentID left to the caller).
 func scanLightSchedule(envID string, scan func(dst ...any) error) (domain.LightSchedule, error) {
-	var mode, onAt, phasesJSON string
+	var mode, onAt, stagesJSON string
 	var onHours float64
-	if err := scan(&mode, &onAt, &onHours, &phasesJSON); err != nil {
+	if err := scan(&mode, &onAt, &onHours, &stagesJSON); err != nil {
 		return domain.LightSchedule{}, err
 	}
-	phaseOn := map[domain.Phase]float64{}
-	if phasesJSON != "" {
-		_ = json.Unmarshal([]byte(phasesJSON), &phaseOn)
+	stageOn := map[string]float64{}
+	if stagesJSON != "" {
+		_ = json.Unmarshal([]byte(stagesJSON), &stageOn)
 	}
 	return domain.LightSchedule{
 		EnvironmentID: envID,
 		Mode:          domain.LightScheduleMode(mode),
 		LightsOnAt:    onAt,
 		OnHours:       onHours,
-		PhaseOnHours:  phaseOn,
+		StageOnHours:  stageOn,
 	}, nil
 }
 
@@ -550,8 +970,8 @@ func (s *Store) DeleteEnvironment(id string) error {
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   device_id=excluded.device_id, device_name=excluded.device_name,
 		   power_controller_id=excluded.power_controller_id,
@@ -561,9 +981,10 @@ func (s *Store) SaveBinding(b domain.Binding) error {
 		   rpm_entity=excluded.rpm_entity, wattage=excluded.wattage, is_primary=excluded.is_primary,
 		   fan_type=excluded.fan_type, size_mm=excluded.size_mm, max_rpm=excluded.max_rpm, airflow_cfm=excluded.airflow_cfm,
 		   static_pressure=excluded.static_pressure, starting_voltage=excluded.starting_voltage,
-		   duct_size_inches=excluded.duct_size_inches, noise_dba=excluded.noise_dba`,
+		   duct_size_inches=excluded.duct_size_inches, noise_dba=excluded.noise_dba,
+		   stream_url=excluded.stream_url, camera_type=excluded.camera_type`,
 		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
-		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, time.Now().UnixNano(),
+		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), time.Now().UnixNano(),
 	)
 	if err != nil {
 		return err
@@ -644,7 +1065,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba
+		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -653,14 +1074,15 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 	var out []domain.Binding
 	for rows.Next() {
 		var b domain.Binding
-		var kind, measurement, role string
+		var kind, measurement, role, cameraType string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)
 		b.Measurement = domain.Measurement(measurement)
 		b.Role = domain.Role(role)
+		b.CameraType = domain.CameraType(cameraType)
 		b.Primary = isPrimary != 0
 		out = append(out, b)
 	}

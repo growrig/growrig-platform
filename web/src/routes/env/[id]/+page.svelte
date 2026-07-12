@@ -3,15 +3,16 @@
 	import { page } from '$app/state';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
-	import { history, historyRange, deviceHistory, setSwitch, getPhases, getLightingDefaults, getLocations, weather } from '$lib/api';
-	import type { DeviceSeries, Location, Phase, PhotoperiodDefaults, Reading, Weather } from '$lib/types';
+	import { history, historyRange, deviceHistory, setSwitch, getGrows, getLightingDefaults, getLocations, weather } from '$lib/api';
+	import type { DeviceSeries, Grow, Location, StageLightDefaults, Reading, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import { climateTone, toneClass, vpdZone, volumeM3, formatDimensions } from '$lib/format';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import VpdGauge from '$lib/components/VpdGauge.svelte';
 	import MetricModal, { type MetricDescriptor } from '$lib/components/MetricModal.svelte';
-	import CycleCard from '$lib/components/CycleCard.svelte';
+	import ControlGrowCard from '$lib/components/ControlGrowCard.svelte';
+	import EnvironmentOccupancy from '$lib/components/EnvironmentOccupancy.svelte';
 	import SensorsDialog from '$lib/components/SensorsDialog.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import { Switch } from '$lib/components/ui';
@@ -20,6 +21,7 @@
 	import Lightbulb from '@lucide/svelte/icons/lightbulb';
 	import LightbulbOff from '@lucide/svelte/icons/lightbulb-off';
 	import Camera from '@lucide/svelte/icons/camera';
+	import CameraPreview from '$lib/components/CameraPreview.svelte';
 	import Ruler from '@lucide/svelte/icons/ruler';
 	import Box from '@lucide/svelte/icons/box';
 	import Wind from '@lucide/svelte/icons/wind';
@@ -55,8 +57,8 @@
 	let readings = $state<Reading[]>([]);
 	let rangeReadings = $state<Reading[]>([]);
 	let deviceSeries = $state<DeviceSeries[]>([]);
-	let phases = $state<Phase[]>([]);
-	let lightingDefaults = $state<PhotoperiodDefaults>({});
+	let grows = $state<Grow[]>([]);
+	let lightingDefaults = $state<StageLightDefaults>({});
 	let locations = $state<Location[]>([]);
 	let weatherData = $state<Weather | undefined>();
 
@@ -91,9 +93,12 @@
 			/* keep last */
 		}
 	}
+	function refreshGrows() {
+		getGrows().then((g) => (grows = g)).catch(() => {});
+	}
 	onMount(() => {
 		refreshHistory();
-		getPhases().then((p) => (phases = p)).catch(() => {});
+		refreshGrows();
 		getLightingDefaults().then((d) => (lightingDefaults = d)).catch(() => {});
 		getLocations().then((l) => (locations = l)).catch(() => {});
 		const t = setInterval(refreshHistory, 5000);
@@ -194,16 +199,19 @@
 		{/if}
 
 		{#if env.kind === 'tent'}
-			<CycleCard
+			<ControlGrowCard
 				environmentId={env.id}
-				cycle={env.cycle}
+				grow={env.grow}
 				schedule={env.schedule}
 				hasPrimaryLight={!!primaryLight}
 				canEdit={canWrite}
-				{phases}
+				{grows}
 				defaults={lightingDefaults}
 			/>
 		{/if}
+
+		<!-- Current occupants grouped by grow -->
+		<EnvironmentOccupancy environmentId={env.id} />
 
 		<!-- Timeline -->
 		<TimelineChart
@@ -212,7 +220,7 @@
 			controls={env.controls ?? []}
 			weather={weatherData}
 			schedule={env.schedule}
-			phase={env.cycle?.phase ?? 'vegetative'}
+			stage={env.grow?.stage ?? ''}
 			defaults={lightingDefaults}
 		/>
 
@@ -377,10 +385,21 @@
 				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Cameras</h2>
 				<div class="grid gap-3 sm:grid-cols-2">
 					{#each env.cameras as cam (cam.id)}
-						<div class="flex items-center gap-2 rounded-lg border border-rig-800 bg-rig-950/40 p-3 text-sm">
-							<Camera size={18} class="text-rig-400" />
-							<span>{cam.name}</span>
-							<span class="ml-auto text-xs text-rig-500">{cam.entity}</span>
+						<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-3">
+							{#if cam.streamUrl}
+								<CameraPreview url={cam.streamUrl} type={cam.cameraType} />
+								<div class="mt-2 flex items-center gap-2 text-sm">
+									<Camera size={16} class="text-rig-400" />
+									<span>{cam.name}</span>
+									<span class="ml-auto text-xs text-rig-500">{cam.cameraType}</span>
+								</div>
+							{:else}
+								<div class="flex items-center gap-2 text-sm">
+									<Camera size={18} class="text-rig-400" />
+									<span>{cam.name}</span>
+									<span class="ml-auto text-xs text-rig-500">{cam.entity}</span>
+								</div>
+							{/if}
 						</div>
 					{/each}
 				</div>

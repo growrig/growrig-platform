@@ -63,13 +63,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/info", s.requireAuth(s.getInfo))
 	mux.HandleFunc("GET /api/state", s.requireAuth(s.getState))
 	mux.HandleFunc("GET /api/roles", s.requireAuth(s.getRoles))
-	mux.HandleFunc("GET /api/phases", s.requireAuth(s.getPhases))
+	mux.HandleFunc("GET /api/stage-presets", s.requireAuth(s.getStagePresets))
 	mux.HandleFunc("GET /api/activity", s.requireAuth(s.getActivity))
 	mux.HandleFunc("GET /api/environments", s.requireAuth(s.getEnvironments))
 	mux.HandleFunc("GET /api/bindings", s.requireAuth(s.getBindings))
 	mux.HandleFunc("GET /api/lighting/defaults", s.requireAuth(s.getLightingDefaults))
 	mux.HandleFunc("GET /api/locations", s.requireAuth(s.getLocations))
 	mux.HandleFunc("GET /api/weather", s.requireAuth(s.getWeather))
+	mux.HandleFunc("GET /api/grows", s.requireAuth(s.getGrows))
+	mux.HandleFunc("GET /api/grows/{id}", s.requireAuth(s.getGrow))
+	mux.HandleFunc("GET /api/plants/{id}", s.requireAuth(s.getPlant))
 
 	// Per-environment read.
 	mux.HandleFunc("GET /api/environments/{id}/history", s.requireEnvRead(s.getHistory))
@@ -77,13 +80,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/environments/{id}/sensor-history", s.requireEnvRead(s.getSensorHistory))
 	mux.HandleFunc("GET /api/environments/{id}/weather-history", s.requireEnvRead(s.getWeatherHistory))
 	mux.HandleFunc("GET /api/environments/{id}/schedule", s.requireEnvRead(s.getSchedule))
+	mux.HandleFunc("GET /api/environments/{id}/plants", s.requireEnvRead(s.getEnvironmentPlants))
 
 	// Per-environment write (operate the grow).
 	mux.HandleFunc("PUT /api/environments/{id}/targets", s.requireEnvWrite(s.putTargets))
-	mux.HandleFunc("PUT /api/environments/{id}/cycle", s.requireEnvWrite(s.putCycle))
-	mux.HandleFunc("DELETE /api/environments/{id}/cycle", s.requireEnvWrite(s.deleteCycle))
 	mux.HandleFunc("PUT /api/environments/{id}/schedule", s.requireEnvWrite(s.putSchedule))
+	mux.HandleFunc("PUT /api/environments/{id}/control-grow", s.requireEnvWrite(s.putControlGrow))
 	mux.HandleFunc("PUT /api/bindings/{id}/switch", s.requireEnvWriteForBinding(s.putSwitch))
+
+	// Grows & plants (admin-managed cultivation layer).
+	mux.HandleFunc("POST /api/grows", s.requireAdmin(s.createGrow))
+	mux.HandleFunc("PUT /api/grows/{id}", s.requireAdmin(s.updateGrow))
+	mux.HandleFunc("DELETE /api/grows/{id}", s.requireAdmin(s.deleteGrow))
+	mux.HandleFunc("POST /api/grows/{id}/stage", s.requireAdmin(s.changeStage))
+	mux.HandleFunc("POST /api/grows/{id}/complete", s.requireAdmin(s.completeGrow))
+	mux.HandleFunc("POST /api/grows/{id}/plants", s.requireAdmin(s.createPlants))
+	mux.HandleFunc("PUT /api/plants/{id}", s.requireAdmin(s.updatePlant))
+	mux.HandleFunc("POST /api/plants/{id}/move", s.requireAdmin(s.movePlant))
+	mux.HandleFunc("POST /api/plants/{id}/harvest", s.requireAdmin(s.setPlantStatus(domain.PlantHarvested, "Harvested")))
+	mux.HandleFunc("POST /api/plants/{id}/remove", s.requireAdmin(s.setPlantStatus(domain.PlantRemoved, "Removed")))
 
 	// Admin only (configuration & user management).
 	mux.HandleFunc("GET /api/catalog", s.requireAdmin(s.getCatalog))
@@ -216,10 +231,6 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRoles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.AllFanRoles)
-}
-
-func (s *Server) getPhases(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, domain.AllPhases)
 }
 
 func (s *Server) getCatalog(w http.ResponseWriter, r *http.Request) {

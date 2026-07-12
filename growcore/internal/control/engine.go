@@ -107,13 +107,51 @@ func (e *Engine) step(dt time.Duration) error {
 			controllerChannels[b.ID] = b
 		}
 	}
-	cycles, err := e.store.Cycles()
+	grows, err := e.store.Grows()
 	if err != nil {
 		return err
 	}
-	cycleByEnv := map[string]domain.Cycle{}
-	for _, c := range cycles {
-		cycleByEnv[c.EnvironmentID] = c
+	units, err := e.store.PlantUnitsAll()
+	if err != nil {
+		return err
+	}
+	placements, err := e.store.CurrentPlacements()
+	if err != nil {
+		return err
+	}
+	growByID := map[string]domain.Grow{}
+	for _, g := range grows {
+		growByID[g.ID] = g
+	}
+	envName := map[string]string{}
+	for _, env := range envs {
+		envName[env.ID] = env.Name
+	}
+	// Per-grow aggregates: active plant count and the distinct environments each
+	// grow currently occupies (via its units' open placements).
+	unitByID := map[string]domain.PlantUnit{}
+	plantCountByGrow := map[string]int{}
+	for _, u := range units {
+		unitByID[u.ID] = u
+		if u.Status == domain.PlantActive {
+			plantCountByGrow[u.GrowID] += u.Quantity
+		}
+	}
+	growEnvs := map[string][]domain.GrowEnvRef{}
+	growEnvSeen := map[string]map[string]bool{}
+	for _, p := range placements {
+		u, ok := unitByID[p.PlantUnitID]
+		if !ok {
+			continue
+		}
+		if growEnvSeen[u.GrowID] == nil {
+			growEnvSeen[u.GrowID] = map[string]bool{}
+		}
+		if growEnvSeen[u.GrowID][p.EnvironmentID] {
+			continue
+		}
+		growEnvSeen[u.GrowID][p.EnvironmentID] = true
+		growEnvs[u.GrowID] = append(growEnvs[u.GrowID], domain.GrowEnvRef{ID: p.EnvironmentID, Name: envName[p.EnvironmentID]})
 	}
 	schedules, err := e.store.LightSchedules()
 	if err != nil {
@@ -257,8 +295,8 @@ func (e *Engine) step(dt time.Duration) error {
 				// The photoperiod schedule drives the box's primary light only.
 				sched := scheduleByEnv[env.ID]
 				if b.Primary && entity != "" && sched.Mode != domain.LightScheduleOff && sched.Mode != "" {
-					phase := schedulePhase(cycleByEnv, env.ID)
-					if desired, ok := sched.DesiredOn(phase, now); ok && !e.overrideActive(env.ID, now) {
+					stage := controlStage(growByID, env)
+					if desired, ok := sched.DesiredOn(stage, now); ok && !e.overrideActive(env.ID, now) {
 						changed := e.driveLight(env, b, entity, desired, on, known)
 						if changed || !known {
 							on, known = desired, true
@@ -287,13 +325,20 @@ func (e *Engine) step(dt time.Duration) error {
 				}
 				view.Controls = append(view.Controls, cs)
 			case domain.KindCamera:
-				view.Cameras = append(view.Cameras, domain.CameraRef{ID: b.ID, Name: b.Name, Entity: b.Entity})
+				view.Cameras = append(view.Cameras, domain.CameraRef{ID: b.ID, Name: b.Name, Entity: b.Entity, StreamURL: b.StreamURL, CameraType: b.CameraType})
 			}
 		}
 
-		if c, ok := cycleByEnv[env.ID]; ok {
-			cycle := c
-			view.Cycle = &cycle
+		if env.ControlGrowID != "" {
+			if g, ok := growByID[env.ControlGrowID]; ok {
+				view.Grow = &domain.GrowSummary{
+					ID: g.ID, Name: g.Name, Species: g.Species,
+					Stage:      g.Stage,
+					StageDays:  domain.DaysSince(g.StageStarted, now),
+					TotalDays:  domain.DaysSince(g.StartedAt, now),
+					PlantCount: plantCountByGrow[g.ID],
+				}
+			}
 		}
 
 		if sc, ok := scheduleByEnv[env.ID]; ok {
@@ -349,7 +394,17 @@ func (e *Engine) step(dt time.Duration) error {
 		e.lastPersist = now
 	}
 
-	snap := domain.Snapshot{Time: now, Environments: views}
+	growViews := make([]domain.GrowView, 0, len(grows))
+	for _, g := range grows {
+		growViews = append(growViews, domain.GrowView{
+			Grow:         g,
+			StageDays:    domain.DaysSince(g.StageStarted, now),
+			TotalDays:    domain.DaysSince(g.StartedAt, now),
+			PlantCount:   plantCountByGrow[g.ID],
+			Environments: growEnvs[g.ID],
+		})
+	}
+	snap := domain.Snapshot{Time: now, Environments: views, Grows: growViews}
 	e.mu.Lock()
 	e.latest = snap
 	e.mu.Unlock()
@@ -429,16 +484,16 @@ func (e *Engine) NoteManualLightSwitch(envID string) {
 	if err != nil || sched.Mode == domain.LightScheduleOff {
 		return
 	}
-	cycles, _ := e.store.Cycles()
-	phase := domain.PhaseVegetative
-	for _, c := range cycles {
-		if c.EnvironmentID == envID {
-			phase = c.Phase
-			break
+	stage := ""
+	if envs, err := e.store.Environments(); err == nil {
+		if env := findEnv(envs, envID); env != nil && env.ControlGrowID != "" {
+			if g, ok, _ := e.store.Grow(env.ControlGrowID); ok {
+				stage = g.Stage
+			}
 		}
 	}
 	now := time.Now()
-	until := sched.NextTransition(phase, now)
+	until := sched.NextTransition(stage, now)
 	if until.IsZero() {
 		// Always-on / always-off schedule has no boundary; hold for a day.
 		until = now.Add(24 * time.Hour)
@@ -448,13 +503,17 @@ func (e *Engine) NoteManualLightSwitch(envID string) {
 	e.schedMu.Unlock()
 }
 
-// schedulePhase resolves the phase used by a light schedule: the environment's
-// cycle phase, or vegetative when no cycle is active.
-func schedulePhase(cycles map[string]domain.Cycle, envID string) domain.Phase {
-	if c, ok := cycles[envID]; ok && c.Phase != "" {
-		return c.Phase
+// controlStage resolves the stage that drives an environment's light schedule:
+// the current stage of its nominated control grow, or "" when none is set (in
+// which case the schedule falls back to default photoperiod hours).
+func controlStage(grows map[string]domain.Grow, env domain.Environment) string {
+	if env.ControlGrowID == "" {
+		return ""
 	}
-	return domain.PhaseVegetative
+	if g, ok := grows[env.ControlGrowID]; ok {
+		return g.Stage
+	}
+	return ""
 }
 
 // readSensors reads every sensor binding and aggregates temperature, humidity

@@ -47,6 +47,16 @@ const (
 	KindCamera     BindingKind = "camera"
 )
 
+// CameraType is how a generic (non-Home-Assistant) camera stream is rendered.
+// Both are browser-playable via an <img>: an MJPEG stream plays continuously; a
+// snapshot URL returns a single JPEG that the client refreshes periodically.
+type CameraType string
+
+const (
+	CameraMJPEG    CameraType = "mjpeg"
+	CameraSnapshot CameraType = "snapshot"
+)
+
 // Measurement is what a sensor binding measures.
 type Measurement string
 
@@ -89,6 +99,12 @@ type Environment struct {
 	// and dashboard grouping).
 	LocationID string `json:"locationId" yaml:"locationId,omitempty"`
 
+	// ControlGrowID optionally nominates the Grow whose current stage supplies
+	// this environment's automation presets (photoperiod). Empty means the
+	// light schedule's phase mode falls back to defaults. Must be set explicitly
+	// when several grows share one environment.
+	ControlGrowID string `json:"controlGrowId" yaml:"controlGrowId,omitempty"`
+
 	// Model is an optional descriptive field (e.g. the grow-tent product)
 	// captured by the setup wizard.
 	Model string `json:"model" yaml:"tentModel,omitempty"`
@@ -116,32 +132,6 @@ func (e Environment) VolumeM3() float64 {
 	return e.WidthCm * e.DepthCm * e.HeightCm / 1_000_000
 }
 
-// Phase is a stage of a grow cycle.
-type Phase string
-
-const (
-	PhaseSeedling   Phase = "seedling"
-	PhaseVegetative Phase = "vegetative"
-	PhaseFlowering  Phase = "flowering"
-	PhaseFlush      Phase = "flush"
-	PhaseDrying     Phase = "drying"
-	PhaseCure       Phase = "cure"
-)
-
-// AllPhases lists grow phases in chronological order.
-var AllPhases = []Phase{PhaseSeedling, PhaseVegetative, PhaseFlowering, PhaseFlush, PhaseDrying, PhaseCure}
-
-// Cycle is a running grow in a tent: a strain, a start date, and the current
-// phase. One active cycle per environment in this MVP.
-type Cycle struct {
-	EnvironmentID string    `json:"environmentId"`
-	Strain        string    `json:"strain"`
-	StartedAt     time.Time `json:"startedAt"`
-	Phase         Phase     `json:"phase"`
-	PhaseStarted  time.Time `json:"phaseStarted"`
-	Notes         string    `json:"notes"`
-}
-
 // --- Automations ---
 //
 // An automation drives an actuator over time rather than in reaction to a
@@ -155,32 +145,23 @@ type LightScheduleMode string
 const (
 	// LightScheduleOff leaves the light under manual control only.
 	LightScheduleOff LightScheduleMode = "off"
-	// LightSchedulePhase follows the recommended photoperiod for the cycle's
-	// current phase, with optional per-phase overrides.
+	// LightSchedulePhase follows the recommended photoperiod for the control
+	// grow's current stage, with optional per-stage overrides.
 	LightSchedulePhase LightScheduleMode = "phase"
-	// LightScheduleCustom uses a fixed on-time and duration, ignoring the phase.
+	// LightScheduleCustom uses a fixed on-time and duration, ignoring the stage.
 	LightScheduleCustom LightScheduleMode = "custom"
 )
 
 // AllLightScheduleModes lists the selectable schedule modes.
 var AllLightScheduleModes = []LightScheduleMode{LightScheduleOff, LightSchedulePhase, LightScheduleCustom}
 
-// PhotoperiodDefaults maps each grow phase to its recommended daily hours of
-// light. These are the presets a user starts from and can override per phase.
-var PhotoperiodDefaults = map[Phase]float64{
-	PhaseSeedling:   18,
-	PhaseVegetative: 18,
-	PhaseFlowering:  12,
-	PhaseFlush:      12,
-	PhaseDrying:     0,
-	PhaseCure:       0,
-}
-
 // LightSchedule is the photoperiod automation for an environment's primary
 // grow light. The light turns on at LightsOnAt (a local "HH:MM" wall-clock
 // time) and stays on for the effective number of hours; the remainder of the
 // 24h day is dark. Anchoring on wall-clock time (rather than counting from an
-// arbitrary cycle start) keeps the dark period aligned to a real daily window.
+// arbitrary start) keeps the dark period aligned to a real daily window.
+//
+// In "phase" mode the on-duration follows the control grow's current stage.
 type LightSchedule struct {
 	EnvironmentID string            `json:"environmentId"`
 	Mode          LightScheduleMode `json:"mode"`
@@ -188,9 +169,9 @@ type LightSchedule struct {
 	LightsOnAt string `json:"lightsOnAt"`
 	// OnHours is the on-duration for custom mode.
 	OnHours float64 `json:"onHours"`
-	// PhaseOnHours holds per-phase overrides for phase mode. A phase absent
-	// from the map falls back to PhotoperiodDefaults.
-	PhaseOnHours map[Phase]float64 `json:"phaseOnHours"`
+	// StageOnHours holds per-stage overrides for phase mode, keyed by stage
+	// name. A stage absent from the map falls back to DefaultStageLightHours.
+	StageOnHours map[string]float64 `json:"stageOnHours"`
 }
 
 // DefaultLightSchedule is the schedule for an environment that has none saved:
@@ -201,32 +182,32 @@ func DefaultLightSchedule(envID string) LightSchedule {
 		Mode:          LightScheduleOff,
 		LightsOnAt:    "06:00",
 		OnHours:       18,
-		PhaseOnHours:  map[Phase]float64{},
+		StageOnHours:  map[string]float64{},
 	}
 }
 
-// EffectiveOnHours resolves the on-duration for the given phase: the custom
-// duration in custom mode, otherwise the per-phase override or the default.
-func (s LightSchedule) EffectiveOnHours(phase Phase) float64 {
+// EffectiveOnHours resolves the on-duration for the given stage: the custom
+// duration in custom mode, otherwise the per-stage override or the default.
+func (s LightSchedule) EffectiveOnHours(stage string) float64 {
 	if s.Mode == LightScheduleCustom {
 		return clampHours(s.OnHours)
 	}
-	if h, ok := s.PhaseOnHours[phase]; ok {
+	if h, ok := s.StageOnHours[stage]; ok {
 		return clampHours(h)
 	}
-	if h, ok := PhotoperiodDefaults[phase]; ok {
+	if h, ok := DefaultStageLightHours[stage]; ok {
 		return h
 	}
 	return 18
 }
 
 // DesiredOn reports whether the light should be on at time now for the given
-// phase. ok is false when the schedule is not driving the light (mode off).
-func (s LightSchedule) DesiredOn(phase Phase, now time.Time) (on bool, ok bool) {
+// stage. ok is false when the schedule is not driving the light (mode off).
+func (s LightSchedule) DesiredOn(stage string, now time.Time) (on bool, ok bool) {
 	if s.Mode == LightScheduleOff {
 		return false, false
 	}
-	hours := s.EffectiveOnHours(phase)
+	hours := s.EffectiveOnHours(stage)
 	if hours <= 0 {
 		return false, true
 	}
@@ -246,11 +227,11 @@ func (s LightSchedule) DesiredOn(phase Phase, now time.Time) (on bool, ok bool) 
 // scheduled light state flips. Used to hold a manual override until the next
 // scheduled boundary. It returns the zero time when the schedule never flips
 // (mode off, or an always-on / always-off duration).
-func (s LightSchedule) NextTransition(phase Phase, now time.Time) time.Time {
+func (s LightSchedule) NextTransition(stage string, now time.Time) time.Time {
 	if s.Mode == LightScheduleOff {
 		return time.Time{}
 	}
-	hours := s.EffectiveOnHours(phase)
+	hours := s.EffectiveOnHours(stage)
 	if hours <= 0 || hours >= 24 {
 		return time.Time{}
 	}
@@ -344,6 +325,10 @@ type Binding struct {
 	// Light only:
 	Wattage float64 `json:"wattage,omitempty"` // rated power in watts; 0 = unknown
 	Primary bool    `json:"primary,omitempty"` // the box's main grow light (one per env)
+	// Camera only: a generic camera streams from a URL instead of a Home Assistant
+	// entity. StreamURL is empty for HA-entity cameras.
+	StreamURL  string     `json:"streamUrl,omitempty"`
+	CameraType CameraType `json:"cameraType,omitempty"`
 }
 
 // Reading is a single historical sample persisted for an environment.
@@ -458,11 +443,14 @@ type ControlState struct {
 	Primary      bool        `json:"primary,omitempty"` // lights: the box's main grow light
 }
 
-// CameraRef is a camera binding (no stream in this MVP).
+// CameraRef is a camera binding for the live view. HA-entity cameras carry an
+// Entity; generic cameras carry a StreamURL + CameraType the client renders.
 type CameraRef struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Entity string `json:"entity"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Entity     string     `json:"entity,omitempty"`
+	StreamURL  string     `json:"streamUrl,omitempty"`
+	CameraType CameraType `json:"cameraType,omitempty"`
 }
 
 // AirSourceView summarises a linked lung room on a tent's dashboard.
@@ -491,7 +479,7 @@ type EnvironmentView struct {
 	Controls   []ControlState   `json:"controls"`
 	Cameras    []CameraRef      `json:"cameras"`
 	AirSource  *AirSourceView   `json:"airSource,omitempty"`
-	Cycle      *Cycle           `json:"cycle,omitempty"`
+	Grow       *GrowSummary     `json:"grow,omitempty"`
 	Schedule   *LightSchedule   `json:"schedule,omitempty"`
 }
 
@@ -499,6 +487,7 @@ type EnvironmentView struct {
 type Snapshot struct {
 	Time         time.Time         `json:"time"`
 	Environments []EnvironmentView `json:"environments"`
+	Grows        []GrowView        `json:"grows"`
 }
 
 // --- Users & access control ---

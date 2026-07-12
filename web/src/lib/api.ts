@@ -7,27 +7,33 @@ import type {
 	AuthResult,
 	AuthStatus,
 	BindingKind,
+	CameraType,
 	CatalogProduct,
-	Cycle,
 	DeviceSeries,
 	DiscoveredEntity,
 	Environment,
 	EnvironmentKind,
 	EnvAccess,
+	EnvPlantsGroup,
 	FanType,
 	GeocodeResult,
+	Grow,
+	GrowDetail,
 	HAStatus,
 	HAUpdateTarget,
 	Info,
 	Location,
+	PlantUnit,
+	PlantView,
+	StagePresets,
+	TrackingMode,
 	User,
 	UserRole,
 	Weather,
 	LightSchedule,
 	LightScheduleMode,
 	Measurement,
-	Phase,
-	PhotoperiodDefaults,
+	StageLightDefaults,
 	Reading,
 	Role,
 	SensorSeries,
@@ -101,7 +107,7 @@ export const getInfo = () => json<Info>('/api/info');
 export const getState = () => json<Snapshot>('/api/state');
 export const getDiscovery = () => json<DiscoveredEntity[]>('/api/discovery');
 export const getCatalog = () => json<CatalogProduct[]>('/api/catalog');
-export const getPhases = () => json<Phase[]>('/api/phases');
+export const getStagePresets = () => json<StagePresets>('/api/stage-presets');
 export const loadDemo = () => req('/api/demo', { method: 'POST' });
 
 // --- environments ---
@@ -198,6 +204,8 @@ export interface BindingInput {
 	noiseDba?: number;
 	wattage?: number;
 	primary?: boolean;
+	streamUrl?: string;
+	cameraType?: CameraType;
 }
 
 export const createBinding = (b: BindingInput) =>
@@ -218,23 +226,82 @@ export const setSwitch = (bindingId: string, on: boolean) =>
 		body: JSON.stringify({ on })
 	});
 
-// --- cycles ---
+// --- grows & plants ---
 
-export interface CycleInput {
-	strain: string;
+export const getGrows = () => json<Grow[]>('/api/grows');
+export const getGrow = (id: string) => json<GrowDetail>(`/api/grows/${encodeURIComponent(id)}`);
+export const getPlant = (id: string) => json<PlantView>(`/api/plants/${encodeURIComponent(id)}`);
+
+export interface GrowInput {
+	name: string;
+	/** A predefined crop family; the server derives the stage sequence from it. */
+	species: string;
 	startedAt: string; // YYYY-MM-DD or RFC3339
-	phase: Phase;
 	notes: string;
 }
 
-export const setCycle = (envID: string, c: CycleInput) =>
-	json<Cycle>(`/api/environments/${encodeURIComponent(envID)}/cycle`, {
-		method: 'PUT',
-		body: JSON.stringify(c)
+export const createGrow = (g: GrowInput) =>
+	json<Grow>('/api/grows', { method: 'POST', body: JSON.stringify(g) });
+
+export const updateGrow = (id: string, g: GrowInput) =>
+	json<Grow>(`/api/grows/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(g) });
+
+export const deleteGrow = (id: string) =>
+	req(`/api/grows/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+export const changeStage = (id: string, stage: string) =>
+	json<Grow>(`/api/grows/${encodeURIComponent(id)}/stage`, { method: 'POST', body: JSON.stringify({ stage }) });
+
+export const completeGrow = (id: string) =>
+	json<Grow>(`/api/grows/${encodeURIComponent(id)}/complete`, { method: 'POST' });
+
+export interface BulkPlantsInput {
+	count: number;
+	tracking: TrackingMode;
+	quantityPer?: number;
+	label?: string;
+	cultivar?: string;
+	environmentId?: string;
+}
+
+export const bulkCreatePlants = (growID: string, b: BulkPlantsInput) =>
+	json<PlantUnit[]>(`/api/grows/${encodeURIComponent(growID)}/plants`, {
+		method: 'POST',
+		body: JSON.stringify(b)
 	});
 
-export const clearCycle = (envID: string) =>
-	req(`/api/environments/${encodeURIComponent(envID)}/cycle`, { method: 'DELETE' });
+export interface UpdatePlantInput {
+	label: string;
+	cultivar: string;
+	quantity?: number;
+}
+
+export const updatePlant = (plantID: string, b: UpdatePlantInput) =>
+	json<PlantUnit>(`/api/plants/${encodeURIComponent(plantID)}`, {
+		method: 'PUT',
+		body: JSON.stringify(b)
+	});
+
+export const movePlant = (plantID: string, environmentId: string) =>
+	json<{ status: string }>(`/api/plants/${encodeURIComponent(plantID)}/move`, {
+		method: 'POST',
+		body: JSON.stringify({ environmentId })
+	});
+
+export const harvestPlant = (plantID: string) =>
+	json<PlantUnit>(`/api/plants/${encodeURIComponent(plantID)}/harvest`, { method: 'POST' });
+
+export const removePlant = (plantID: string) =>
+	json<PlantUnit>(`/api/plants/${encodeURIComponent(plantID)}/remove`, { method: 'POST' });
+
+export const getEnvironmentPlants = (envID: string) =>
+	json<EnvPlantsGroup[]>(`/api/environments/${encodeURIComponent(envID)}/plants`);
+
+export const setControlGrow = (envID: string, growId: string) =>
+	json<Environment>(`/api/environments/${encodeURIComponent(envID)}/control-grow`, {
+		method: 'PUT',
+		body: JSON.stringify({ growId })
+	});
 
 // --- light schedule (photoperiod automation) ---
 
@@ -242,7 +309,7 @@ export interface ScheduleInput {
 	mode: LightScheduleMode;
 	lightsOnAt: string;
 	onHours: number;
-	phaseOnHours: Partial<Record<Phase, number>>;
+	stageOnHours: Record<string, number>;
 }
 
 export const getSchedule = (envID: string) =>
@@ -254,7 +321,7 @@ export const setSchedule = (envID: string, s: ScheduleInput) =>
 		body: JSON.stringify(s)
 	});
 
-export const getLightingDefaults = () => json<PhotoperiodDefaults>('/api/lighting/defaults');
+export const getLightingDefaults = () => json<StageLightDefaults>('/api/lighting/defaults');
 
 // --- history ---
 

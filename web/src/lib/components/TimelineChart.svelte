@@ -5,8 +5,7 @@
 		ControlState,
 		DeviceSeries,
 		LightSchedule,
-		Phase,
-		PhotoperiodDefaults,
+		StageLightDefaults,
 		Reading,
 		Weather
 	} from '$lib/types';
@@ -19,8 +18,8 @@
 		controls?: ControlState[];
 		weather?: Weather;
 		schedule?: LightSchedule;
-		phase: Phase;
-		defaults: PhotoperiodDefaults;
+		stage: string;
+		defaults: StageLightDefaults;
 		hours?: number;
 		futureHours?: number;
 	}
@@ -30,7 +29,7 @@
 		controls = [],
 		weather,
 		schedule,
-		phase,
+		stage,
 		defaults,
 		hours = 72,
 		futureHours = 12
@@ -98,7 +97,7 @@
 	});
 
 	const activeSeries = $derived(allSeries.filter((s) => isOn(s.key)));
-	const intervals = $derived(lightIntervals(schedule, phase, defaults, start, end));
+	const intervals = $derived(lightIntervals(schedule, stage, defaults, start, end));
 
 	const padding = { top: 10, right: 14, bottom: 26, left: 14 };
 

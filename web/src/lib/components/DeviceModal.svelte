@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { Binding, CatalogProduct, DiscoveredEntity, FanType, Measurement, Role } from '$lib/types';
+	import type { Binding, CameraType, CatalogProduct, DiscoveredEntity, FanType, Measurement, Role } from '$lib/types';
 	import { createBinding, updateBinding } from '$lib/api';
 	import { Button, Dialog, Select, Switch, type SelectItem } from '$lib/components/ui';
 	import CatalogDevicePicker, { type BindingDraft } from '$lib/components/CatalogDevicePicker.svelte';
+	import CameraPreview from '$lib/components/CameraPreview.svelte';
 
 	interface Props {
 		/** Bindable open state. */
@@ -54,6 +55,8 @@
 	let primary = $state(false);
 	let powerControllerId = $state('');
 	let controllerChannelId = $state('');
+	let streamUrl = $state('');
+	let cameraType = $state<CameraType>('snapshot');
 	let busy = $state(false);
 
 	// Reseed the form whenever the target binding changes.
@@ -61,6 +64,8 @@
 		if (binding) {
 			name = binding.name;
 			entity = binding.entity;
+			streamUrl = binding.streamUrl ?? '';
+			cameraType = binding.cameraType ?? 'snapshot';
 			measurement = binding.measurement ?? 'temperature';
 			role = binding.role ?? 'unassigned';
 			rpmEntity = binding.rpmEntity ?? '';
@@ -78,6 +83,11 @@
 			controllerChannelId = binding.controllerChannelId ?? '';
 		}
 	});
+
+	const cameraTypeItems: SelectItem[] = [
+		{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' },
+		{ value: 'mjpeg', label: 'MJPEG stream' }
+	];
 
 	const measurementItems: SelectItem[] = [
 		{ value: 'temperature', label: 'Temperature' },
@@ -110,6 +120,16 @@
 		}
 	}
 
+	// A camera edit is valid with either a Home Assistant entity or a stream URL;
+	// other kinds keep their existing requirements.
+	const canSaveEdit = $derived(
+		!binding
+			? false
+			: binding.kind === 'camera'
+				? !!(entity.trim() || streamUrl.trim())
+				: binding.kind === 'fan' || binding.kind === 'light' || !!entity.trim()
+	);
+
 	async function saveEdit() {
 		if (!binding) return;
 		busy = true;
@@ -135,7 +155,9 @@
 				ductSizeInches: binding.kind === 'fan' ? ductSizeInches || undefined : undefined,
 				noiseDba: binding.kind === 'fan' ? noiseDba || undefined : undefined,
 				wattage: binding.kind === 'light' ? wattage || 0 : undefined,
-				primary: binding.kind === 'light' ? primary : undefined
+				primary: binding.kind === 'light' ? primary : undefined,
+				streamUrl: binding.kind === 'camera' ? streamUrl.trim() || undefined : undefined,
+				cameraType: binding.kind === 'camera' && streamUrl.trim() ? cameraType : undefined
 			});
 			flash?.('ok', 'Device saved');
 			open = false;
@@ -164,7 +186,7 @@
 				<span class="text-sm text-rig-400">Name</span>
 				<input bind:value={name} class="{field} mt-1" />
 			</label>
-			{#if binding.kind !== 'light' && binding.kind !== 'fan'}
+			{#if binding.kind !== 'light' && binding.kind !== 'fan' && binding.kind !== 'camera'}
 				<label class="block">
 					<span class="text-sm text-rig-400">Entity</span>
 					<input bind:value={entity} class="{field} mt-1 font-mono text-xs" />
@@ -231,11 +253,26 @@
 					</span>
 					<Switch bind:checked={primary} />
 				</label>
+			{:else if binding.kind === 'camera'}
+				<label class="block">
+					<span class="text-sm text-rig-400">Stream URL</span>
+					<input bind:value={streamUrl} placeholder="http://192.168.1.50/snapshot.jpg" class="{field} mt-1 font-mono text-xs" />
+				</label>
+				<label class="block">
+					<span class="text-sm text-rig-400">Stream type</span>
+					<Select value={cameraType} onValueChange={(v) => (cameraType = v as CameraType)} items={cameraTypeItems} class="mt-1" />
+				</label>
+				{#if streamUrl.trim()}
+					<div>
+						<span class="text-sm text-rig-400">Preview</span>
+						<CameraPreview url={streamUrl.trim()} type={cameraType} class="mt-1" />
+					</div>
+				{/if}
 			{/if}
 
 			<div class="flex justify-end gap-2 pt-2">
 				<Button variant="ghost" onclick={() => (open = false)}>Cancel</Button>
-				<Button onclick={saveEdit} disabled={busy || (binding.kind !== 'fan' && binding.kind !== 'light' && !entity.trim())}>Save</Button>
+				<Button onclick={saveEdit} disabled={busy || !canSaveEdit}>Save</Button>
 			</div>
 		</div>
 	{:else}
