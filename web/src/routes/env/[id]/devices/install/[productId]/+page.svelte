@@ -24,7 +24,7 @@
 	let controllerChannelId = $state('');
 	let fanRole = $state<Role>('unassigned');
 	let lightWattage = $state(100);
-	let fanPresetId = $state('__custom__');
+	let productVariantId = $state('__custom__');
 	let overrideFanSpecs = $state(false);
 	let fanType = $state<FanType>('other');
 	let fanSizeMm = $state(0);
@@ -103,7 +103,7 @@
 				const light = product.provides?.find((template) => template.kind === 'light');
 				lightWattage = light?.wattage || 100;
 				fanType = product.fanType ?? 'other';
-				if (product.fanPresets?.length) selectFanPreset(product.fanPresets[0].id);
+				if (product.products?.length) selectVariant(product.products[0].id);
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Installation data could not be loaded';
@@ -136,26 +136,27 @@
 		return [...devices.entries()].map(([id, name]) => ({ id, name }));
 	});
 	const controllerChannels = $derived(bindings.filter((binding) => binding.environmentId === environmentId && binding.kind === 'controller'));
-	const fanPresetItems = $derived([...(product?.fanPresets ?? []).map((preset) => ({ value: preset.id, label: preset.label })), { value: '__custom__', label: 'Custom' }]);
-	const showFanSpecs = $derived(fanPresetId === '__custom__' || overrideFanSpecs);
-	function selectFanPreset(id: string) {
-		fanPresetId = id;
-		const preset = product?.fanPresets?.find((item) => item.id === id);
-		if (!preset) {
+	const productVariantItems = $derived([...(product?.products ?? []).map((variant) => ({ value: variant.id, label: `${variant.brand ? `${variant.brand} ` : ''}${variant.model ?? variant.id}` })), { value: '__custom__', label: 'Custom' }]);
+	const showFanSpecs = $derived(productVariantId === '__custom__' || overrideFanSpecs);
+	function selectVariant(id: string) {
+		productVariantId = id;
+		const variant = product?.products?.find((item) => item.id === id);
+		if (!variant) {
 			overrideFanSpecs = true;
 			standaloneName = `${product?.brand ?? ''} ${product?.model ?? 'Custom fan'}`.trim();
 			fanSizeMm = fanMaxRpm = fanAirflowCfm = fanStaticPressure = fanStartingVoltage = fanDuctSizeInches = fanNoiseDba = 0;
 			return;
 		}
 		overrideFanSpecs = false;
-		standaloneName = preset.label;
-		fanSizeMm = preset.sizeMm ?? 0;
-		fanMaxRpm = preset.maxRpm ?? 0;
-		fanAirflowCfm = preset.airflowCfm ?? 0;
-		fanStaticPressure = preset.staticPressureMmH2O ?? 0;
-		fanStartingVoltage = preset.startingVoltage ?? 0;
-		fanDuctSizeInches = preset.ductSizeInches ?? 0;
-		fanNoiseDba = preset.noiseDba ?? 0;
+		standaloneName = `${variant.brand ?? product?.brand ?? ''} ${variant.model ?? ''}`.trim() || variant.id;
+		const specs = variant.specs ?? {};
+		fanSizeMm = specs.sizeMm ?? 0;
+		fanMaxRpm = specs.maxRpm ?? 0;
+		fanAirflowCfm = specs.airflowCfm ?? 0;
+		fanStaticPressure = specs.staticPressureMmH2O ?? 0;
+		fanStartingVoltage = specs.startingVoltage ?? 0;
+		fanDuctSizeInches = specs.ductSizeInches ?? 0;
+		fanNoiseDba = specs.noiseDba ?? 0;
 	}
 
 	async function install() {
@@ -319,9 +320,9 @@
 				</label>
 			{/if}
 			{#if (product.provides ?? []).some((template) => template.kind === 'fan')}
-				{#if product.fanPresets?.length}
-					<label class="mt-4 block"><span class="text-sm text-rig-300">Fan model</span><Select value={fanPresetId} onValueChange={selectFanPreset} items={fanPresetItems} class="mt-1" /></label>
-					{#if fanPresetId !== '__custom__'}
+				{#if product.products?.length}
+					<label class="mt-4 block"><span class="text-sm text-rig-300">Fan model</span><Select value={productVariantId} onValueChange={selectVariant} items={productVariantItems} class="mt-1" /></label>
+					{#if productVariantId !== '__custom__'}
 						<label class="mt-3 flex cursor-pointer items-center gap-2 text-sm text-rig-400"><input type="checkbox" bind:checked={overrideFanSpecs} class="h-4 w-4 accent-green-500" />Override preset specifications</label>
 					{/if}
 				{/if}

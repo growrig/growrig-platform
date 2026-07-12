@@ -61,7 +61,16 @@
 	let startDate = $state(new Date().toISOString().slice(0, 10));
 	let phase = $state<Phase>('vegetative');
 
-	const tents = $derived(catalog.filter((p) => p.category === 'tent'));
+	// Flatten every tent driver's products into concrete selectable models.
+	const tentModels = $derived(
+		catalog
+			.filter((p) => p.category === 'tent')
+			.flatMap((driver) =>
+				driver.products?.length
+					? driver.products.map((v) => `${v.brand ?? driver.brand} ${v.model ?? ''}`.trim())
+					: [`${driver.brand} ${driver.model}`]
+			)
+	);
 	const rooms = $derived(environments.filter((e) => e.kind === 'room'));
 	const usedEntities = $derived(new Set(devices.map((d) => d.entity)));
 
@@ -159,7 +168,7 @@
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Tent model</span>
-					<Select bind:value={model} placeholder="Optional" items={tents.map((t) => ({ value: `${t.brand} ${t.model}`, label: `${t.brand} ${t.model}` }))} class="mt-1" />
+					<Select bind:value={model} placeholder="Optional" items={tentModels.map((m) => ({ value: m, label: m }))} class="mt-1" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Dimensions (cm){#if volume} — {volume.toFixed(2)} m³{/if}</span>

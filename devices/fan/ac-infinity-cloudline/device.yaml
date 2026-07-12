@@ -3,12 +3,20 @@ model: CLOUDLINE Series Inline Fan
 connection: generic
 fanType: inline
 description: AC Infinity CLOUDLINE duct fans. Assign the fan to a separately installed controller channel.
-fanPresets:
+# Concrete CLOUDLINE models supported by this driver.
+products:
+  - id: cloudline-s4
+    brand: AC Infinity
+    model: CLOUDLINE S4 (4")
+    specs: { airflowCfm: 205, ductSizeInches: 4, noiseDba: 28 }
   - id: cloudline-s6
-    label: AC Infinity CLOUDLINE S6
-    airflowCfm: 402
-    ductSizeInches: 6
-    noiseDba: 32
+    brand: AC Infinity
+    model: CLOUDLINE S6 (6")
+    specs: { airflowCfm: 402, ductSizeInches: 6, noiseDba: 32 }
+  - id: cloudline-s8
+    brand: AC Infinity
+    model: CLOUDLINE S8 (8")
+    specs: { airflowCfm: 807, ductSizeInches: 8, noiseDba: 40 }
 provides:
   - label: Inline fan
     kind: fan

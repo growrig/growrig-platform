@@ -65,20 +65,21 @@ type BindingTemplate struct {
 	RPMEntityDomain string `json:"rpmEntityDomain,omitempty" yaml:"rpmEntityDomain,omitempty"`
 }
 
-// FanPreset is an optional known set of physical specifications for a generic fan.
-type FanPreset struct {
-	ID                  string  `json:"id" yaml:"id"`
-	Label               string  `json:"label" yaml:"label"`
-	SizeMM              int     `json:"sizeMm,omitempty" yaml:"sizeMm,omitempty"`
-	MaxRPM              int     `json:"maxRpm,omitempty" yaml:"maxRpm,omitempty"`
-	AirflowCFM          float64 `json:"airflowCfm,omitempty" yaml:"airflowCfm,omitempty"`
-	StaticPressureMMH2O float64 `json:"staticPressureMmH2O,omitempty" yaml:"staticPressureMmH2O,omitempty"`
-	StartingVoltage     float64 `json:"startingVoltage,omitempty" yaml:"startingVoltage,omitempty"`
-	DuctSizeInches      float64 `json:"ductSizeInches,omitempty" yaml:"ductSizeInches,omitempty"`
-	NoiseDBA            float64 `json:"noiseDba,omitempty" yaml:"noiseDba,omitempty"`
+// Variant is a concrete product supported by a driver (a device.yaml).
+// Selecting one during setup pre-fills its physical specs. Specs is a free-form
+// numeric map so it works across categories — e.g. sizeMm / maxRpm / airflowCfm
+// for fans, or widthCm / depthCm / heightCm for tents. A driver with no variants
+// is itself the single product.
+type Variant struct {
+	ID          string             `json:"id" yaml:"id"`
+	Brand       string             `json:"brand,omitempty" yaml:"brand,omitempty"`
+	Model       string             `json:"model,omitempty" yaml:"model,omitempty"`
+	Description string             `json:"description,omitempty" yaml:"description,omitempty"`
+	Specs       map[string]float64 `json:"specs,omitempty" yaml:"specs,omitempty"`
 }
 
-// Product is a catalog entry.
+// Product is a catalog entry — a driver that GrowRig can bind to. It may list
+// the concrete Products (variants) it supports.
 type Product struct {
 	ID            string            `json:"id"`
 	Brand         string            `json:"brand"`
@@ -92,7 +93,7 @@ type Product struct {
 	Documentation string            `json:"documentation,omitempty"`
 	Provides      []BindingTemplate `json:"provides,omitempty"`
 	MaxChannels   int               `json:"maxChannels,omitempty"`
-	FanPresets    []FanPreset       `json:"fanPresets,omitempty"`
+	Products      []Variant         `json:"products,omitempty"`
 	FanType       string            `json:"fanType,omitempty"`
 }
 
@@ -109,7 +110,7 @@ type deviceFile struct {
 	Documentation string            `yaml:"documentation"`
 	Provides      []BindingTemplate `yaml:"provides"`
 	MaxChannels   int               `yaml:"maxChannels"`
-	FanPresets    []FanPreset       `yaml:"fanPresets"`
+	Products      []Variant         `yaml:"products"`
 	FanType       string            `yaml:"fanType"`
 }
 
@@ -257,7 +258,7 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 				Documentation: df.Documentation,
 				Provides:      df.Provides,
 				MaxChannels:   df.MaxChannels,
-				FanPresets:    df.FanPresets,
+				Products:      df.Products,
 				FanType:       df.FanType,
 			})
 		}

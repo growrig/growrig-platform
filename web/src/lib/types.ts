@@ -45,16 +45,14 @@ export interface BindingTemplate {
 	rpmEntityDomain?: string;
 }
 
-export interface FanPreset {
+/** A concrete product supported by a driver. `specs` is a free-form numeric map
+ *  (fans: sizeMm/maxRpm/airflowCfm/…; tents: widthCm/depthCm/heightCm). */
+export interface ProductVariant {
 	id: string;
-	label: string;
-	sizeMm?: number;
-	maxRpm?: number;
-	airflowCfm?: number;
-	staticPressureMmH2O?: number;
-	startingVoltage?: number;
-	ductSizeInches?: number;
-	noiseDba?: number;
+	brand?: string;
+	model?: string;
+	description?: string;
+	specs?: Record<string, number>;
 }
 
 export interface CatalogProduct {
@@ -70,7 +68,7 @@ export interface CatalogProduct {
 	documentation?: string;
 	provides?: BindingTemplate[];
 	maxChannels?: number;
-	fanPresets?: FanPreset[];
+	products?: ProductVariant[];
 	fanType?: FanType;
 }
 
