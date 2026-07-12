@@ -112,6 +112,8 @@ Base URL `http://localhost:8080`.
 | `GET` | `/api/state` | Latest full snapshot |
 | `GET` | `/api/roles` | Assignable channel roles |
 | `GET` | `/api/environments` | List environments |
+| `GET` | `/api/catalog` | Device catalogue (including vendor and image metadata) |
+| `GET` | `/api/vendors` | Vendor catalogue and logo paths |
 | `PUT` | `/api/environments/{id}/targets` | Set `{targetTempC, targetHumidity}` |
 | `GET` | `/api/environments/{id}/history?limit=120` | Climate history (oldest first) |
 | `GET` | `/api/devices` | Devices with live values + roles |

@@ -87,6 +87,9 @@ func (s *Server) Handler() http.Handler {
 
 	// Admin only (configuration & user management).
 	mux.HandleFunc("GET /api/catalog", s.requireAdmin(s.getCatalog))
+	mux.HandleFunc("GET /api/catalog/assets/{category}/{device}/{name}", s.requireAdmin(s.getCatalogAsset))
+	mux.HandleFunc("GET /api/vendors", s.requireAdmin(s.getVendors))
+	mux.HandleFunc("GET /api/vendors/{vendor}/{name}", s.requireAdmin(s.getVendorAsset))
 	mux.HandleFunc("GET /api/discovery", s.requireAdmin(s.getDiscovery))
 	mux.HandleFunc("POST /api/demo", s.requireAdmin(s.postDemo))
 	mux.HandleFunc("GET /api/geocode", s.requireAdmin(s.geocode))
@@ -127,6 +130,45 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"adapter": s.adapterType})
+}
+
+func (s *Server) getVendors(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, catalog.Vendors())
+}
+
+func (s *Server) getCatalogAsset(w http.ResponseWriter, r *http.Request) {
+	raw, err := catalog.DeviceAsset(r.PathValue("category"), r.PathValue("device"), r.PathValue("name"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/"+imageSubtype(r.PathValue("name")))
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(raw)
+}
+
+func (s *Server) getVendorAsset(w http.ResponseWriter, r *http.Request) {
+	raw, err := catalog.VendorAsset(r.PathValue("vendor"), r.PathValue("name"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/"+imageSubtype(r.PathValue("name")))
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(raw)
+}
+
+func imageSubtype(name string) string {
+	if len(name) >= 4 && name[len(name)-4:] == ".svg" {
+		return "svg+xml"
+	}
+	if len(name) >= 5 && name[len(name)-5:] == ".webp" {
+		return "webp"
+	}
+	if len(name) >= 4 && name[len(name)-4:] == ".png" {
+		return "png"
+	}
+	return "jpeg"
 }
 
 func (s *Server) getState(w http.ResponseWriter, r *http.Request) {

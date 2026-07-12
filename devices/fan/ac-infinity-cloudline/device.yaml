@@ -1,4 +1,5 @@
 brand: AC Infinity
+vendor: ac-infinity
 model: CLOUDLINE Series Inline Fan
 connection: generic
 fanType: inline

@@ -50,7 +50,9 @@ export interface BindingTemplate {
 export interface ProductVariant {
 	id: string;
 	brand?: string;
+	vendor?: string;
 	model?: string;
+	image?: string;
 	description?: string;
 	specs?: Record<string, number>;
 }
@@ -58,7 +60,9 @@ export interface ProductVariant {
 export interface CatalogProduct {
 	id: string;
 	brand: string;
+	vendor?: string;
 	model: string;
+	image?: string;
 	category: Category;
 	connection: string;
 	description?: string;

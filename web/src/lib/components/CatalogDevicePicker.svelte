@@ -143,6 +143,7 @@
 					? 'border-rig-500 bg-rig-800/40'
 					: 'border-rig-800 bg-rig-950/40 hover:border-rig-600'}"
 			>
+				{#if p.image}<img src={p.image} alt="" class="mb-2 aspect-video w-full rounded-md object-contain" />{/if}
 				<div class="text-sm font-medium">{p.brand} {p.model}</div>
 				<div class="text-xs text-rig-500">{p.connection}</div>
 			</button>

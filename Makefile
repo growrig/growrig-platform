@@ -19,6 +19,8 @@ BIN          ?= bin/growcore
 DIST          = growcore/internal/webui/dist
 CATALOG_SRC   = devices
 CATALOG_DATA  = growcore/internal/catalog/data
+VENDOR_SRC    = vendors
+VENDOR_DATA   = growcore/internal/catalog/vendor-data
 CONFIG_DEV   ?= growcore.dev.yaml
 CONFIG_SIM    = growcore/growcore.sim.yaml
 
@@ -94,6 +96,8 @@ embed: web-build
 catalog-embed:
 	find $(CATALOG_DATA) -mindepth 1 ! -name .gitkeep -delete
 	cp -r $(CATALOG_SRC)/. $(CATALOG_DATA)/
+	find $(VENDOR_DATA) -mindepth 1 ! -name .gitkeep -delete
+	cp -r $(VENDOR_SRC)/. $(VENDOR_DATA)/
 
 .PHONY: build
 build: embed catalog-embed
@@ -142,4 +146,5 @@ clean:
 	rm -rf bin web/build web/.svelte-kit
 	find $(DIST) -mindepth 1 ! -name .gitkeep -delete
 	find $(CATALOG_DATA) -mindepth 1 ! -name .gitkeep -delete
+	find $(VENDOR_DATA) -mindepth 1 ! -name .gitkeep -delete
 	rm -f growcore/*.db growcore.dev.db growcore.dev-local.db

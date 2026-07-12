@@ -1,4 +1,5 @@
 brand: TP-Link
+vendor: tp-link
 model: Tapo P110 smart plug
 connection: wifi
 description: >-

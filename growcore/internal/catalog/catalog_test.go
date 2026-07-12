@@ -54,6 +54,19 @@ func TestProducts(t *testing.T) {
 	}
 }
 
+func TestVendors(t *testing.T) {
+	if len(Vendors()) == 0 {
+		t.Fatal("no vendors loaded")
+	}
+	cloudline := find(Products(), "ac-infinity-cloudline")
+	if cloudline == nil || cloudline.Vendor != "ac-infinity" {
+		t.Fatalf("cloudline vendor = %#v", cloudline)
+	}
+	if Vendors()[0].Color == "" || Vendors()[0].Background == "" {
+		t.Fatal("expected vendor fallback colors")
+	}
+}
+
 func find(products []Product, id string) *Product {
 	for i := range products {
 		if products[i].ID == id {

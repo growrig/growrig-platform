@@ -14,41 +14,49 @@ products:
     model: Other / unlisted tent
     description: Any grow tent. Enter the dimensions manually during setup.
   - id: mars-hydro-2x2
+    vendor: mars-hydro
     brand: Mars Hydro
     model: 2'×2' Grow Tent
     description: Mars Hydro 60×60×140 cm grow tent.
     specs: { widthCm: 60, depthCm: 60, heightCm: 140 }
   - id: mars-hydro-4x4
+    vendor: mars-hydro
     brand: Mars Hydro
     model: 4'×4' Grow Tent
     description: Mars Hydro 120×120×200 cm grow tent.
     specs: { widthCm: 120, depthCm: 120, heightCm: 200 }
   - id: vivosun-2x4
+    vendor: vivosun
     brand: VIVOSUN
     model: 2'×4' Grow Tent
     description: VIVOSUN 120×60×180 cm grow tent.
     specs: { widthCm: 120, depthCm: 60, heightCm: 180 }
   - id: vivosun-4x4
+    vendor: vivosun
     brand: VIVOSUN
     model: 4'×4' Grow Tent
     description: VIVOSUN 120×120×200 cm grow tent.
     specs: { widthCm: 120, depthCm: 120, heightCm: 200 }
   - id: spider-farmer-2x2
+    vendor: spider-farmer
     brand: Spider Farmer
     model: 2'×2' Grow Tent
     description: Spider Farmer 60×60×140 cm grow tent.
     specs: { widthCm: 60, depthCm: 60, heightCm: 140 }
   - id: spider-farmer-4x4
+    vendor: spider-farmer
     brand: Spider Farmer
     model: 4'×4' Grow Tent
     description: Spider Farmer 120×120×200 cm grow tent.
     specs: { widthCm: 120, depthCm: 120, heightCm: 200 }
   - id: ac-infinity-cloudlab-422
+    vendor: ac-infinity
     brand: AC Infinity
     model: CLOUDLAB 422 (2'×4')
     description: AC Infinity CLOUDLAB 422, 120×60×203 cm grow tent.
     specs: { widthCm: 120, depthCm: 60, heightCm: 203 }
   - id: ac-infinity-cloudlab-844
+    vendor: ac-infinity
     brand: AC Infinity
     model: CLOUDLAB 844 (4'×4')
     description: AC Infinity CLOUDLAB 844, 120×120×203 cm grow tent.

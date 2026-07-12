@@ -73,8 +73,10 @@ type BindingTemplate struct {
 type Variant struct {
 	ID          string             `json:"id" yaml:"id"`
 	Brand       string             `json:"brand,omitempty" yaml:"brand,omitempty"`
+	Vendor      string             `json:"vendor,omitempty" yaml:"vendor,omitempty"`
 	Model       string             `json:"model,omitempty" yaml:"model,omitempty"`
 	Description string             `json:"description,omitempty" yaml:"description,omitempty"`
+	Image       string             `json:"image,omitempty" yaml:"image,omitempty"`
 	Specs       map[string]float64 `json:"specs,omitempty" yaml:"specs,omitempty"`
 }
 
@@ -83,7 +85,9 @@ type Variant struct {
 type Product struct {
 	ID            string            `json:"id"`
 	Brand         string            `json:"brand"`
+	Vendor        string            `json:"vendor,omitempty"`
 	Model         string            `json:"model"`
+	Image         string            `json:"image,omitempty"`
 	Category      Category          `json:"category"`
 	Connection    string            `json:"connection"`
 	Description   string            `json:"description"`
@@ -101,7 +105,9 @@ type Product struct {
 // come from the directory path, not the file.
 type deviceFile struct {
 	Brand         string            `yaml:"brand"`
+	Vendor        string            `yaml:"vendor"`
 	Model         string            `yaml:"model"`
+	Image         string            `yaml:"image"`
 	Connection    string            `yaml:"connection"`
 	Description   string            `yaml:"description"`
 	Version       string            `yaml:"version"`
@@ -245,10 +251,21 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 			if err := yaml.Unmarshal(raw, &df); err != nil {
 				return nil, fmt.Errorf("%s: %w", path, err)
 			}
+			assetURL := func(name string) string {
+				if name == "" {
+					return ""
+				}
+				return "/api/catalog/assets/" + cat.Name() + "/" + dev.Name() + "/" + filepath.Base(name)
+			}
+			for i := range df.Products {
+				df.Products[i].Image = assetURL(df.Products[i].Image)
+			}
 			out = append(out, Product{
 				ID:            dev.Name(),
 				Brand:         df.Brand,
+				Vendor:        df.Vendor,
 				Model:         df.Model,
+				Image:         assetURL(df.Image),
 				Category:      category,
 				Connection:    df.Connection,
 				Description:   df.Description,
@@ -270,6 +287,24 @@ func loadTree(fsys fs.FS) ([]Product, error) {
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
+}
+
+// DeviceAsset reads a catalogue image from disk or the embedded device tree.
+func DeviceAsset(category, device, name string) ([]byte, error) {
+	if filepath.Base(category) != category || filepath.Base(device) != device || filepath.Base(name) != name {
+		return nil, fs.ErrNotExist
+	}
+	path := category + "/" + device + "/" + name
+	if dir := diskDir(); dir != "" {
+		if raw, err := os.ReadFile(filepath.Join(dir, path)); err == nil {
+			return raw, nil
+		}
+	}
+	sub, err := fs.Sub(data, "data")
+	if err != nil {
+		return nil, err
+	}
+	return fs.ReadFile(sub, path)
 }
 
 func defaultString(value, fallback string) string {
