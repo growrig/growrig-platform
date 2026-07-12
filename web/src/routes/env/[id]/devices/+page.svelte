@@ -15,6 +15,7 @@
 	import { measurementUnit } from '$lib/format';
 	import KindIcon from '$lib/components/KindIcon.svelte';
 	import DeviceModal from '$lib/components/DeviceModal.svelte';
+	import CameraStreamStats from '$lib/components/CameraStreamStats.svelte';
 	import { Button } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -253,7 +254,7 @@
 						{@const st = status(b)}
 						<div class="flex items-center gap-3 border-b border-rig-800/60 px-4 py-2.5 last:border-0">
 							<div class="min-w-0 flex-1"><div class="text-xs font-medium capitalize text-rig-300">{meta(b)}</div></div>
-							<div class="text-sm font-semibold tabular-nums">{st.value || '—'}</div>
+							{#if b.kind === 'camera'}<CameraStreamStats cameraId={b.id} class="text-xs font-semibold text-rig-300" />{:else}<div class="text-sm font-semibold tabular-nums">{st.value || '—'}</div>{/if}
 							<span class="h-2 w-2 rounded-full {st.online ? 'bg-leaf' : st.online === false ? 'bg-danger' : 'bg-rig-700'}" title={st.online ? 'Online' : st.online === false ? 'Offline' : 'Unknown'}></span>
 							<div class="flex items-center gap-1">
 							{#if b.kind === 'light'}

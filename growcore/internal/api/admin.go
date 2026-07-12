@@ -146,29 +146,32 @@ func (s *Server) buildEnvironment(envID string, b environmentBody) (domain.Envir
 // --- Bindings ---
 
 type bindingBody struct {
-	DeviceID            string             `json:"deviceId"`
-	DeviceName          string             `json:"deviceName"`
-	PowerControllerID   string             `json:"powerControllerId"`
-	ControllerChannelID string             `json:"controllerChannelId"`
-	EnvironmentID       string             `json:"environmentId"`
-	Kind                domain.BindingKind `json:"kind"`
-	Name                string             `json:"name"`
-	Entity              string             `json:"entity"`
-	Measurement         domain.Measurement `json:"measurement"`
-	Role                domain.Role        `json:"role"`
-	RPMEntity           string             `json:"rpmEntity"`
-	FanType             string             `json:"fanType"`
-	SizeMM              int                `json:"sizeMm"`
-	MaxRPM              int                `json:"maxRpm"`
-	AirflowCFM          float64            `json:"airflowCfm"`
-	StaticPressureMMH2O float64            `json:"staticPressureMmH2O"`
-	StartingVoltage     float64            `json:"startingVoltage"`
-	DuctSizeInches      float64            `json:"ductSizeInches"`
-	NoiseDBA            float64            `json:"noiseDba"`
-	Wattage             float64            `json:"wattage"`
-	Primary             bool               `json:"primary"`
-	StreamURL           string             `json:"streamUrl"`
-	CameraType          string             `json:"cameraType"`
+	DeviceID              string             `json:"deviceId"`
+	DeviceName            string             `json:"deviceName"`
+	PowerControllerID     string             `json:"powerControllerId"`
+	ControllerChannelID   string             `json:"controllerChannelId"`
+	EnvironmentID         string             `json:"environmentId"`
+	Kind                  domain.BindingKind `json:"kind"`
+	Name                  string             `json:"name"`
+	Entity                string             `json:"entity"`
+	Measurement           domain.Measurement `json:"measurement"`
+	Role                  domain.Role        `json:"role"`
+	RPMEntity             string             `json:"rpmEntity"`
+	FanType               string             `json:"fanType"`
+	SizeMM                int                `json:"sizeMm"`
+	MaxRPM                int                `json:"maxRpm"`
+	AirflowCFM            float64            `json:"airflowCfm"`
+	StaticPressureMMH2O   float64            `json:"staticPressureMmH2O"`
+	StartingVoltage       float64            `json:"startingVoltage"`
+	DuctSizeInches        float64            `json:"ductSizeInches"`
+	NoiseDBA              float64            `json:"noiseDba"`
+	Wattage               float64            `json:"wattage"`
+	Primary               bool               `json:"primary"`
+	StreamURL             string             `json:"streamUrl"`
+	CameraType            string             `json:"cameraType"`
+	CameraCaptureInterval int                `json:"cameraCaptureInterval"`
+	CameraRetentionDays   int                `json:"cameraRetentionDays"`
+	CameraStorageMB       int                `json:"cameraStorageMb"`
 }
 
 func (s *Server) createBinding(w http.ResponseWriter, r *http.Request) {
@@ -274,8 +277,8 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	if strings.TrimSpace(b.Name) == "" {
 		return domain.Binding{}, fmt.Errorf("name is required")
 	}
-	// Entity is required except for fixtures (lights), fans, and generic cameras
-	// that supply a stream URL instead of a Home Assistant entity.
+	// Entity is required except for fixtures (lights), fans, and cameras that
+	// supply a direct stream URL instead of a Home Assistant entity.
 	genericCamera := b.Kind == domain.KindCamera && strings.TrimSpace(b.StreamURL) != ""
 	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan && !genericCamera {
 		return domain.Binding{}, fmt.Errorf("entity is required")
@@ -357,18 +360,39 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	case domain.KindPower:
 		// A switchable power controller capability.
 	case domain.KindCamera:
-		// A generic camera streams from a URL instead of a Home Assistant entity.
+		// Cameras use either a direct URL or a Home Assistant camera entity.
 		if url := strings.TrimSpace(b.StreamURL); url != "" {
-			if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-				return domain.Binding{}, fmt.Errorf("camera stream URL must start with http:// or https://")
-			}
 			ct := domain.CameraType(b.CameraType)
-			if ct != domain.CameraMJPEG && ct != domain.CameraSnapshot {
-				return domain.Binding{}, fmt.Errorf("camera type must be %q or %q", domain.CameraMJPEG, domain.CameraSnapshot)
+			if ct != domain.CameraMJPEG && ct != domain.CameraSnapshot && ct != domain.CameraRTSP {
+				return domain.Binding{}, fmt.Errorf("unknown camera type %q", ct)
+			}
+			if ct == domain.CameraRTSP {
+				if !strings.HasPrefix(strings.ToLower(url), "rtsp://") {
+					return domain.Binding{}, fmt.Errorf("RTSP camera URL must start with rtsp://")
+				}
+			} else if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+				return domain.Binding{}, fmt.Errorf("camera stream URL must start with http:// or https://")
 			}
 			binding.StreamURL = url
 			binding.CameraType = ct
-			binding.Entity = "" // generic cameras never bind to Home Assistant
+			binding.CameraCaptureInterval = b.CameraCaptureInterval
+			binding.CameraRetentionDays = b.CameraRetentionDays
+			binding.CameraStorageMB = b.CameraStorageMB
+			if binding.CameraCaptureInterval == 0 {
+				binding.CameraCaptureInterval = 60
+			}
+			if binding.CameraRetentionDays == 0 {
+				binding.CameraRetentionDays = 7
+			}
+			if binding.CameraStorageMB == 0 {
+				binding.CameraStorageMB = 5120
+			}
+			if binding.CameraCaptureInterval < 5 || binding.CameraCaptureInterval > 3600 || binding.CameraRetentionDays < 1 || binding.CameraRetentionDays > 365 || binding.CameraStorageMB < 100 || binding.CameraStorageMB > 102400 {
+				return domain.Binding{}, fmt.Errorf("camera archive settings are outside supported ranges")
+			}
+			binding.Entity = "" // direct streams do not bind to Home Assistant
+		} else if !strings.HasPrefix(strings.TrimSpace(binding.Entity), "camera.") {
+			return domain.Binding{}, fmt.Errorf("camera entity must start with camera.")
 		}
 	default:
 		return domain.Binding{}, fmt.Errorf("unknown binding kind %q", b.Kind)

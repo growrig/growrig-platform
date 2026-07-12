@@ -72,6 +72,27 @@ export function wsURL(): string {
 	return u.toString();
 }
 
+/** Authenticated, same-origin snapshot URL for an HA-backed camera binding. */
+export function cameraProxyURL(bindingId: string, live = false): string {
+	const url = `${CORE_URL}/api/bindings/${encodeURIComponent(bindingId)}/camera${live ? '/live' : ''}`;
+	if (!authToken) return url;
+	return `${url}?token=${encodeURIComponent(authToken)}`;
+}
+
+function authenticatedMediaURL(path: string): string {
+	const url = `${CORE_URL}${path}`;
+	return authToken ? `${url}?token=${encodeURIComponent(authToken)}` : url;
+}
+
+export interface CameraSnapshot { id: string; time: string }
+export const getCameraSnapshots = (bindingId: string, limit = 200) =>
+	json<CameraSnapshot[]>(`/api/bindings/${encodeURIComponent(bindingId)}/camera/archive?limit=${limit}`);
+export const cameraArchiveURL = (bindingId: string, snapshotId: string) =>
+	authenticatedMediaURL(`/api/bindings/${encodeURIComponent(bindingId)}/camera/archive/${encodeURIComponent(snapshotId)}`);
+export interface CameraStats { bitrateBps: number; fps: number; online: boolean; lastFrame?: string }
+export const getCameraStats = (bindingId: string) =>
+	json<CameraStats>(`/api/bindings/${encodeURIComponent(bindingId)}/camera/stats`);
+
 async function req(path: string, init?: RequestInit): Promise<Response> {
 	const headers = new Headers(init?.headers ?? { 'Content-Type': 'application/json' });
 	if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
@@ -206,6 +227,9 @@ export interface BindingInput {
 	primary?: boolean;
 	streamUrl?: string;
 	cameraType?: CameraType;
+	cameraCaptureInterval?: number;
+	cameraRetentionDays?: number;
+	cameraStorageMb?: number;
 }
 
 export const createBinding = (b: BindingInput) =>

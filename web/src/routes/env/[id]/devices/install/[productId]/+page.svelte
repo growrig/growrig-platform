@@ -37,6 +37,11 @@
 	let fanNoiseDba = $state(0);
 	let cameraStreamUrl = $state('');
 	let cameraType = $state<CameraType>('snapshot');
+	let cameraCaptureInterval = $state(60);
+	let cameraRetentionDays = $state(7);
+	let cameraStorageMb = $state(5120);
+	let cameraSource = $state<'url' | 'homeassistant'>('url');
+	let cameraEntity = $state('');
 	let loading = $state(true);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -131,8 +136,10 @@
 	// A generic camera (a camera product without a Home Assistant integration)
 	// streams from a URL the grower supplies here, instead of an HA entity.
 	const isGenericCamera = $derived(!!product && !product.haIntegration && (product.provides ?? []).some((template) => template.kind === 'camera'));
-	const cameraUrlValid = $derived(/^https?:\/\//.test(cameraStreamUrl.trim()));
-	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!isGenericCamera || cameraUrlValid) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
+	const cameraEntities = $derived(discovered.filter((item) => item.kind === 'camera' && !bindings.some((binding) => binding.entity === item.entity)));
+	const cameraUrlValid = $derived(cameraType === 'rtsp' ? /^rtsp:\/\//i.test(cameraStreamUrl.trim()) : /^https?:\/\//.test(cameraStreamUrl.trim()));
+	const cameraSourceValid = $derived(cameraSource === 'url' ? cameraUrlValid : !!cameraEntity);
+	const ready = $derived(!!product && !!standaloneName.trim() && uniqueMappings && (!(product.provides ?? []).some((template) => template.kind === 'light') || lightWattage > 0) && (!isGenericCamera || cameraSourceValid) && (!product.haIntegration || (!!selectedHADevice && (product.provides ?? []).every((template, i) => (template.kind === 'light' || !!selected[i]) && (!template.rpmEntityDomain || !!selectedRPM[i])))));
 	const detectedName = $derived(discovered.find((entity) => entity.haDeviceId === selectedHADevice)?.deviceName);
 	const lights = $derived(bindings.filter((binding) => binding.environmentId === environmentId && binding.kind === 'light'));
 	const powerControllers = $derived.by(() => {
@@ -183,7 +190,7 @@
 					environmentId: environmentId!,
 					kind: template.kind,
 					name: template.kind === 'light' || template.kind === 'camera' ? deviceName : template.label,
-					entity: selected[i] ?? '',
+					entity: template.kind === 'camera' && isGenericCamera && cameraSource === 'homeassistant' ? cameraEntity : selected[i] ?? '',
 					measurement: template.measurement,
 					role: template.kind === 'fan' ? fanRole : template.role,
 					fanType: template.kind === 'fan' ? fanType : undefined,
@@ -196,8 +203,11 @@
 					noiseDba: template.kind === 'fan' ? fanNoiseDba || undefined : undefined,
 					rpmEntity: template.kind === 'controller' ? selectedRPM[i] || undefined : undefined,
 					wattage: template.kind === 'light' ? lightWattage : template.wattage,
-					streamUrl: template.kind === 'camera' && isGenericCamera ? cameraStreamUrl.trim() : undefined,
-					cameraType: template.kind === 'camera' && isGenericCamera ? cameraType : undefined
+					streamUrl: template.kind === 'camera' && isGenericCamera && cameraSource === 'url' ? cameraStreamUrl.trim() : undefined,
+					cameraType: template.kind === 'camera' && isGenericCamera && cameraSource === 'url' ? cameraType : undefined
+					,cameraCaptureInterval: template.kind === 'camera' && cameraType === 'rtsp' ? cameraCaptureInterval : undefined
+					,cameraRetentionDays: template.kind === 'camera' && cameraType === 'rtsp' ? cameraRetentionDays : undefined
+					,cameraStorageMb: template.kind === 'camera' && cameraType === 'rtsp' ? cameraStorageMb : undefined
 				});
 			}
 			if (assignedLightId) {
@@ -316,19 +326,38 @@
 			</label>
 			{#if isGenericCamera}
 				<label class="mt-4 block">
+					<span class="text-sm text-rig-300">Camera source</span>
+					<Select value={cameraSource} onValueChange={(value) => (cameraSource = value as 'url' | 'homeassistant')} items={[{ value: 'url', label: 'Direct stream URL' }, { value: 'homeassistant', label: 'Home Assistant entity' }]} class="mt-1" />
+				</label>
+				{#if cameraSource === 'homeassistant'}
+				<label class="mt-4 block">
+					<span class="text-sm text-rig-300">Home Assistant camera</span>
+					<Select bind:value={cameraEntity} placeholder="Choose a camera entity…" items={cameraEntities.map((item) => ({ value: item.entity, label: `${item.deviceName || item.name} — ${item.entity}` }))} class="mt-1" />
+					<span class="mt-1 block text-xs text-rig-500">GrowRig fetches snapshots through Home Assistant, so its URL and access token stay private.</span>
+				</label>
+				{:else}
+				<label class="mt-4 block">
 					<span class="text-sm text-rig-300">Stream URL</span>
-					<input bind:value={cameraStreamUrl} placeholder="http://192.168.1.50/snapshot.jpg" class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 font-mono text-xs focus:border-rig-500 focus:outline-none" />
-					<span class="mt-1 block text-xs text-rig-500">An MJPEG stream or a JPEG snapshot URL. The browser renders it directly — RTSP is not supported.</span>
+					<input bind:value={cameraStreamUrl} placeholder={cameraType === 'rtsp' ? 'rtsp://user:password@192.168.1.50/stream' : 'http://192.168.1.50/snapshot.jpg'} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 font-mono text-xs focus:border-rig-500 focus:outline-none" />
+					<span class="mt-1 block text-xs text-rig-500">JPEG and MJPEG render directly. RTSP unicast is securely relayed over TCP by GrowRig.</span>
 				</label>
 				<label class="mt-4 block">
 					<span class="text-sm text-rig-300">Stream type</span>
-					<Select value={cameraType} onValueChange={(value) => (cameraType = value as CameraType)} items={[{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' }, { value: 'mjpeg', label: 'MJPEG stream' }]} class="mt-1" />
+					<Select value={cameraType} onValueChange={(value) => (cameraType = value as CameraType)} items={[{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' }, { value: 'mjpeg', label: 'MJPEG stream' }, { value: 'rtsp', label: 'RTSP unicast (relayed by GrowRig)' }]} class="mt-1" />
 				</label>
-				{#if cameraUrlValid}
+				{#if cameraUrlValid && cameraType !== 'rtsp'}
 					<div class="mt-4">
 						<span class="text-sm text-rig-300">Preview</span>
 						<div class="mt-1 max-w-sm"><CameraPreview url={cameraStreamUrl.trim()} type={cameraType} /></div>
 					</div>
+				{:else if cameraType === 'rtsp'}
+					<div class="mt-4 grid gap-3 sm:grid-cols-3">
+						<label><span class="text-sm text-rig-300">Snapshot interval</span><div class="relative mt-1"><input type="number" min="5" max="3600" bind:value={cameraCaptureInterval} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">sec</span></div></label>
+						<label><span class="text-sm text-rig-300">Retention</span><div class="relative mt-1"><input type="number" min="1" max="365" bind:value={cameraRetentionDays} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">days</span></div></label>
+						<label><span class="text-sm text-rig-300">Storage limit</span><div class="relative mt-1"><input type="number" min="100" max="102400" bind:value={cameraStorageMb} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">MB</span></div></label>
+					</div>
+					<p class="mt-2 text-xs text-rig-500">GrowRig stays connected, saves snapshots atomically, and automatically removes the oldest files.</p>
+				{/if}
 				{/if}
 			{/if}
 			{#if (product.provides ?? []).some((template) => template.kind === 'light')}

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/growrig/growrig-platform/growcore/internal/api"
+	"github.com/growrig/growrig-platform/growcore/internal/camera"
 	"github.com/growrig/growrig-platform/growcore/internal/config"
 	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/ha"
@@ -71,7 +72,9 @@ func main() {
 		log.Print("web UI embedded; serving at /")
 	}
 
-	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static)
+	cameraRecorder := camera.New(st, cfg.Storage.Path)
+	go cameraRecorder.Run(ctx)
+	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder)
 	go apiServer.PollWeather(ctx)
 
 	srv := &http.Server{

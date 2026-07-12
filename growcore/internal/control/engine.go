@@ -325,7 +325,7 @@ func (e *Engine) step(dt time.Duration) error {
 				}
 				view.Controls = append(view.Controls, cs)
 			case domain.KindCamera:
-				view.Cameras = append(view.Cameras, domain.CameraRef{ID: b.ID, Name: b.Name, Entity: b.Entity, StreamURL: b.StreamURL, CameraType: b.CameraType})
+				view.Cameras = append(view.Cameras, domain.CameraRef{ID: b.ID, Name: b.Name, Entity: b.Entity, StreamURL: b.StreamURL, CameraType: b.CameraType, CameraCaptureInterval: b.CameraCaptureInterval})
 			}
 		}
 

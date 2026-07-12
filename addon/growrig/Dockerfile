@@ -12,6 +12,7 @@ ARG BUILD_ARCH
 COPY rootfs /
 COPY bin/growcore.${BUILD_ARCH} /usr/bin/growcore
 
-RUN chmod +x /usr/bin/growcore /run.sh
+RUN apk add --no-cache ffmpeg \
+    && chmod +x /usr/bin/growcore /run.sh
 
 CMD [ "/run.sh" ]

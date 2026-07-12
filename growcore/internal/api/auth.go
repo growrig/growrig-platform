@@ -153,6 +153,14 @@ func (s *Server) requireEnvWrite(fn http.HandlerFunc) http.HandlerFunc {
 // requireEnvWriteForBinding guards a route keyed by a binding {id}: it resolves
 // the binding's environment and requires write access there. Admins pass.
 func (s *Server) requireEnvWriteForBinding(fn http.HandlerFunc) http.HandlerFunc {
+	return s.requireEnvAccessForBinding(domain.AccessWrite, fn)
+}
+
+func (s *Server) requireEnvReadForBinding(fn http.HandlerFunc) http.HandlerFunc {
+	return s.requireEnvAccessForBinding(domain.AccessRead, fn)
+}
+
+func (s *Server) requireEnvAccessForBinding(level domain.AccessLevel, fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, ok := currentUser(r)
 		if !ok {
@@ -184,7 +192,8 @@ func (s *Server) requireEnvWriteForBinding(fn http.HandlerFunc) http.HandlerFunc
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
-		if have, ok := grants[envID]; !ok || !have.AllowsWrite() {
+		have, ok := grants[envID]
+		if !ok || (level == domain.AccessWrite && !have.AllowsWrite()) {
 			writeJSON(w, http.StatusForbidden, errBody("you do not have access to this environment"))
 			return
 		}

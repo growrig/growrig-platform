@@ -57,6 +57,10 @@
 	let controllerChannelId = $state('');
 	let streamUrl = $state('');
 	let cameraType = $state<CameraType>('snapshot');
+	let cameraCaptureInterval = $state(60);
+	let cameraRetentionDays = $state(7);
+	let cameraStorageMb = $state(5120);
+	let cameraSource = $state<'url' | 'homeassistant'>('url');
 	let busy = $state(false);
 
 	// Reseed the form whenever the target binding changes.
@@ -66,6 +70,10 @@
 			entity = binding.entity;
 			streamUrl = binding.streamUrl ?? '';
 			cameraType = binding.cameraType ?? 'snapshot';
+			cameraCaptureInterval = binding.cameraCaptureInterval ?? 60;
+			cameraRetentionDays = binding.cameraRetentionDays ?? 7;
+			cameraStorageMb = binding.cameraStorageMb ?? 5120;
+			cameraSource = binding.entity ? 'homeassistant' : 'url';
 			measurement = binding.measurement ?? 'temperature';
 			role = binding.role ?? 'unassigned';
 			rpmEntity = binding.rpmEntity ?? '';
@@ -86,8 +94,12 @@
 
 	const cameraTypeItems: SelectItem[] = [
 		{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' },
-		{ value: 'mjpeg', label: 'MJPEG stream' }
+		{ value: 'mjpeg', label: 'MJPEG stream' },
+		{ value: 'rtsp', label: 'RTSP unicast (relayed by GrowRig)' }
 	];
+	const cameraEntityItems = $derived<SelectItem[]>(discovered
+		.filter((item) => item.kind === 'camera' && (item.entity === binding?.entity || !usedEntities.has(item.entity)))
+		.map((item) => ({ value: item.entity, label: `${item.deviceName || item.name} — ${item.entity}` })));
 
 	const measurementItems: SelectItem[] = [
 		{ value: 'temperature', label: 'Temperature' },
@@ -126,7 +138,7 @@
 		!binding
 			? false
 			: binding.kind === 'camera'
-				? !!(entity.trim() || streamUrl.trim())
+				? cameraSource === 'homeassistant' ? !!entity.trim() : !!streamUrl.trim()
 				: binding.kind === 'fan' || binding.kind === 'light' || !!entity.trim()
 	);
 
@@ -142,7 +154,7 @@
 				environmentId: binding.environmentId,
 				kind: binding.kind,
 				name: binding.name,
-				entity: entity.trim(),
+				entity: binding.kind === 'camera' && cameraSource === 'url' ? '' : entity.trim(),
 				measurement: binding.kind === 'sensor' ? measurement : undefined,
 				role: binding.kind === 'fan' || binding.kind === 'controller' ? role : undefined,
 				rpmEntity: binding.kind === 'controller' ? rpmEntity.trim() : undefined,
@@ -156,8 +168,11 @@
 				noiseDba: binding.kind === 'fan' ? noiseDba || undefined : undefined,
 				wattage: binding.kind === 'light' ? wattage || 0 : undefined,
 				primary: binding.kind === 'light' ? primary : undefined,
-				streamUrl: binding.kind === 'camera' ? streamUrl.trim() || undefined : undefined,
-				cameraType: binding.kind === 'camera' && streamUrl.trim() ? cameraType : undefined
+				streamUrl: binding.kind === 'camera' && cameraSource === 'url' ? streamUrl.trim() || undefined : undefined,
+				cameraType: binding.kind === 'camera' && cameraSource === 'url' && streamUrl.trim() ? cameraType : undefined
+				,cameraCaptureInterval: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraCaptureInterval : undefined
+				,cameraRetentionDays: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraRetentionDays : undefined
+				,cameraStorageMb: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraStorageMb : undefined
 			});
 			flash?.('ok', 'Device saved');
 			open = false;
@@ -255,18 +270,36 @@
 				</label>
 			{:else if binding.kind === 'camera'}
 				<label class="block">
+					<span class="text-sm text-rig-400">Camera source</span>
+					<Select value={cameraSource} onValueChange={(v) => (cameraSource = v as 'url' | 'homeassistant')} items={[{ value: 'url', label: 'Direct stream URL' }, { value: 'homeassistant', label: 'Home Assistant entity' }]} class="mt-1" />
+				</label>
+				{#if cameraSource === 'homeassistant'}
+				<label class="block">
+					<span class="text-sm text-rig-400">Home Assistant camera</span>
+					<Select bind:value={entity} placeholder="Choose a camera entity…" items={cameraEntityItems} class="mt-1" />
+				</label>
+				{:else}
+				<label class="block">
 					<span class="text-sm text-rig-400">Stream URL</span>
-					<input bind:value={streamUrl} placeholder="http://192.168.1.50/snapshot.jpg" class="{field} mt-1 font-mono text-xs" />
+					<input bind:value={streamUrl} placeholder={cameraType === 'rtsp' ? 'rtsp://user:password@192.168.1.50/stream' : 'http://192.168.1.50/snapshot.jpg'} class="{field} mt-1 font-mono text-xs" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Stream type</span>
 					<Select value={cameraType} onValueChange={(v) => (cameraType = v as CameraType)} items={cameraTypeItems} class="mt-1" />
 				</label>
-				{#if streamUrl.trim()}
+				{#if streamUrl.trim() && cameraType !== 'rtsp'}
 					<div>
 						<span class="text-sm text-rig-400">Preview</span>
 						<CameraPreview url={streamUrl.trim()} type={cameraType} class="mt-1" />
 					</div>
+				{:else if cameraType === 'rtsp'}
+					<p class="text-xs text-rig-500">RTSP is relayed over TCP after saving. Credentials remain on the GrowRig server.</p>
+					<div class="grid grid-cols-3 gap-3">
+						<label><span class="text-xs text-rig-400">Snapshot interval</span><div class="relative mt-1"><input type="number" min="5" max="3600" bind:value={cameraCaptureInterval} class={field} /><span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-rig-500">sec</span></div></label>
+						<label><span class="text-xs text-rig-400">Retention</span><div class="relative mt-1"><input type="number" min="1" max="365" bind:value={cameraRetentionDays} class={field} /><span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-rig-500">days</span></div></label>
+						<label><span class="text-xs text-rig-400">Storage limit</span><div class="relative mt-1"><input type="number" min="100" max="102400" bind:value={cameraStorageMb} class={field} /><span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-rig-500">MB</span></div></label>
+					</div>
+				{/if}
 				{/if}
 			{/if}
 

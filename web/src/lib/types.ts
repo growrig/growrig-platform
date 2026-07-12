@@ -7,7 +7,7 @@ export type Measurement = 'temperature' | 'humidity' | 'co2' | 'power';
 export type Health = 'online' | 'stale' | 'offline';
 export type Category = 'tent' | 'controller' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
 export type FanType = 'pc' | 'inline' | 'other';
-export type CameraType = 'mjpeg' | 'snapshot';
+export type CameraType = 'mjpeg' | 'snapshot' | 'rtsp';
 
 // --- Cultivation layer (grows, plant units, placements) ---
 
@@ -232,6 +232,9 @@ export interface Binding {
 	primary?: boolean;
 	streamUrl?: string;
 	cameraType?: CameraType;
+	cameraCaptureInterval?: number;
+	cameraRetentionDays?: number;
+	cameraStorageMb?: number;
 }
 
 export interface DiscoveredEntity {
@@ -279,6 +282,7 @@ export interface CameraRef {
 	/** Generic (non-Home-Assistant) camera stream. */
 	streamUrl?: string;
 	cameraType?: CameraType;
+	cameraCaptureInterval?: number;
 }
 
 export interface AirSourceView {

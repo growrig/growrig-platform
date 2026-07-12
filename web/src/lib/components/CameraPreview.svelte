@@ -4,15 +4,20 @@
 
 	interface Props {
 		url: string;
+		/** Optional MJPEG feed layered over the initial snapshot once ready. */
+		liveUrl?: string;
 		type?: CameraType;
 		/** Snapshot refresh interval in seconds. */
 		refreshSeconds?: number;
 		class?: string;
+		emptyLabel?: string;
+		errorLabel?: string;
 	}
-	let { url, type = 'snapshot', refreshSeconds = 2, class: className = '' }: Props = $props();
+	let { url, liveUrl = '', type = 'snapshot', refreshSeconds = 2, class: className = '', emptyLabel = 'No stream URL', errorLabel = 'No signal' }: Props = $props();
 
 	let tick = $state(0);
 	let failed = $state(false);
+	let liveReady = $state(false);
 
 	// Snapshot cameras return a single JPEG, so we re-request on an interval with a
 	// cache-busting param. MJPEG streams play continuously, so no refresh is needed.
@@ -26,8 +31,13 @@
 	$effect(() => {
 		void url;
 		void type;
+		// A cached RTSP camera may not have produced its first frame yet. Retry
+		// snapshot failures on the next scheduled refresh instead of remaining in
+		// the no-signal state forever.
+		if (type === 'snapshot') void tick;
 		failed = false;
 	});
+	$effect(() => { void liveUrl; liveReady = false; });
 
 	const src = $derived(
 		type === 'snapshot' && tick > 0 ? `${url}${url.includes('?') ? '&' : '?'}_t=${tick}` : url
@@ -43,7 +53,11 @@
 	{:else}
 		<div class="flex h-full w-full flex-col items-center justify-center gap-1 text-rig-600">
 			<CameraOff size={22} />
-			<span class="text-xs">{url ? 'No signal' : 'No stream URL'}</span>
+			<span class="text-xs">{url ? errorLabel : emptyLabel}</span>
 		</div>
+	{/if}
+	{#if liveUrl}
+		<!-- Keep the cached frame visible until the MJPEG response produces its first frame. -->
+		<img src={liveUrl} alt="Live camera" onload={() => (liveReady = true)} class="absolute inset-0 h-full w-full object-cover transition-opacity duration-300 {liveReady ? 'opacity-100' : 'opacity-0'}" />
 	{/if}
 </div>

@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -130,6 +131,38 @@ func (a *Adapter) SetSwitch(entity string, on bool) error {
 		service = "turn_on"
 	}
 	return a.callService(serviceDomain(entity), service, map[string]any{"entity_id": entity})
+}
+
+// CameraImage fetches a still image for a Home Assistant camera entity. Grow
+// Core proxies this response so the browser never needs the Home Assistant URL
+// or long-lived access token.
+func (a *Adapter) CameraImage(ctx context.Context, entity string) ([]byte, string, error) {
+	if serviceDomain(entity) != "camera" {
+		return nil, "", fmt.Errorf("%q is not a camera entity", entity)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		a.restBase+"/camera_proxy/"+url.PathEscape(entity), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("camera proxy: HTTP %d", resp.StatusCode)
+	}
+	image, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	if err != nil {
+		return nil, "", err
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = http.DetectContentType(image)
+	}
+	return image, contentType, nil
 }
 
 func (a *Adapter) callService(domainName, service string, body map[string]any) error {

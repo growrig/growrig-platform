@@ -3,14 +3,18 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"github.com/growrig/growrig-platform/growcore/internal/camera"
 	"github.com/growrig/growrig-platform/growcore/internal/catalog"
 	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
@@ -25,14 +29,15 @@ type Server struct {
 	adapterType string
 	static      http.Handler
 	passkeys    *ceremonyStore
+	cameras     *camera.Recorder
 }
 
 func (s *Server) activity(envID, deviceID, level, eventType, message string) {
 	_ = s.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message})
 }
 
-func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler) *Server {
-	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore()}
+func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder) *Server {
+	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore(), cameras: cameras}
 }
 
 // Handler builds the HTTP router.
@@ -67,6 +72,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/activity", s.requireAuth(s.getActivity))
 	mux.HandleFunc("GET /api/environments", s.requireAuth(s.getEnvironments))
 	mux.HandleFunc("GET /api/bindings", s.requireAuth(s.getBindings))
+	mux.HandleFunc("GET /api/bindings/{id}/camera", s.requireEnvReadForBinding(s.getCameraImage))
+	mux.HandleFunc("GET /api/bindings/{id}/camera/live", s.requireEnvReadForBinding(s.getCameraLive))
+	mux.HandleFunc("GET /api/bindings/{id}/camera/archive", s.requireEnvReadForBinding(s.getCameraArchive))
+	mux.HandleFunc("GET /api/bindings/{id}/camera/archive/{snapshot}", s.requireEnvReadForBinding(s.getCameraArchiveImage))
+	mux.HandleFunc("GET /api/bindings/{id}/camera/stats", s.requireEnvReadForBinding(s.getCameraStats))
 	mux.HandleFunc("GET /api/lighting/defaults", s.requireAuth(s.getLightingDefaults))
 	mux.HandleFunc("GET /api/locations", s.requireAuth(s.getLocations))
 	mux.HandleFunc("GET /api/weather", s.requireAuth(s.getWeather))
@@ -396,6 +406,163 @@ func (s *Server) getBindings(w http.ResponseWriter, r *http.Request) {
 		bindings = []domain.Binding{}
 	}
 	writeJSON(w, http.StatusOK, bindings)
+}
+
+type cameraImageAdapter interface {
+	CameraImage(context.Context, string) ([]byte, string, error)
+}
+
+func (s *Server) getCameraImage(w http.ResponseWriter, r *http.Request) {
+	bindings, err := s.store.Bindings()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	var camera domain.Binding
+	for _, binding := range bindings {
+		if binding.ID == r.PathValue("id") && binding.Kind == domain.KindCamera {
+			camera = binding
+			break
+		}
+	}
+	if camera.ID == "" {
+		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
+		return
+	}
+	if camera.CameraType == domain.CameraRTSP && camera.StreamURL != "" {
+		image, err := os.ReadFile(s.cameras.Latest(camera.EnvironmentID, camera.ID))
+		if err != nil {
+			log.Printf("camera %s: latest snapshot unavailable: %v", camera.ID, err)
+			writeJSON(w, http.StatusServiceUnavailable, errBody("camera is connecting; no snapshot is available yet"))
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(image)
+		return
+	}
+	if camera.Entity == "" {
+		log.Printf("camera %s: proxy request has no RTSP source or Home Assistant entity (type=%q stream=%t)", camera.ID, camera.CameraType, camera.StreamURL != "")
+		writeJSON(w, http.StatusBadRequest, errBody("camera does not use a proxied source"))
+		return
+	}
+	adapter, ok := s.adapter.(cameraImageAdapter)
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, errBody("camera proxy is unavailable"))
+		return
+	}
+	image, contentType, err := adapter.CameraImage(r.Context(), camera.Entity)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(image)
+}
+
+func (s *Server) getCameraLive(w http.ResponseWriter, r *http.Request) {
+	bindings, err := s.store.Bindings()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	var camera domain.Binding
+	for _, binding := range bindings {
+		if binding.ID == r.PathValue("id") && binding.Kind == domain.KindCamera {
+			camera = binding
+			break
+		}
+	}
+	if camera.ID == "" {
+		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
+		return
+	}
+	if camera.CameraType != domain.CameraRTSP {
+		log.Printf("camera %s: rejected live request because camera type is %q", camera.ID, camera.CameraType)
+		writeJSON(w, http.StatusBadRequest, errBody("live view is only available for RTSP cameras"))
+		return
+	}
+	frames, unsubscribe := s.cameras.Subscribe(camera.ID)
+	defer unsubscribe()
+	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=growrigframe")
+	w.Header().Set("Cache-Control", "no-store")
+	flusher, _ := w.(http.Flusher)
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case frame := <-frames:
+			if _, err := fmt.Fprintf(w, "--growrigframe\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", len(frame)); err != nil {
+				return
+			}
+			if _, err := w.Write(frame); err != nil {
+				return
+			}
+			if _, err := w.Write([]byte("\r\n")); err != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+func (s *Server) getCameraArchive(w http.ResponseWriter, r *http.Request) {
+	binding, ok := s.cameraBinding(r.PathValue("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	snapshots, err := s.cameras.Snapshots(binding.EnvironmentID, binding.ID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if snapshots == nil {
+		snapshots = []camera.Snapshot{}
+	}
+	writeJSON(w, http.StatusOK, snapshots)
+}
+
+func (s *Server) getCameraArchiveImage(w http.ResponseWriter, r *http.Request) {
+	binding, ok := s.cameraBinding(r.PathValue("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
+		return
+	}
+	path, err := s.cameras.SnapshotPath(binding.EnvironmentID, binding.ID, r.PathValue("snapshot"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, errBody("snapshot not found"))
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) getCameraStats(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.cameraBinding(r.PathValue("id")); !ok {
+		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.cameras.StreamStats(r.PathValue("id")))
+}
+
+func (s *Server) cameraBinding(id string) (domain.Binding, bool) {
+	bindings, err := s.store.Bindings()
+	if err != nil {
+		return domain.Binding{}, false
+	}
+	for _, binding := range bindings {
+		if binding.ID == id && binding.Kind == domain.KindCamera {
+			return binding, true
+		}
+	}
+	return domain.Binding{}, false
 }
 
 func (s *Server) putSwitch(w http.ResponseWriter, r *http.Request) {

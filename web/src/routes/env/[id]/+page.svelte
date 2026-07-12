@@ -4,7 +4,7 @@
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { history, historyRange, deviceHistory, setSwitch, getGrows, getLightingDefaults, getLocations, weather } from '$lib/api';
-	import type { DeviceSeries, Grow, Location, StageLightDefaults, Reading, Weather } from '$lib/types';
+	import type { CameraRef, DeviceSeries, Grow, Location, StageLightDefaults, Reading, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import { climateTone, toneClass, vpdZone, volumeM3, formatDimensions } from '$lib/format';
@@ -21,10 +21,10 @@
 	import Lightbulb from '@lucide/svelte/icons/lightbulb';
 	import LightbulbOff from '@lucide/svelte/icons/lightbulb-off';
 	import Camera from '@lucide/svelte/icons/camera';
+	import { cameraProxyURL } from '$lib/api';
 	import CameraPreview from '$lib/components/CameraPreview.svelte';
-	import Ruler from '@lucide/svelte/icons/ruler';
-	import Box from '@lucide/svelte/icons/box';
-	import Wind from '@lucide/svelte/icons/wind';
+	import CameraDetailModal from '$lib/components/CameraDetailModal.svelte';
+	import CameraStreamStats from '$lib/components/CameraStreamStats.svelte';
 	import Star from '@lucide/svelte/icons/star';
 	import Zap from '@lucide/svelte/icons/zap';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
@@ -52,7 +52,6 @@
 
 	const dims = $derived(env ? formatDimensions(env.widthCm, env.depthCm, env.heightCm) : '');
 	const vol = $derived(env ? volumeM3(env.widthCm, env.depthCm, env.heightCm) : 0);
-	const hasInfo = $derived(!!(dims || env?.airSource));
 
 	let readings = $state<Reading[]>([]);
 	let rangeReadings = $state<Reading[]>([]);
@@ -127,9 +126,15 @@
 	// metric to open and hands it the live current values.
 	let metric = $state<{ descriptor: MetricDescriptor; title: string; unit: string } | null>(null);
 	let metricOpen = $state(false);
+	let cameraOpen = $state(false);
+	let detailCamera = $state<CameraRef | null>(null);
 	function openMetric(descriptor: MetricDescriptor, title: string, unit: string) {
 		metric = { descriptor, title, unit };
 		metricOpen = true;
+	}
+	function openCamera(camera: CameraRef) {
+		detailCamera = camera;
+		cameraOpen = true;
 	}
 </script>
 
@@ -148,6 +153,11 @@
 				<div>
 					<h1 class="text-2xl font-semibold">{env.name}</h1>
 					{#if env.model}<p class="text-sm text-rig-400">{env.model}</p>{/if}
+					{#if env.airSource || dims || vol}
+						<p class="text-sm text-rig-400">
+							{#if env.airSource}<span>in</span>{' '}<a href="/env/{env.airSource.id}" class="text-rig-300 underline decoration-rig-600 underline-offset-2 transition-colors hover:text-leaf hover:decoration-leaf">{env.airSource.name}</a>{/if}{#if dims}<span>{env.airSource ? ', ' : ''}{dims}</span>{#if vol}{' '}<span>({vol.toFixed(2)} m³)</span>{/if}{:else if vol}<span>{env.airSource ? ', ' : ''}{vol.toFixed(2)} m³</span>{/if}
+						</p>
+					{/if}
 				</div>
 				<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rig-400">{env.kind}</span>
 				<span class="rounded-full px-2 py-0.5 text-xs {healthTone(env.health)}">{env.health}</span>
@@ -165,53 +175,44 @@
 			</div>
 		</div>
 
-		<!-- Basic info -->
-		{#if hasInfo}
-			<div class="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-rig-800 bg-rig-900/40 px-5 py-4">
-				{#if dims}
-					<div class="flex items-center gap-2">
-						<Ruler size={16} class="text-rig-500" />
-						<div>
-							<div class="text-[11px] uppercase tracking-wide text-rig-500">Dimensions</div>
-							<div class="text-sm text-rig-100">{dims}</div>
-						</div>
-					</div>
-					{#if vol}
-						<div class="flex items-center gap-2">
-							<Box size={16} class="text-rig-500" />
-							<div>
-								<div class="text-[11px] uppercase tracking-wide text-rig-500">Volume</div>
-								<div class="text-sm text-rig-100 tabular-nums">{vol.toFixed(2)} m³</div>
-							</div>
-						</div>
-					{/if}
+		<div class:grid={env.cameras?.length} class="gap-6 lg:grid-cols-2">
+			<div class="space-y-6">
+				{#if env.kind === 'tent'}
+					<ControlGrowCard
+						environmentId={env.id}
+						grow={env.grow}
+						schedule={env.schedule}
+						hasPrimaryLight={!!primaryLight}
+						canEdit={canWrite}
+						{grows}
+						defaults={lightingDefaults}
+					/>
 				{/if}
-				{#if env.airSource}
-					<div class="flex items-center gap-2">
-						<Wind size={16} class="text-rig-500" />
-						<div>
-							<div class="text-[11px] uppercase tracking-wide text-rig-500">Air source</div>
-							<div class="text-sm text-rig-100">{env.airSource.name}</div>
-						</div>
-					</div>
-				{/if}
+
+				<!-- Current occupants grouped by grow -->
+				<EnvironmentOccupancy environmentId={env.id} />
 			</div>
-		{/if}
 
-		{#if env.kind === 'tent'}
-			<ControlGrowCard
-				environmentId={env.id}
-				grow={env.grow}
-				schedule={env.schedule}
-				hasPrimaryLight={!!primaryLight}
-				canEdit={canWrite}
-				{grows}
-				defaults={lightingDefaults}
-			/>
-		{/if}
-
-		<!-- Current occupants grouped by grow -->
-		<EnvironmentOccupancy environmentId={env.id} />
+			<!-- Cameras sit beside grow controls and occupants on wide screens. -->
+			{#if env.cameras?.length}
+				<section>
+					<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Cameras</h2>
+					<div class="space-y-3">
+						{#each env.cameras as cam (cam.id)}
+							<div role="button" tabindex="0" onclick={() => openCamera(cam)} onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCamera(cam); } }} class="group cursor-pointer rounded-lg border border-rig-800 bg-rig-950/40 p-3 transition-colors hover:border-rig-600 hover:bg-rig-900/50 focus-visible:border-rig-500 focus-visible:outline-none">
+								<CameraPreview url={cam.cameraType === 'rtsp' || cam.entity || !cam.streamUrl ? cameraProxyURL(cam.id) : cam.streamUrl} liveUrl={cam.cameraType === 'rtsp' || (!cam.streamUrl && !cam.entity) ? cameraProxyURL(cam.id, true) : ''} type={cam.cameraType === 'rtsp' ? 'snapshot' : cam.streamUrl ? cam.cameraType : 'snapshot'} refreshSeconds={cam.cameraType === 'rtsp' ? cam.cameraCaptureInterval ?? 60 : 2} emptyLabel="Connecting to camera…" errorLabel="Connecting to camera…" />
+								<div class="mt-2 flex items-center gap-2 text-sm">
+									<Camera size={16} class="text-rig-400" />
+									<span class="transition-colors group-hover:text-leaf">{cam.name}</span>
+									<Maximize2 size={14} class="ml-1 text-rig-600 transition-colors group-hover:text-rig-300" />
+									<span class="ml-auto flex items-center gap-2 text-xs text-rig-500">{#if cam.cameraType === 'rtsp'}<CameraStreamStats cameraId={cam.id} /><span>·</span>{/if}<span>{cam.cameraType === 'rtsp' ? 'Live · RTSP' : cam.entity ? 'Home Assistant' : cam.cameraType || 'Connecting…'}</span></span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		</div>
 
 		<!-- Timeline -->
 		<TimelineChart
@@ -379,33 +380,6 @@
 			</section>
 		{/each}
 
-		<!-- Cameras -->
-		{#if env.cameras?.length}
-			<section>
-				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Cameras</h2>
-				<div class="grid gap-3 sm:grid-cols-2">
-					{#each env.cameras as cam (cam.id)}
-						<div class="rounded-lg border border-rig-800 bg-rig-950/40 p-3">
-							{#if cam.streamUrl}
-								<CameraPreview url={cam.streamUrl} type={cam.cameraType} />
-								<div class="mt-2 flex items-center gap-2 text-sm">
-									<Camera size={16} class="text-rig-400" />
-									<span>{cam.name}</span>
-									<span class="ml-auto text-xs text-rig-500">{cam.cameraType}</span>
-								</div>
-							{:else}
-								<div class="flex items-center gap-2 text-sm">
-									<Camera size={18} class="text-rig-400" />
-									<span>{cam.name}</span>
-									<span class="ml-auto text-xs text-rig-500">{cam.entity}</span>
-								</div>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
 		<!-- Air source (lung room) -->
 		{#if env.airSource}
 			<section>
@@ -447,5 +421,8 @@
 			vpdHumidity={env.hasClimate ? env.humidity : null}
 			vpdLeafTempOffsetC={env.leafTempOffsetC ?? -2}
 		/>
+	{/if}
+	{#if detailCamera}
+		<CameraDetailModal bind:open={cameraOpen} camera={detailCamera} />
 	{/if}
 {/if}

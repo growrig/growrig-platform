@@ -281,6 +281,9 @@ DROP TABLE IF EXISTS devices;
 		{"plant_units", "cultivar", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "stream_url", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "camera_type", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "camera_capture_interval", "INTEGER NOT NULL DEFAULT 60"},
+		{"bindings", "camera_retention_days", "INTEGER NOT NULL DEFAULT 7"},
+		{"bindings", "camera_storage_mb", "INTEGER NOT NULL DEFAULT 5120"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
@@ -970,8 +973,8 @@ func (s *Store) DeleteEnvironment(id string) error {
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   device_id=excluded.device_id, device_name=excluded.device_name,
 		   power_controller_id=excluded.power_controller_id,
@@ -982,9 +985,11 @@ func (s *Store) SaveBinding(b domain.Binding) error {
 		   fan_type=excluded.fan_type, size_mm=excluded.size_mm, max_rpm=excluded.max_rpm, airflow_cfm=excluded.airflow_cfm,
 		   static_pressure=excluded.static_pressure, starting_voltage=excluded.starting_voltage,
 		   duct_size_inches=excluded.duct_size_inches, noise_dba=excluded.noise_dba,
-		   stream_url=excluded.stream_url, camera_type=excluded.camera_type`,
+		   stream_url=excluded.stream_url, camera_type=excluded.camera_type,
+		   camera_capture_interval=excluded.camera_capture_interval, camera_retention_days=excluded.camera_retention_days,
+		   camera_storage_mb=excluded.camera_storage_mb`,
 		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
-		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), time.Now().UnixNano(),
+		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), b.CameraCaptureInterval, b.CameraRetentionDays, b.CameraStorageMB, time.Now().UnixNano(),
 	)
 	if err != nil {
 		return err
@@ -1065,7 +1070,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type
+		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -1076,7 +1081,7 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 		var b domain.Binding
 		var kind, measurement, role, cameraType string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType, &b.CameraCaptureInterval, &b.CameraRetentionDays, &b.CameraStorageMB); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)

@@ -48,13 +48,14 @@ const (
 )
 
 // CameraType is how a generic (non-Home-Assistant) camera stream is rendered.
-// Both are browser-playable via an <img>: an MJPEG stream plays continuously; a
-// snapshot URL returns a single JPEG that the client refreshes periodically.
+// MJPEG and snapshots are browser-playable directly. RTSP unicast is relayed by
+// Grow Core as MJPEG because browsers cannot render RTSP themselves.
 type CameraType string
 
 const (
 	CameraMJPEG    CameraType = "mjpeg"
 	CameraSnapshot CameraType = "snapshot"
+	CameraRTSP     CameraType = "rtsp"
 )
 
 // Measurement is what a sensor binding measures.
@@ -327,8 +328,11 @@ type Binding struct {
 	Primary bool    `json:"primary,omitempty"` // the box's main grow light (one per env)
 	// Camera only: a generic camera streams from a URL instead of a Home Assistant
 	// entity. StreamURL is empty for HA-entity cameras.
-	StreamURL  string     `json:"streamUrl,omitempty"`
-	CameraType CameraType `json:"cameraType,omitempty"`
+	StreamURL             string     `json:"streamUrl,omitempty"`
+	CameraType            CameraType `json:"cameraType,omitempty"`
+	CameraCaptureInterval int        `json:"cameraCaptureInterval,omitempty"` // seconds
+	CameraRetentionDays   int        `json:"cameraRetentionDays,omitempty"`
+	CameraStorageMB       int        `json:"cameraStorageMb,omitempty"`
 }
 
 // Reading is a single historical sample persisted for an environment.
@@ -446,11 +450,12 @@ type ControlState struct {
 // CameraRef is a camera binding for the live view. HA-entity cameras carry an
 // Entity; generic cameras carry a StreamURL + CameraType the client renders.
 type CameraRef struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Entity     string     `json:"entity,omitempty"`
-	StreamURL  string     `json:"streamUrl,omitempty"`
-	CameraType CameraType `json:"cameraType,omitempty"`
+	ID                    string     `json:"id"`
+	Name                  string     `json:"name"`
+	Entity                string     `json:"entity,omitempty"`
+	StreamURL             string     `json:"streamUrl,omitempty"`
+	CameraType            CameraType `json:"cameraType,omitempty"`
+	CameraCaptureInterval int        `json:"cameraCaptureInterval,omitempty"`
 }
 
 // AirSourceView summarises a linked lung room on a tent's dashboard.

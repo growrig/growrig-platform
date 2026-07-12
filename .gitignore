@@ -8,6 +8,8 @@
 *.db-journal
 *.db-wal
 *.db-shm
+/growcore/environments/*/cameras/
+/growcore/*.db.cameras/
 
 # Embedded web build — populated by `make build`, only the placeholder is tracked
 /growcore/internal/webui/dist/*
