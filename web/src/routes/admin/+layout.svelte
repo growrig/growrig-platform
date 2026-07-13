@@ -4,12 +4,14 @@
 	import HousePlug from '@lucide/svelte/icons/house-plug';
 	import Bug from '@lucide/svelte/icons/bug';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import Blocks from '@lucide/svelte/icons/blocks';
 
 	let { children } = $props();
 
 	const tabs = [
 		{ href: '/admin', label: 'Users', icon: Users },
 		{ href: '/admin/home-assistant', label: 'Home Assistant', icon: HousePlug },
+		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },
 		{ href: '/admin/preferences', label: 'Preferences', icon: SlidersHorizontal },
 		{ href: '/admin/debug', label: 'Debug', icon: Bug }
 	];

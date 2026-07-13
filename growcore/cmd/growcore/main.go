@@ -30,6 +30,7 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 	"github.com/growrig/growrig-platform/growcore/internal/ha"
+	"github.com/growrig/growrig-platform/growcore/internal/integrations"
 	"github.com/growrig/growrig-platform/growcore/internal/sim"
 	"github.com/growrig/growrig-platform/growcore/internal/store"
 	"github.com/growrig/growrig-platform/growcore/internal/webui"
@@ -82,7 +83,11 @@ func main() {
 
 	cameraRecorder := camera.New(st, cfg.Storage.Path)
 	go cameraRecorder.Run(ctx)
-	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder, filepath.Join(filepath.Dir(cfg.Storage.Path), "preferences.yaml"))
+	integrationManager, err := integrations.NewManager(st, integrations.FindBundleRoot(), filepath.Join(filepath.Dir(cfg.Storage.Path), ".integration-secret-key"))
+	if err != nil {
+		log.Fatalf("load integrations: %v", err)
+	}
+	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder, filepath.Join(filepath.Dir(cfg.Storage.Path), "preferences.yaml"), integrationManager)
 	go apiServer.PollWeather(ctx)
 
 	srv := &http.Server{

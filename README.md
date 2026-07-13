@@ -35,6 +35,9 @@ growrig-platform/
 - **Web dashboard** — live temperature/humidity sparklines with target lines,
   controller health, per-fan speed/RPM, and a Setup page for targets and role
   mapping.
+- **External integrations** — reusable YAML bundles, encrypted configured
+  instances, typed capabilities, health tests, and feature bindings. The first
+  bundles support Ollama and generic notification webhooks.
 
 ## Quick start (offline simulator)
 
@@ -114,6 +117,10 @@ Base URL `http://localhost:8080`.
 | `GET` | `/api/environments` | List environments |
 | `GET` | `/api/catalog` | Device catalogue (including vendor and image metadata) |
 | `GET` | `/api/vendors` | Vendor catalogue and logo paths |
+| `GET` | `/api/integration-bundles` | Available external-service integrations |
+| `GET/POST` | `/api/integration-instances` | List or create configured instances (admin) |
+| `POST` | `/api/integration-instances/{id}/test` | Test an instance connection (admin) |
+| `GET/POST` | `/api/integration-bindings` | List or set feature bindings (admin) |
 | `PUT` | `/api/environments/{id}/targets` | Set `{targetTempC, targetHumidity}` |
 | `GET` | `/api/environments/{id}/history?limit=120` | Climate history (oldest first) |
 | `GET` | `/api/devices` | Devices with live values + roles |
@@ -136,6 +143,7 @@ growcore/internal/
 ├── control/    # pure control law + reconciliation loop + Adapter interface
 ├── sim/        # simulator adapter
 ├── ha/         # Home Assistant adapter (WebSocket state + REST commands)
+├── integrations/ # external-service bundles, secrets and capability runtimes
 ├── store/      # SQLite persistence
 └── api/        # HTTP + WebSocket
 ```
@@ -144,6 +152,13 @@ Adapters implement `control.Adapter`, so the engine and the pure control law
 (`control.ChannelSpeed`, unit tested via `go test ./...`) are identical whether
 devices are simulated or reached through Home Assistant. New adapters (e.g.
 direct MQTT) slot in behind the same interface without touching domain logic.
+
+External services are deliberately separate from adapters and devices. Bundle
+definitions live under `integrations/<category>/<id>/integration.yaml`; users
+configure instances under **Control panel → Integrations**. Secret fields are
+AES-GCM encrypted using a local `0600` key beside the Grow Core database and
+are never returned by the API. Production builds embed the bundle tree while
+development loads it directly from disk.
 
 ### Deviations from the target design
 

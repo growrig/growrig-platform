@@ -25,6 +25,8 @@ SPECIES_SRC   = species
 SPECIES_DATA  = growcore/internal/species/data
 INVENTORY_SRC  = inventory
 INVENTORY_DATA = growcore/internal/inventory/data
+INTEGRATIONS_SRC = integrations
+INTEGRATIONS_DATA = growcore/internal/integrations/data
 CONFIG_DEV   ?= growcore.dev.yaml
 CONFIG_SIM    = growcore/growcore.sim.yaml
 
@@ -106,6 +108,8 @@ catalog-embed:
 	cp -r $(SPECIES_SRC)/. $(SPECIES_DATA)/
 	find $(INVENTORY_DATA) -mindepth 1 ! -name .gitkeep -delete
 	cp -r $(INVENTORY_SRC)/. $(INVENTORY_DATA)/
+	find $(INTEGRATIONS_DATA) -mindepth 1 ! -name .gitkeep -delete
+	cp -r $(INTEGRATIONS_SRC)/. $(INTEGRATIONS_DATA)/
 
 .PHONY: build
 build: embed catalog-embed
@@ -155,4 +159,5 @@ clean:
 	find $(DIST) -mindepth 1 ! -name .gitkeep -delete
 	find $(CATALOG_DATA) -mindepth 1 ! -name .gitkeep -delete
 	find $(VENDOR_DATA) -mindepth 1 ! -name .gitkeep -delete
+	find $(INTEGRATIONS_DATA) -mindepth 1 ! -name .gitkeep -delete
 	rm -f growcore/*.db growcore.dev.db growcore.dev-local.db

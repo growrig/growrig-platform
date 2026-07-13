@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { live } from '$lib/live.svelte';
-	import { getInfo, CORE_URL, wsURL, clearActivity, restartCore } from '$lib/api';
+	import { getInfo, getDatabaseTables, CORE_URL, wsURL, clearActivity, restartCore } from '$lib/api';
+	import type { DatabaseTable } from '$lib/api';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import { Button } from '$lib/components/ui';
 	import { fmtDateTime } from '$lib/datetime';
@@ -11,6 +12,9 @@
 	let actionError = $state<string | null>(null);
 	let clearing = $state(false);
 	let restarting = $state(false);
+	let databaseTables = $state<DatabaseTable[]>([]);
+	let databaseLoading = $state(true);
+	let databaseError = $state<string | null>(null);
 
 	async function onClearActivity() {
 		if (!confirm('Clear the entire activity log? This cannot be undone.')) return;
@@ -50,8 +54,24 @@
 		}
 	}
 
+	async function loadDatabaseTables() {
+		databaseLoading = true;
+		try {
+			databaseTables = await getDatabaseTables();
+			databaseError = null;
+		} catch (e) {
+			databaseError = e instanceof Error ? e.message : String(e);
+		} finally {
+			databaseLoading = false;
+		}
+	}
+
+	async function refreshDebug() {
+		await Promise.all([loadInfo(), loadDatabaseTables()]);
+	}
+
 	onMount(() => {
-		loadInfo();
+		refreshDebug();
 		const t = setInterval(() => (now = Date.now()), 1000);
 		return () => clearInterval(t);
 	});
@@ -67,6 +87,20 @@
 	});
 
 	const ageMs = $derived(live.lastMessageAt ? now - live.lastMessageAt : null);
+	const databaseRows = $derived(databaseTables.reduce((total, table) => total + table.rows, 0));
+	const databaseBytes = $derived(databaseTables.reduce((total, table) => total + table.sizeBytes, 0));
+
+	function fmtBytes(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		const units = ['KB', 'MB', 'GB', 'TB'];
+		let value = bytes / 1024;
+		let unit = 0;
+		while (value >= 1024 && unit < units.length - 1) {
+			value /= 1024;
+			unit++;
+		}
+		return `${value < 10 ? value.toFixed(1) : value.toFixed(0)} ${units[unit]}`;
+	}
 
 	function fmtAge(ms: number | null): string {
 		if (ms === null) return 'never';
@@ -122,7 +156,7 @@
 			<Button variant="danger" size="sm" onclick={onRestart} disabled={restarting}>
 				{restarting ? 'Restarting…' : 'Restart'}
 			</Button>
-			<Button variant="secondary" size="sm" onclick={loadInfo}>Refresh info</Button>
+			<Button variant="secondary" size="sm" onclick={refreshDebug}>Refresh info</Button>
 		</div>
 	</div>
 
@@ -135,6 +169,39 @@
 		<StatTile label="Controls" value={String(counts.controls)} />
 		<StatTile label="Sensors" value={String(counts.sensors)} />
 		<StatTile label="Cameras" value={String(counts.cameras)} />
+	</section>
+
+	<section class="overflow-hidden rounded-xl border border-rig-800 bg-rig-900/40">
+		<div class="flex items-center justify-between border-b border-rig-800 px-5 py-3">
+			<h3 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Database tables</h3>
+			<span class="text-xs text-rig-500">{databaseTables.length} tables · {databaseRows.toLocaleString()} rows · {fmtBytes(databaseBytes)}</span>
+		</div>
+		{#if databaseLoading}
+			<p class="px-5 py-4 text-sm text-rig-400">Reading database…</p>
+		{:else if databaseError}
+			<p class="px-5 py-4 text-sm text-danger">{databaseError}</p>
+		{:else}
+			<div class="max-h-[28rem] overflow-auto">
+				<table class="w-full text-left text-sm">
+					<thead class="sticky top-0 bg-rig-900 text-xs uppercase tracking-wide text-rig-500">
+						<tr class="border-b border-rig-800">
+							<th class="px-5 py-2 font-medium">Table</th>
+							<th class="px-5 py-2 text-right font-medium">Rows</th>
+							<th class="px-5 py-2 text-right font-medium">Size</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-rig-800/70">
+						{#each databaseTables as table (table.name)}
+							<tr class="hover:bg-rig-800/30">
+								<td class="px-5 py-2.5 font-mono text-xs text-rig-300">{table.name}</td>
+								<td class="px-5 py-2.5 text-right font-mono text-xs tabular-nums text-rig-100">{table.rows.toLocaleString()}</td>
+								<td class="px-5 py-2.5 text-right font-mono text-xs tabular-nums text-rig-400">{fmtBytes(table.sizeBytes)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
 	</section>
 
 	<section class="overflow-hidden rounded-xl border border-rig-800 bg-rig-900/40">

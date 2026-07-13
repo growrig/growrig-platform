@@ -19,6 +19,7 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/catalog"
 	"github.com/growrig/growrig-platform/growcore/internal/control"
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig-platform/growcore/internal/integrations"
 	"github.com/growrig/growrig-platform/growcore/internal/store"
 )
 
@@ -32,6 +33,7 @@ type Server struct {
 	passkeys        *ceremonyStore
 	cameras         *camera.Recorder
 	preferencesPath string
+	integrations    *integrations.Manager
 }
 
 func (s *Server) activity(envID, deviceID, level, eventType, message string) {
@@ -44,8 +46,8 @@ func (s *Server) growActivity(growID, envID, level, eventType, message string) {
 	_ = s.store.AddActivity(domain.Activity{GrowID: growID, EnvironmentID: envID, Level: level, Type: eventType, Message: message})
 }
 
-func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder, preferencesPath string) *Server {
-	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore(), cameras: cameras, preferencesPath: preferencesPath}
+func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder, preferencesPath string, integrationManager *integrations.Manager) *Server {
+	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore(), cameras: cameras, preferencesPath: preferencesPath, integrations: integrationManager}
 }
 
 // Handler builds the HTTP router.
@@ -175,10 +177,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/signup", s.requireAdmin(s.setSignupSetting))
 	mux.HandleFunc("PUT /api/preferences", s.requireAdmin(s.putPreferences))
 	mux.HandleFunc("POST /api/admin/restart", s.requireAdmin(s.restart))
+	mux.HandleFunc("GET /api/admin/database/tables", s.requireAdmin(s.getDatabaseTables))
 	mux.HandleFunc("DELETE /api/activity", s.requireAdmin(s.clearActivity))
 	mux.HandleFunc("GET /api/admin/homeassistant", s.requireAdmin(s.getHomeAssistant))
 	mux.HandleFunc("POST /api/admin/homeassistant/reload", s.requireAdmin(s.reloadHomeAssistant))
 	mux.HandleFunc("POST /api/admin/homeassistant/update", s.requireAdmin(s.updateHomeAssistant))
+	mux.HandleFunc("GET /api/integration-bundles", s.requireAdmin(s.getIntegrationBundles))
+	mux.HandleFunc("GET /api/integration-bundles/{id}/icon", s.requireAdmin(s.getIntegrationIcon))
+	mux.HandleFunc("GET /api/integration-instances", s.requireAdmin(s.getIntegrationInstances))
+	mux.HandleFunc("POST /api/integration-instances", s.requireAdmin(s.createIntegrationInstance))
+	mux.HandleFunc("PUT /api/integration-instances/{id}", s.requireAdmin(s.updateIntegrationInstance))
+	mux.HandleFunc("DELETE /api/integration-instances/{id}", s.requireAdmin(s.deleteIntegrationInstance))
+	mux.HandleFunc("POST /api/integration-instances/{id}/test", s.requireAdmin(s.testIntegrationInstance))
+	mux.HandleFunc("POST /api/integration-instances/{id}/invoke/{capability}", s.requireAuth(s.invokeIntegration))
+	mux.HandleFunc("GET /api/integration-bindings", s.requireAdmin(s.getIntegrationBindings))
+	mux.HandleFunc("POST /api/integration-bindings", s.requireAdmin(s.saveIntegrationBinding))
+	mux.HandleFunc("DELETE /api/integration-bindings/{id}", s.requireAdmin(s.deleteIntegrationBinding))
+	mux.HandleFunc("GET /api/integration-bindings/resolve", s.requireAuth(s.resolveIntegrationBinding))
 
 	// The WebSocket authenticates from a ?token= query param (browsers cannot
 	// set headers on a WebSocket handshake).

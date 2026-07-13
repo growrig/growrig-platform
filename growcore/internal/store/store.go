@@ -302,6 +302,31 @@ CREATE TABLE IF NOT EXISTS care_applications (
 );
 CREATE INDEX IF NOT EXISTS idx_care_app_event ON care_applications (care_event_id);
 CREATE INDEX IF NOT EXISTS idx_care_app_plant ON care_applications (plant_unit_id);
+CREATE TABLE IF NOT EXISTS integration_instances (
+    id             TEXT PRIMARY KEY,
+    bundle_id      TEXT NOT NULL,
+    name           TEXT NOT NULL,
+    config         TEXT NOT NULL DEFAULT '{}',
+    secrets        TEXT NOT NULL DEFAULT '',
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    status         TEXT NOT NULL DEFAULT 'unknown',
+    status_message TEXT NOT NULL DEFAULT '',
+    last_checked   INTEGER NOT NULL DEFAULT 0,
+    created        INTEGER NOT NULL,
+    updated        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_integration_bundle ON integration_instances (bundle_id);
+CREATE TABLE IF NOT EXISTS integration_bindings (
+    id            TEXT PRIMARY KEY,
+    feature       TEXT NOT NULL,
+    grow_id       TEXT NOT NULL DEFAULT '',
+    capability    TEXT NOT NULL,
+    instance_id   TEXT NOT NULL,
+    created       INTEGER NOT NULL,
+    updated       INTEGER NOT NULL,
+    UNIQUE(feature, grow_id, capability)
+);
+CREATE INDEX IF NOT EXISTS idx_integration_binding_instance ON integration_bindings (instance_id);
 -- Superseded by the bindings model.
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS devices;

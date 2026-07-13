@@ -54,7 +54,10 @@ import type {
 	Role,
 	SensorSeries,
 	Snapshot,
-	WeatherHistory
+	WeatherHistory,
+	IntegrationBundle,
+	IntegrationInstance,
+	IntegrationBinding
 } from './types';
 
 export const CORE_URL: string = import.meta.env.VITE_GROWCORE_URL?.replace(/\/$/, '') ?? '';
@@ -564,6 +567,9 @@ export const clearActivity = () => req('/api/activity', { method: 'DELETE' });
  * the service comes back up on its own. */
 export const restartCore = () => req('/api/admin/restart', { method: 'POST' });
 
+export interface DatabaseTable { name: string; rows: number; sizeBytes: number }
+export const getDatabaseTables = () => json<DatabaseTable[]>('/api/admin/database/tables');
+
 export const getActivity = async (
 	opts: { environmentId?: string; growId?: string; levels?: string[]; types?: string[]; limit?: number; offset?: number } = {}
 ): Promise<ActivityPage> => {
@@ -679,3 +685,21 @@ export const updateHomeAssistant = (target: HAUpdateTarget, slug?: string) =>
 		method: 'POST',
 		body: JSON.stringify({ target, slug: slug ?? '' })
 	});
+
+// --- integrations ---
+export const getIntegrationBundles = () => json<IntegrationBundle[]>('/api/integration-bundles');
+export const getIntegrationInstances = () => json<IntegrationInstance[]>('/api/integration-instances');
+export interface IntegrationInstanceInput { bundleId?: string; name?: string; config?: Record<string, string>; enabled?: boolean }
+export const createIntegrationInstance = (input: IntegrationInstanceInput) =>
+	json<IntegrationInstance>('/api/integration-instances', { method: 'POST', body: JSON.stringify(input) });
+export const updateIntegrationInstance = (id: string, input: IntegrationInstanceInput) =>
+	json<IntegrationInstance>(`/api/integration-instances/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) });
+export const deleteIntegrationInstance = (id: string) =>
+	req(`/api/integration-instances/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const testIntegrationInstance = (id: string) =>
+	json<IntegrationInstance>(`/api/integration-instances/${encodeURIComponent(id)}/test`, { method: 'POST' });
+export const getIntegrationBindings = () => json<IntegrationBinding[]>('/api/integration-bindings');
+export const saveIntegrationBinding = (input: Pick<IntegrationBinding, 'feature' | 'capability' | 'instanceId'> & { growId?: string }) =>
+	json<IntegrationBinding>('/api/integration-bindings', { method: 'POST', body: JSON.stringify(input) });
+export const deleteIntegrationBinding = (id: string) =>
+	req(`/api/integration-bindings/${encodeURIComponent(id)}`, { method: 'DELETE' });

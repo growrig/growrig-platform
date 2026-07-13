@@ -723,3 +723,52 @@ export interface HAStatus {
 }
 
 export type HAUpdateTarget = 'core' | 'os' | 'supervisor' | 'addon';
+
+// --- External integrations (kept separate from physical device bindings) ---
+export interface IntegrationConfigField {
+	key: string;
+	label: string;
+	type: 'text' | 'password' | 'url' | 'number' | 'select';
+	required: boolean;
+	secret: boolean;
+	default?: string;
+	placeholder?: string;
+	help?: string;
+	options?: string[];
+}
+
+export interface IntegrationBundle {
+	id: string;
+	name: string;
+	version: string;
+	category: string;
+	description: string;
+	capabilities: string[];
+	config: IntegrationConfigField[];
+	icon?: string;
+	documentation?: string;
+}
+
+export interface IntegrationInstance {
+	id: string;
+	bundleId: string;
+	name: string;
+	config: Record<string, string>;
+	secretFields?: string[];
+	enabled: boolean;
+	status: 'unknown' | 'healthy' | 'error' | 'disabled';
+	statusMessage?: string;
+	lastCheckedAt?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface IntegrationBinding {
+	id: string;
+	feature: string;
+	growId?: string;
+	capability: string;
+	instanceId: string;
+	createdAt: string;
+	updatedAt: string;
+}

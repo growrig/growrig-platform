@@ -20,6 +20,11 @@
 /growcore/internal/catalog/data/*
 !/growcore/internal/catalog/data/.gitkeep
 
+# Embedded integration bundles and the local credential-encryption key.
+/growcore/internal/integrations/data/*
+!/growcore/internal/integrations/data/.gitkeep
+**/.integration-secret-key
+
 # Node / SvelteKit
 node_modules/
 /web/.svelte-kit/
