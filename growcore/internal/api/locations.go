@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -171,47 +170,29 @@ func (s *Server) getWeather(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(encoded)
 }
 
-// fetchWeather pulls hourly outdoor observations (pastDays back plus a short
-// forecast) for a coordinate from Open-Meteo.
+// fetchWeather requests the configured weather.forecast integration. The
+// default binding is the automatically seeded Open-Meteo instance.
 func (s *Server) fetchWeather(ctx context.Context, lat, lon float64, pastDays int) (weatherResponse, error) {
 	var out weatherResponse
-	endpoint := "https://api.open-meteo.com/v1/forecast?" + url.Values{
-		"latitude":      {strconv.FormatFloat(lat, 'f', 4, 64)},
-		"longitude":     {strconv.FormatFloat(lon, 'f', 4, 64)},
-		"hourly":        {"temperature_2m,relative_humidity_2m,surface_pressure"},
-		"past_days":     {strconv.Itoa(pastDays)},
-		"forecast_days": {"2"},
-		"timezone":      {"UTC"},
-	}.Encode()
-	body, err := s.fetch(ctx, endpoint)
+	instance, err := s.integrations.Resolve("weather-context", "", "weather.forecast")
 	if err != nil {
 		return out, err
 	}
-	var raw struct {
-		Hourly struct {
-			Time     []string  `json:"time"`
-			Temp     []float64 `json:"temperature_2m"`
-			Humidity []float64 `json:"relative_humidity_2m"`
-			Pressure []float64 `json:"surface_pressure"`
-		} `json:"hourly"`
+	if instance == nil {
+		return out, fmt.Errorf("no enabled weather.forecast integration is configured")
 	}
-	if err := json.Unmarshal(body, &raw); err != nil {
+	result, err := s.integrations.Invoke(ctx, instance.ID, "weather.forecast", map[string]any{
+		"latitude": lat, "longitude": lon, "pastDays": pastDays, "forecastDays": 2,
+	})
+	if err != nil {
 		return out, err
 	}
-	for i, ts := range raw.Hourly.Time {
-		t, err := time.Parse("2006-01-02T15:04", ts)
-		if err != nil {
-			continue
-		}
-		if i < len(raw.Hourly.Temp) && !math.IsNaN(raw.Hourly.Temp[i]) {
-			out.Temp = append(out.Temp, domain.SeriesPoint{Time: t, Value: raw.Hourly.Temp[i]})
-		}
-		if i < len(raw.Hourly.Humidity) && !math.IsNaN(raw.Hourly.Humidity[i]) {
-			out.Humidity = append(out.Humidity, domain.SeriesPoint{Time: t, Value: raw.Hourly.Humidity[i]})
-		}
-		if i < len(raw.Hourly.Pressure) && !math.IsNaN(raw.Hourly.Pressure[i]) {
-			out.Pressure = append(out.Pressure, domain.SeriesPoint{Time: t, Value: raw.Hourly.Pressure[i]})
-		}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return out, fmt.Errorf("decode weather integration response: %w", err)
 	}
 	return out, nil
 }

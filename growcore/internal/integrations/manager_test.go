@@ -138,3 +138,54 @@ runtime: {type: builtin, handler: ollama}
 		t.Fatal("expected invalid URL error")
 	}
 }
+
+func TestOpenMeteoIsCreatedAndBoundByDefault(t *testing.T) {
+	dir := t.TempDir()
+	bundleDir := filepath.Join(dir, "bundles", "data", "open-meteo")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `id: open-meteo
+name: Open-Meteo
+version: "1"
+category: data
+capabilities: [weather.forecast]
+config:
+  - {key: baseUrl, label: API URL, type: url, required: true, default: "https://api.open-meteo.com"}
+runtime: {type: builtin, handler: open-meteo}
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, "integration.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	m, err := NewManager(st, filepath.Join(dir, "bundles"), filepath.Join(dir, "key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instances, err := m.Instances()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instances) != 1 || instances[0].BundleID != "open-meteo" || !instances[0].Enabled {
+		t.Fatalf("unexpected defaults: %#v", instances)
+	}
+	resolved, err := m.Resolve("weather-context", "grow-1", "weather.forecast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved == nil || resolved.ID != instances[0].ID {
+		t.Fatal("default weather binding did not resolve")
+	}
+	// Reopening the manager must remain idempotent.
+	if _, err := NewManager(st, filepath.Join(dir, "bundles"), filepath.Join(dir, "key")); err != nil {
+		t.Fatal(err)
+	}
+	instances, _ = m.Instances()
+	if len(instances) != 1 {
+		t.Fatalf("default duplicated: %d instances", len(instances))
+	}
+}

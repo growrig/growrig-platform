@@ -37,7 +37,8 @@ growrig-platform/
   mapping.
 - **External integrations** — reusable YAML bundles, encrypted configured
   instances, typed capabilities, health tests, and feature bindings. The first
-  bundles support Ollama and generic notification webhooks.
+  bundles support Ollama, generic notification webhooks, and the automatically
+  configured Open-Meteo weather provider.
 
 ## Quick start (offline simulator)
 

@@ -72,7 +72,7 @@ func loadEmbeddedBundles() ([]Bundle, error) {
 		}
 		b.assetFS, b.assetRoot = data, filepath.Dir(path)
 		if _, err := fs.Stat(data, b.assetRoot+"/icon.svg"); err == nil {
-			b.Icon = "/api/integration-bundles/" + b.ID + "/icon"
+			b.Icon = "/api/integration-bundles/" + b.ID + "/icon?v=" + b.Version
 		}
 		out = append(out, b)
 		return nil
@@ -116,7 +116,7 @@ func LoadBundles(root string) ([]Bundle, error) {
 		}
 		b.dir = filepath.Dir(path)
 		if _, err := os.Stat(filepath.Join(b.dir, "icon.svg")); err == nil {
-			b.Icon = "/api/integration-bundles/" + b.ID + "/icon"
+			b.Icon = "/api/integration-bundles/" + b.ID + "/icon?v=" + b.Version
 		}
 		if b.Documentation == "" {
 			if _, err := os.Stat(filepath.Join(b.dir, "README.md")); err == nil {

@@ -59,7 +59,52 @@ func NewManager(st *store.Store, root, keyPath string) (*Manager, error) {
 	for _, b := range bs {
 		m.bundles[b.ID] = b
 	}
+	if err := m.ensureDefaultIntegrations(); err != nil {
+		return nil, err
+	}
 	return m, nil
+}
+
+// ensureDefaultIntegrations seeds services GrowRig already depends on. It is
+// idempotent and never replaces a user's existing Open-Meteo instance or
+// weather binding.
+func (m *Manager) ensureDefaultIntegrations() error {
+	if _, available := m.bundles["open-meteo"]; !available {
+		return nil
+	}
+	records, err := m.store.IntegrationInstances()
+	if err != nil {
+		return err
+	}
+	var instanceID string
+	for _, record := range records {
+		if record.Instance.BundleID == "open-meteo" {
+			instanceID = record.Instance.ID
+			break
+		}
+	}
+	if instanceID == "" {
+		instance, err := m.Create(InstanceInput{BundleID: "open-meteo", Name: "Open-Meteo", Config: map[string]string{}})
+		if err != nil {
+			return fmt.Errorf("create default Open-Meteo integration: %w", err)
+		}
+		instanceID = instance.ID
+	}
+	bindings, err := m.store.IntegrationBindings()
+	if err != nil {
+		return err
+	}
+	for _, binding := range bindings {
+		if binding.Feature == "weather-context" && binding.GrowID == "" && binding.Capability == "weather.forecast" {
+			return nil
+		}
+	}
+	now := time.Now()
+	binding := domain.IntegrationBinding{ID: newID("ib"), Feature: "weather-context", Capability: "weather.forecast", InstanceID: instanceID, CreatedAt: now, UpdatedAt: now}
+	if err := m.store.SaveIntegrationBinding(binding); err != nil {
+		return fmt.Errorf("bind default Open-Meteo integration: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) Bundles() []Bundle {

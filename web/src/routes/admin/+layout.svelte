@@ -9,10 +9,10 @@
 	let { children } = $props();
 
 	const tabs = [
-		{ href: '/admin', label: 'Users', icon: Users },
-		{ href: '/admin/home-assistant', label: 'Home Assistant', icon: HousePlug },
-		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },
 		{ href: '/admin/preferences', label: 'Preferences', icon: SlidersHorizontal },
+		{ href: '/admin/users', label: 'Users', icon: Users },
+		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },
+		{ href: '/admin/home-assistant', label: 'Home Assistant', icon: HousePlug },
 		{ href: '/admin/debug', label: 'Debug', icon: Bug }
 	];
 	const isActive = (href: string) => page.url.pathname === href;

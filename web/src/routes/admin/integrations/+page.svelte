@@ -40,7 +40,8 @@
 		{ value: 'grow-assistant', label: 'Grow assistant', capability: 'ai.chat' },
 		{ value: 'camera-analysis', label: 'Camera analysis', capability: 'ai.vision' },
 		{ value: 'critical-alerts', label: 'Critical alerts', capability: 'notification.send' },
-		{ value: 'daily-summary', label: 'Daily summary', capability: 'notification.send' }
+		{ value: 'daily-summary', label: 'Daily summary', capability: 'notification.send' },
+		{ value: 'weather-context', label: 'Weather context', capability: 'weather.forecast' }
 	];
 
 	onMount(load);
@@ -53,7 +54,8 @@
 	function bundle(id: string) { return bundles.find((b) => b.id === id); }
 	function iconURL(b: IntegrationBundle) {
 		const token = getAuthToken();
-		return `${CORE_URL}${b.icon ?? ''}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+		const path = b.icon ?? '';
+		return `${CORE_URL}${path}${token ? `${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : ''}`;
 	}
 	function openCreate(b: IntegrationBundle) { editing = null; selected = b; formName = b.name; formConfig = Object.fromEntries(b.config.map((f) => [f.key, f.default ?? ''])); modalOpen = true; error = null; }
 	function openEdit(i: IntegrationInstance) { editing = i; selected = bundle(i.bundleId) ?? null; formName = i.name; formConfig = { ...i.config }; modalOpen = true; error = null; }

@@ -6,15 +6,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
 func runTest(ctx context.Context, b Bundle, cfg map[string]string) error {
 	if b.Runtime.Type == "builtin" && b.Runtime.Handler == "ollama" {
 		_, err := ollamaRequest(ctx, cfg, http.MethodGet, "/api/version", nil)
+		return err
+	}
+	if b.Runtime.Type == "builtin" && b.Runtime.Handler == "open-meteo" {
+		_, err := openMeteoRequest(ctx, cfg, map[string]any{"latitude": 50.0755, "longitude": 14.4378, "pastDays": 0, "forecastDays": 1})
 		return err
 	}
 	if b.Runtime.Type == "http" && b.Runtime.Test != nil {
@@ -43,6 +51,9 @@ func runOperation(ctx context.Context, b Bundle, cfg map[string]string, cap stri
 			return ollamaRequest(ctx, cfg, http.MethodPost, "/api/chat", body)
 		}
 	}
+	if b.Runtime.Type == "builtin" && b.Runtime.Handler == "open-meteo" && cap == "weather.forecast" {
+		return openMeteoRequest(ctx, cfg, input)
+	}
 	if b.Runtime.Type == "http" {
 		op, ok := b.Runtime.Operations[cap]
 		if !ok {
@@ -51,6 +62,89 @@ func runOperation(ctx context.Context, b Bundle, cfg map[string]string, cap stri
 		return declarativeRequest(ctx, op, cfg, input)
 	}
 	return nil, fmt.Errorf("unsupported runtime %q", b.Runtime.Type)
+}
+
+func openMeteoRequest(ctx context.Context, cfg map[string]string, input map[string]any) (any, error) {
+	lat, okLat := number(input["latitude"])
+	lon, okLon := number(input["longitude"])
+	if !okLat || !okLon || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return nil, fmt.Errorf("valid latitude and longitude are required")
+	}
+	pastDays, _ := number(input["pastDays"])
+	forecastDays, ok := number(input["forecastDays"])
+	if !ok || forecastDays < 1 {
+		forecastDays = 2
+	}
+	base := strings.TrimRight(cfg["baseUrl"], "/")
+	endpoint := base + "/v1/forecast?" + url.Values{
+		"latitude":      {strconv.FormatFloat(lat, 'f', 4, 64)},
+		"longitude":     {strconv.FormatFloat(lon, 'f', 4, 64)},
+		"hourly":        {"temperature_2m,relative_humidity_2m,surface_pressure"},
+		"past_days":     {strconv.Itoa(max(0, min(92, int(pastDays))))},
+		"forecast_days": {strconv.Itoa(max(1, min(16, int(forecastDays))))},
+		"timezone":      {"UTC"},
+	}.Encode()
+	raw, err := doJSON(ctx, http.MethodGet, endpoint, nil, func(*http.Request) {}, timeout(cfg["timeoutSeconds"]))
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Hourly struct {
+			Time     []string  `json:"time"`
+			Temp     []float64 `json:"temperature_2m"`
+			Humidity []float64 `json:"relative_humidity_2m"`
+			Pressure []float64 `json:"surface_pressure"`
+		} `json:"hourly"`
+	}
+	if err := json.Unmarshal(encoded, &response); err != nil {
+		return nil, err
+	}
+	out := struct {
+		Temp     []domain.SeriesPoint `json:"temp"`
+		Humidity []domain.SeriesPoint `json:"humidity"`
+		Pressure []domain.SeriesPoint `json:"pressure"`
+	}{}
+	for i, stamp := range response.Hourly.Time {
+		t, err := time.Parse("2006-01-02T15:04", stamp)
+		if err != nil {
+			continue
+		}
+		if i < len(response.Hourly.Temp) && !math.IsNaN(response.Hourly.Temp[i]) {
+			out.Temp = append(out.Temp, domain.SeriesPoint{Time: t, Value: response.Hourly.Temp[i]})
+		}
+		if i < len(response.Hourly.Humidity) && !math.IsNaN(response.Hourly.Humidity[i]) {
+			out.Humidity = append(out.Humidity, domain.SeriesPoint{Time: t, Value: response.Hourly.Humidity[i]})
+		}
+		if i < len(response.Hourly.Pressure) && !math.IsNaN(response.Hourly.Pressure[i]) {
+			out.Pressure = append(out.Pressure, domain.SeriesPoint{Time: t, Value: response.Hourly.Pressure[i]})
+		}
+	}
+	return out, nil
+}
+
+func number(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		n, err := v.Float64()
+		return n, err == nil
+	case string:
+		n, err := strconv.ParseFloat(v, 64)
+		return n, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func ollamaRequest(ctx context.Context, cfg map[string]string, method, path string, body any) (any, error) {
