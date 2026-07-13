@@ -327,6 +327,26 @@ CREATE TABLE IF NOT EXISTS integration_bindings (
     UNIQUE(feature, grow_id, capability)
 );
 CREATE INDEX IF NOT EXISTS idx_integration_binding_instance ON integration_bindings (instance_id);
+CREATE TABLE IF NOT EXISTS ai_chats (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    grow_id     TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    instance_id TEXT NOT NULL DEFAULT '',
+    archived    INTEGER NOT NULL DEFAULT 0,
+    created     INTEGER NOT NULL,
+    updated     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_chats_user_updated ON ai_chats (user_id, archived, updated DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_chats_grow ON ai_chats (user_id, grow_id, updated DESC);
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id      TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    role    TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_chat ON ai_chat_messages (chat_id, created, id);
 -- Superseded by the bindings model.
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS devices;

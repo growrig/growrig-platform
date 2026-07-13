@@ -139,6 +139,46 @@ runtime: {type: builtin, handler: ollama}
 	}
 }
 
+func TestFirstAIChatInstanceGetsDefaultBinding(t *testing.T) {
+	dir := t.TempDir()
+	bundleDir := filepath.Join(dir, "bundles", "ai", "x")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `id: x
+name: X
+version: "1"
+category: ai
+capabilities: [ai.chat]
+config:
+  - {key: endpoint, label: Endpoint, type: url, required: true}
+runtime: {type: builtin, handler: ollama}
+`
+	if err := os.WriteFile(filepath.Join(bundleDir, "integration.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	m, err := NewManager(st, filepath.Join(dir, "bundles"), filepath.Join(dir, "key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := m.Create(InstanceInput{BundleID: "x", Name: "Local AI", Config: map[string]string{"endpoint": "http://localhost:11434"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := m.Resolve("grow-assistant", "grow-1", "ai.chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved == nil || resolved.ID != instance.ID {
+		t.Fatal("first AI chat instance was not selected as the global Grow assistant")
+	}
+}
+
 func TestOpenMeteoIsCreatedAndBoundByDefault(t *testing.T) {
 	dir := t.TempDir()
 	bundleDir := filepath.Join(dir, "bundles", "data", "open-meteo")

@@ -62,6 +62,9 @@ func NewManager(st *store.Store, root, keyPath string) (*Manager, error) {
 	if err := m.ensureDefaultIntegrations(); err != nil {
 		return nil, err
 	}
+	if err := m.ensureDefaultAIChatBinding(); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -103,6 +106,37 @@ func (m *Manager) ensureDefaultIntegrations() error {
 	binding := domain.IntegrationBinding{ID: newID("ib"), Feature: "weather-context", Capability: "weather.forecast", InstanceID: instanceID, CreatedAt: now, UpdatedAt: now}
 	if err := m.store.SaveIntegrationBinding(binding); err != nil {
 		return fmt.Errorf("bind default Open-Meteo integration: %w", err)
+	}
+	return nil
+}
+
+// ensureDefaultAIChatBinding makes the first enabled chat-capable instance
+// immediately useful. Explicit existing bindings always win, including
+// grow-specific overrides configured later.
+func (m *Manager) ensureDefaultAIChatBinding() error {
+	bindings, err := m.store.IntegrationBindings()
+	if err != nil {
+		return err
+	}
+	for _, binding := range bindings {
+		if binding.Feature == "grow-assistant" && binding.GrowID == "" && binding.Capability == "ai.chat" {
+			return nil
+		}
+	}
+	records, err := m.store.IntegrationInstances()
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		bundle, ok := m.bundles[record.Instance.BundleID]
+		if !ok || !record.Instance.Enabled || !bundle.hasCapability("ai.chat") {
+			continue
+		}
+		now := time.Now()
+		return m.store.SaveIntegrationBinding(domain.IntegrationBinding{
+			ID: newID("ib"), Feature: "grow-assistant", Capability: "ai.chat",
+			InstanceID: record.Instance.ID, CreatedAt: now, UpdatedAt: now,
+		})
 	}
 	return nil
 }
@@ -172,6 +206,11 @@ func (m *Manager) Create(in InstanceInput) (domain.IntegrationInstance, error) {
 	inst := domain.IntegrationInstance{ID: newID("int"), BundleID: b.ID, Name: name, Config: pub, Enabled: enabled, Status: "unknown", CreatedAt: now, UpdatedAt: now}
 	if err := m.store.SaveIntegrationInstance(store.IntegrationRecord{Instance: inst, Secrets: sealed}); err != nil {
 		return domain.IntegrationInstance{}, err
+	}
+	if b.hasCapability("ai.chat") {
+		if err := m.ensureDefaultAIChatBinding(); err != nil {
+			return domain.IntegrationInstance{}, err
+		}
 	}
 	inst.SecretFields = m.secretFieldNames(b.ID, sealed)
 	return inst, nil

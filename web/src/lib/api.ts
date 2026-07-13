@@ -385,6 +385,40 @@ export const saveCareConfig = (growID: string, actions: GrowCareActionConfig[]) 
 		body: JSON.stringify({ actions })
 	});
 
+// --- grow-scoped AI assistant ---
+export interface GrowAIStatus { available: boolean; instanceName?: string }
+export interface GrowAIMessage { id?: string; role: 'user' | 'assistant'; content: string; createdAt?: string }
+export interface AIChat {
+	id: string;
+	growId: string;
+	growName: string;
+	title: string;
+	instanceName: string;
+	archived: boolean;
+	messageCount: number;
+	preview: string;
+	messages?: GrowAIMessage[];
+	createdAt: string;
+	updatedAt: string;
+}
+export interface GrowAIReply { chat: AIChat; message: GrowAIMessage; instanceName: string }
+export const getGrowAIStatus = (growID: string) =>
+	json<GrowAIStatus>(`/api/grows/${encodeURIComponent(growID)}/ai`);
+export const chatWithGrowAI = (growID: string, chatID: string, content: string) =>
+	json<GrowAIReply>(`/api/grows/${encodeURIComponent(growID)}/ai/chat`, {
+		method: 'POST',
+		body: JSON.stringify({ chatId: chatID, content })
+	});
+export const getAIChats = (archived?: boolean) =>
+	json<AIChat[]>(`/api/ai/chats${archived == null ? '' : `?archived=${archived}`}`);
+export const getAIChat = (id: string) =>
+	json<AIChat>(`/api/ai/chats/${encodeURIComponent(id)}`);
+export const setAIChatArchived = (id: string, archived: boolean) =>
+	json<AIChat>(`/api/ai/chats/${encodeURIComponent(id)}`, {
+		method: 'PUT',
+		body: JSON.stringify({ archived })
+	});
+
 // --- species catalog & cultivars ---
 
 export const getSpecies = () => json<Species[]>('/api/species');
