@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/growrig/growrig-platform/growcore/internal/ha"
+	"github.com/growrig/growrig/growcore/internal/ha"
 )
 
 // The Home Assistant admin tab is the appliance-management surface: it reports

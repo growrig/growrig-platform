@@ -27,7 +27,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 	"gopkg.in/yaml.v3"
 )
 

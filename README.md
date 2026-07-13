@@ -1,16 +1,16 @@
 # GrowRig Platform
 
-Grow Core and the Grow App Web — the software half of [GrowRig](../growrig),
+Grow Core and the Grow App Web — the software half of [GrowRig](https://growrig.dev),
 an open-source, local-first ecosystem for controlled indoor growing.
 
 This repository currently implements the **Phase 2 vertical slice** from the
-[roadmap](../growrig/ROADMAP.md): a Go control engine with persistent storage, a
+[roadmap](https://growrig.dev/docs/roadmap/): a Go control engine with persistent storage, a
 built-in simulator, a live API, and a SvelteKit dashboard. It runs end-to-end
 **without any hardware** — the simulator stands in for a Grow Controller so you
 can see the whole system working before flashing a single ESP32.
 
 ```
-growrig-platform/
+growrig/
 ├── growcore/   # Grow Core — Go control engine + API (see growcore/)
 └── web/        # Grow App Web — SvelteKit + Tailwind dashboard
 ```

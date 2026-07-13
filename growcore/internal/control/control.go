@@ -6,7 +6,7 @@
 // adapters and storage.
 package control
 
-import "github.com/growrig/growrig-platform/growcore/internal/domain"
+import "github.com/growrig/growrig/growcore/internal/domain"
 
 const (
 	minExhaust   = 15  // always keep some air exchange

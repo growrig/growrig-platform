@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/growrig/growrig-platform/growcore/internal/integrations"
+	"github.com/growrig/growrig/growcore/internal/integrations"
 )
 
 func (s *Server) getIntegrationBundles(w http.ResponseWriter, r *http.Request) {

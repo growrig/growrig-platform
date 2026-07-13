@@ -15,13 +15,13 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/growrig/growrig-platform/growcore/internal/camera"
-	"github.com/growrig/growrig-platform/growcore/internal/catalog"
-	"github.com/growrig/growrig-platform/growcore/internal/catalogsource"
-	"github.com/growrig/growrig-platform/growcore/internal/control"
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/integrations"
-	"github.com/growrig/growrig-platform/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/camera"
+	"github.com/growrig/growrig/growcore/internal/catalog"
+	"github.com/growrig/growrig/growcore/internal/catalogsource"
+	"github.com/growrig/growrig/growcore/internal/control"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/integrations"
+	"github.com/growrig/growrig/growcore/internal/store"
 )
 
 type Server struct {

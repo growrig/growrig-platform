@@ -1,4 +1,4 @@
-module github.com/growrig/growrig-platform/growcore
+module github.com/growrig/growrig/growcore
 
 go 1.26.4
 

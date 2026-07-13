@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 func TestAIChatsArePersistedScopedAndArchived(t *testing.T) {

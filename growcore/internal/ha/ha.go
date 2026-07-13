@@ -26,9 +26,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
-	"github.com/growrig/growrig-platform/growcore/internal/config"
-	"github.com/growrig/growrig-platform/growcore/internal/control"
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/config"
+	"github.com/growrig/growrig/growcore/internal/control"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 const staleAfter = 90 * time.Second

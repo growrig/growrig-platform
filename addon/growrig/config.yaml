@@ -12,7 +12,7 @@ name: GrowRig — Grow Core
 version: "0.1.0"
 slug: growrig
 description: Grow Core control engine and Grow App Web dashboard for GrowRig.
-url: https://github.com/growrig/growrig-platform
+url: https://github.com/growrig/growrig
 # Prebuilt binaries are cross-compiled by `make addon` for these HA arches.
 arch:
   - aarch64

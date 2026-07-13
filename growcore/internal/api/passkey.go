@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-webauthn/webauthn/webauthn"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // Passkeys (WebAuthn) sit alongside passwords: any signed-in user can register

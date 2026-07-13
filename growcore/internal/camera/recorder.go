@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/store"
 )
 
 type Recorder struct {

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/growrig/growrig-platform/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/store"
 )
 
 func TestDeclarativeIntegrationSecretsRuntimeAndBindings(t *testing.T) {

@@ -24,8 +24,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/species"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/species"
 )
 
 // file is the on-disk shape of species/<id>/feedings.yaml.

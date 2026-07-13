@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // User feeding recipes are stored as one YAML file per recipe under

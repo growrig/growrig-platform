@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/sim"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/sim"
 )
 
 // postDemo seeds the simulator's demo tent + lung room into an empty database,

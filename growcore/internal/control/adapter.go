@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // DiscoveredEntity is a candidate device/sensor the adapter has found and that

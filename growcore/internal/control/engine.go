@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/store"
 )
 
 // Engine ties storage, an adapter and the control law together into a periodic

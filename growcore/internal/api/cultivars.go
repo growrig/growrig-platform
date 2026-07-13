@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/species"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/species"
 )
 
 // --- Species catalog ---

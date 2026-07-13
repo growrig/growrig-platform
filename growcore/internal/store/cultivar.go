@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // cultivarCols excludes the image blob; image bytes are fetched on demand via

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 const aiChatSelect = `SELECT c.id, c.user_id, c.grow_id, COALESCE(g.name, ''),

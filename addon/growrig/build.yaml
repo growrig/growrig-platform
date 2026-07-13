@@ -6,4 +6,4 @@ build_from:
   armv7: ghcr.io/home-assistant/armv7-base:latest
 labels:
   org.opencontainers.image.title: "GrowRig — Grow Core"
-  org.opencontainers.image.source: "https://github.com/growrig/growrig-platform"
+  org.opencontainers.image.source: "https://github.com/growrig/growrig"

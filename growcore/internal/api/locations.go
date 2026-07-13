@@ -12,14 +12,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // httpClient is used for the outbound Nominatim / Open-Meteo lookups.
 var httpClient = &http.Client{Timeout: 8 * time.Second}
 
 // userAgent identifies Grow Core to Nominatim, whose usage policy requires it.
-const userAgent = "GrowRig/1.0 (https://github.com/growrig/growrig-platform)"
+const userAgent = "GrowRig/1.0 (https://github.com/growrig/growrig)"
 
 // --- Locations CRUD ---
 

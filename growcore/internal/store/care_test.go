@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // seedCareGrow makes a grow with n individual plants and returns their unit ids.

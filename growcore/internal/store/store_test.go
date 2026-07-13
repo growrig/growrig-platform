@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 func open(t *testing.T) *Store {

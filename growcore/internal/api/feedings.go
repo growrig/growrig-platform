@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
-	"github.com/growrig/growrig-platform/growcore/internal/feeding"
-	"github.com/growrig/growrig-platform/growcore/internal/species"
+	"github.com/growrig/growrig/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/feeding"
+	"github.com/growrig/growrig/growcore/internal/species"
 )
 
 // Feeding recipes are user-owned nutrient schedules stored as YAML on disk (see

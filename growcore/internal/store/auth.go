@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // ErrUsernameTaken is returned when creating a user whose username already exists.

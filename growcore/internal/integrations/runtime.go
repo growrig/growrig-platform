@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 func runTest(ctx context.Context, b Bundle, cfg map[string]string) error {

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // SaveCareEvent persists a care event together with its per-plant applications

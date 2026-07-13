@@ -87,7 +87,7 @@ jobs:
               --platform "${platform}" \
               --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ha}-base:latest" \
               --build-arg "BUILD_ARCH=${ha}" \
-              --label "org.opencontainers.image.source=https://github.com/${NAMESPACE}/growrig-platform" \
+              --label "org.opencontainers.image.source=https://github.com/${NAMESPACE}/growrig" \
               --label "org.opencontainers.image.version=${VERSION}" \
               --tag "${image}:${VERSION}" \
               --tag "${image}:latest" \

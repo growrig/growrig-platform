@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/growrig/growrig-platform/growcore/internal/control"
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/control"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 // Simulated entity ids and the demo environment ids they belong to.

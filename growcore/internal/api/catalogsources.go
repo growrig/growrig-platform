@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/growrig/growrig-platform/growcore/internal/catalogsource"
+	"github.com/growrig/growrig/growcore/internal/catalogsource"
 )
 
 // Custom catalog sources: supported public Git repositories with a catalog.yaml

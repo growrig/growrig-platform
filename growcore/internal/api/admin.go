@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/growrig/growrig-platform/growcore/internal/domain"
+	"github.com/growrig/growrig/growcore/internal/domain"
 )
 
 func (s *Server) getEnvironmentConfig(w http.ResponseWriter, r *http.Request) {

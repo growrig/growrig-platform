@@ -1,6 +1,6 @@
 # GrowRig — Grow Core
 
-Grow Core is the control engine for [GrowRig](https://github.com/growrig/growrig-platform):
+Grow Core is the control engine for [GrowRig](https://github.com/growrig/growrig):
 a Go service with a built-in SvelteKit dashboard (**Grow App Web**) that turns
 climate targets into fan commands via Home Assistant. This add-on runs it
 inside Home Assistant OS and talks to Home Assistant through the Supervisor
@@ -41,4 +41,4 @@ assign in Setup.
 
 ## Support
 
-Issues and questions: https://github.com/growrig/growrig-platform/issues
+Issues and questions: https://github.com/growrig/growrig/issues
