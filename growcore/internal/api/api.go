@@ -102,10 +102,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/inventory/items", s.requireAuth(s.getInventoryItems))
 	mux.HandleFunc("GET /api/inventory/items/{id}", s.requireAuth(s.getInventoryItem))
 	mux.HandleFunc("GET /api/inventory/items/{id}/image", s.requireAuth(s.getInventoryItemImage))
-	mux.HandleFunc("GET /api/feedings", s.requireAuth(s.getFeedingPresets))
-	// Built-in presets, offered only as templates to seed a new user preset.
-	mux.HandleFunc("GET /api/feeding-templates", s.requireAuth(s.getFeedingTemplates))
-	mux.HandleFunc("GET /api/feedings/{id}", s.requireAuth(s.getFeedingPreset))
+	mux.HandleFunc("GET /api/recipes", s.requireAuth(s.getRecipes))
+	// Built-in recipe templates, offered only to seed a new user recipe.
+	mux.HandleFunc("GET /api/recipe-templates", s.requireAuth(s.getRecipeTemplates))
+	mux.HandleFunc("GET /api/recipes/{id}", s.requireAuth(s.getRecipe))
 
 	// Per-environment read.
 	mux.HandleFunc("GET /api/environments/{id}/history", s.requireEnvRead(s.getHistory))
@@ -128,6 +128,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/grows/{id}/stage", s.requireAdmin(s.changeStage))
 	mux.HandleFunc("POST /api/grows/{id}/complete", s.requireAdmin(s.completeGrow))
 	mux.HandleFunc("POST /api/grows/{id}/plants", s.requireAdmin(s.createPlants))
+	mux.HandleFunc("GET /api/grows/{id}/care", s.requireAuth(s.getCare))
+	mux.HandleFunc("POST /api/grows/{id}/care", s.requireAdmin(s.logCare))
+	mux.HandleFunc("GET /api/grows/{id}/care-config", s.requireAuth(s.getCareConfig))
+	mux.HandleFunc("PUT /api/grows/{id}/care-config", s.requireAdmin(s.putCareConfig))
+	mux.HandleFunc("DELETE /api/care/{id}", s.requireAdmin(s.deleteCare))
 	mux.HandleFunc("PUT /api/plants/{id}", s.requireAdmin(s.updatePlant))
 	mux.HandleFunc("POST /api/plants/{id}/move", s.requireAdmin(s.movePlant))
 	mux.HandleFunc("POST /api/plants/{id}/repot", s.requireAdmin(s.repotPlant))
@@ -139,9 +144,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/inventory/items", s.requireAdmin(s.createInventoryItem))
 	mux.HandleFunc("PUT /api/inventory/items/{id}", s.requireAdmin(s.updateInventoryItem))
 	mux.HandleFunc("DELETE /api/inventory/items/{id}", s.requireAdmin(s.deleteInventoryItem))
-	mux.HandleFunc("POST /api/feedings", s.requireAdmin(s.createFeedingPreset))
-	mux.HandleFunc("PUT /api/feedings/{id}", s.requireAdmin(s.updateFeedingPreset))
-	mux.HandleFunc("DELETE /api/feedings/{id}", s.requireAdmin(s.deleteFeedingPreset))
+	mux.HandleFunc("POST /api/recipes", s.requireAdmin(s.createRecipe))
+	mux.HandleFunc("PUT /api/recipes/{id}", s.requireAdmin(s.updateRecipe))
+	mux.HandleFunc("DELETE /api/recipes/{id}", s.requireAdmin(s.deleteRecipe))
 
 	// Admin only (configuration & user management).
 	mux.HandleFunc("GET /api/catalog", s.requireAdmin(s.getCatalog))
@@ -261,6 +266,14 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	var types []string
+	if tp := strings.TrimSpace(r.URL.Query().Get("types")); tp != "" {
+		for _, t := range strings.Split(tp, ",") {
+			if t = strings.TrimSpace(t); t != "" {
+				types = append(types, t)
+			}
+		}
+	}
 	u, _ := currentUser(r)
 	allowed, all := s.accessibleEnvIDs(u)
 	// A non-admin asking for a specific environment must be able to see it.
@@ -274,7 +287,7 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 	// grow filter is not environment-scoped, so it isn't narrowed here. Because
 	// this filtering is post-query, paginate the accessible subset in memory.
 	if !all && envParam == "" && growParam == "" {
-		batch, err := s.store.Activities(envParam, growParam, levels, 500, 0)
+		batch, err := s.store.Activities(envParam, growParam, levels, types, 500, 0)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -289,12 +302,12 @@ func (s *Server) getActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	total, err := s.store.CountActivities(envParam, growParam, levels)
+	total, err := s.store.CountActivities(envParam, growParam, levels, types)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	events, err := s.store.Activities(envParam, growParam, levels, limit, offset)
+	events, err := s.store.Activities(envParam, growParam, levels, types, limit, offset)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return

@@ -12,15 +12,15 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
-// User feeding presets are stored as one YAML file per preset under
+// User feeding recipes are stored as one YAML file per recipe under
 // <dataDir>/feedings/<id>.yaml, so they live on the user's filesystem next to
 // their environment configs — portable, hand-editable, and versionable. This
-// mirrors how environments persist (see yaml.go). Built-in presets are a
+// mirrors how environments persist (see yaml.go). Built-in recipe templates are a
 // separate, read-only catalog under species/<id>/feedings.yaml (see
-// internal/feeding) and are only used as templates when creating a user preset.
+// internal/feeding) and are only used as templates when creating a user recipe.
 
-// feedingDoc is the on-disk shape of a user preset file. It carries every field
-// (unlike domain.FeedingPreset's YAML tags, which are tuned for the built-in
+// feedingDoc is the on-disk shape of a user recipe file. It carries every field
+// (unlike domain.FeedingRecipe's YAML tags, which are tuned for the built-in
 // catalog where species is the directory name and there is no created time).
 type feedingDoc struct {
 	Version     int                     `yaml:"version"`
@@ -35,8 +35,8 @@ type feedingDoc struct {
 	Phases      []domain.FeedingPhase   `yaml:"phases"`
 }
 
-func (d feedingDoc) toPreset() domain.FeedingPreset {
-	return domain.FeedingPreset{
+func (d feedingDoc) toRecipe() domain.FeedingRecipe {
+	return domain.FeedingRecipe{
 		ID:          d.ID,
 		Species:     d.Species,
 		Name:        d.Name,
@@ -54,13 +54,13 @@ func (s *Store) feedingPath(id string) string {
 	return filepath.Join(s.feedingDir, id+".yaml")
 }
 
-// FeedingPresets returns all user presets, newest first.
-func (s *Store) FeedingPresets() ([]domain.FeedingPreset, error) {
+// FeedingRecipes returns all user recipes, newest first.
+func (s *Store) FeedingRecipes() ([]domain.FeedingRecipe, error) {
 	paths, err := filepath.Glob(filepath.Join(s.feedingDir, "*.yaml"))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]domain.FeedingPreset, 0, len(paths))
+	out := make([]domain.FeedingRecipe, 0, len(paths))
 	for _, p := range paths {
 		raw, err := os.ReadFile(p)
 		if err != nil {
@@ -74,35 +74,35 @@ func (s *Store) FeedingPresets() ([]domain.FeedingPreset, error) {
 			// Fall back to the filename stem so hand-created files still load.
 			doc.ID = filepath.Base(p[:len(p)-len(".yaml")])
 		}
-		out = append(out, doc.toPreset())
+		out = append(out, doc.toRecipe())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out, nil
 }
 
-// FeedingPreset returns one user preset by id.
-func (s *Store) FeedingPreset(id string) (domain.FeedingPreset, bool, error) {
+// FeedingRecipe returns one user recipe by id.
+func (s *Store) FeedingRecipe(id string) (domain.FeedingRecipe, bool, error) {
 	raw, err := os.ReadFile(s.feedingPath(id))
 	if os.IsNotExist(err) {
-		return domain.FeedingPreset{}, false, nil
+		return domain.FeedingRecipe{}, false, nil
 	}
 	if err != nil {
-		return domain.FeedingPreset{}, false, err
+		return domain.FeedingRecipe{}, false, err
 	}
 	var doc feedingDoc
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return domain.FeedingPreset{}, false, fmt.Errorf("invalid preset YAML: %w", err)
+		return domain.FeedingRecipe{}, false, fmt.Errorf("invalid recipe YAML: %w", err)
 	}
 	if doc.ID == "" {
 		doc.ID = id
 	}
-	return doc.toPreset(), true, nil
+	return doc.toRecipe(), true, nil
 }
 
-// SaveFeedingPreset writes a user preset atomically to its YAML file.
-func (s *Store) SaveFeedingPreset(p domain.FeedingPreset) error {
+// SaveFeedingRecipe writes a user recipe atomically to its YAML file.
+func (s *Store) SaveFeedingRecipe(p domain.FeedingRecipe) error {
 	if p.ID == "" {
-		return fmt.Errorf("preset id is required")
+		return fmt.Errorf("recipe id is required")
 	}
 	doc := feedingDoc{
 		Version:     1,
@@ -130,8 +130,8 @@ func (s *Store) SaveFeedingPreset(p domain.FeedingPreset) error {
 	return os.Rename(tmp, s.feedingPath(p.ID))
 }
 
-// DeleteFeedingPreset removes a user preset file.
-func (s *Store) DeleteFeedingPreset(id string) error {
+// DeleteFeedingRecipe removes a user recipe file.
+func (s *Store) DeleteFeedingRecipe(id string) error {
 	err := os.Remove(s.feedingPath(id))
 	if os.IsNotExist(err) {
 		return nil

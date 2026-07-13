@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { FeedingPreset, FeedingProduct, Species } from '$lib/types';
-	import { createFeedingPreset, updateFeedingPreset, type FeedingPresetInput } from '$lib/api';
+	import type { FeedingRecipe, FeedingProduct, Species } from '$lib/types';
+	import { createRecipe, updateRecipe, type RecipeInput } from '$lib/api';
 	import { Button, Dialog } from '$lib/components/ui';
 	import { titleCase } from '$lib/format';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -10,18 +10,18 @@
 
 	interface Props {
 		open?: boolean;
-		/** Provided to edit an existing user preset; omit to create. */
-		preset?: FeedingPreset;
+		/** Provided to edit an existing user recipe; omit to create. */
+		recipe?: FeedingRecipe;
 		species: Species[];
-		/** Built-in presets offered as a starting point in create mode. */
-		templates?: FeedingPreset[];
+		/** Built-in recipes offered as a starting point in create mode. */
+		templates?: FeedingRecipe[];
 		/** Preselect a species (create mode). */
 		defaultSpecies?: string;
-		onSaved?: (p: FeedingPreset) => void;
+		onSaved?: (p: FeedingRecipe) => void;
 	}
 	let {
 		open = $bindable(false),
-		preset,
+		recipe,
 		species,
 		templates = [],
 		defaultSpecies,
@@ -43,7 +43,7 @@
 	let busy = $state(false);
 	let err = $state('');
 
-	const isEdit = $derived(!!preset);
+	const isEdit = $derived(!!recipe);
 	const selected = $derived(species.find((s) => s.id === speciesId));
 	const stages = $derived(selected?.stages ?? []);
 	const canSave = $derived(!!name.trim() && !!speciesId);
@@ -52,18 +52,18 @@
 		speciesId ? templates.filter((t) => t.species === speciesId) : templates
 	);
 
-	const title = $derived(isEdit ? 'Edit feeding preset' : 'New feeding preset');
+	const title = $derived(isEdit ? 'Edit feeding recipe' : 'New feeding recipe');
 
 	// Reseed on open.
 	$effect(() => {
 		if (!open) return;
-		speciesId = preset?.species ?? defaultSpecies ?? '';
-		name = preset?.name ?? '';
-		brand = preset?.brand ?? '';
-		description = preset?.description ?? '';
-		unit = preset?.unit || 'ml/L';
-		products = (preset?.products ?? []).map((p) => ({ ...p }));
-		phases = (preset?.phases ?? []).map((ph) => ({
+		speciesId = recipe?.species ?? defaultSpecies ?? '';
+		name = recipe?.name ?? '';
+		brand = recipe?.brand ?? '';
+		description = recipe?.description ?? '';
+		unit = recipe?.unit || 'ml/L';
+		products = (recipe?.products ?? []).map((p) => ({ ...p }));
+		phases = (recipe?.phases ?? []).map((ph) => ({
 			name: ph.name,
 			stage: ph.stage ?? '',
 			weeks: (ph.weeks ?? []).map((wk) => ({ doses: { ...wk.doses } }))
@@ -132,7 +132,7 @@
 		busy = true;
 		err = '';
 		try {
-			const input: FeedingPresetInput = {
+			const input: RecipeInput = {
 				species: speciesId,
 				name: name.trim(),
 				brand: brand.trim(),
@@ -156,7 +156,7 @@
 						})
 					}))
 			};
-			const saved = isEdit ? await updateFeedingPreset(preset!.id, input) : await createFeedingPreset(input);
+			const saved = isEdit ? await updateRecipe(recipe!.id, input) : await createRecipe(input);
 			open = false;
 			onSaved?.(saved);
 		} catch (e) {
@@ -202,7 +202,7 @@
 		<!-- Start from a built-in schedule (create mode only). -->
 		{#if !isEdit && templateOptions.length}
 			<label class="block rounded-lg border border-rig-800 bg-rig-900/40 p-3">
-				<span class="text-xs font-semibold uppercase tracking-wide text-leaf">Start from a built-in preset</span>
+				<span class="text-xs font-semibold uppercase tracking-wide text-leaf">Start from a built-in template</span>
 				<select bind:value={templateId} onchange={applyTemplate} class="{field} mt-1.5">
 					<option value="">Start blank</option>
 					{#each templateOptions as t (t.id)}

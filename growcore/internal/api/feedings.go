@@ -10,54 +10,54 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/species"
 )
 
-// Feeding presets are user-owned nutrient schedules stored as YAML on disk (see
-// store/feeding.go). Built-in presets (the BioBizz charts) are a separate,
-// read-only catalog exposed only as *templates* to prefill the create form —
-// they never appear in the user's own list.
+// Feeding recipes are user-owned nutrient schedules stored as YAML on disk (see
+// store/feeding.go). Built-in recipe templates (the BioBizz charts) are a
+// separate, read-only catalog exposed only as *templates* to prefill the create
+// form — they never appear in the user's own list.
 
-// getFeedingPresets lists the user's presets (the ones shown on the Grows page).
-func (s *Server) getFeedingPresets(w http.ResponseWriter, r *http.Request) {
-	presets, err := s.store.FeedingPresets()
+// getRecipes lists the user's recipes (the ones shown in the Knowledge library).
+func (s *Server) getRecipes(w http.ResponseWriter, r *http.Request) {
+	recipes, err := s.store.FeedingRecipes()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if presets == nil {
-		presets = []domain.FeedingPreset{}
+	if recipes == nil {
+		recipes = []domain.FeedingRecipe{}
 	}
-	writeJSON(w, http.StatusOK, presets)
+	writeJSON(w, http.StatusOK, recipes)
 }
 
-// getFeedingTemplates lists the built-in presets used to seed a new preset,
-// optionally filtered to one species.
-func (s *Server) getFeedingTemplates(w http.ResponseWriter, r *http.Request) {
+// getRecipeTemplates lists the built-in recipe templates used to seed a new
+// recipe, optionally filtered to one species.
+func (s *Server) getRecipeTemplates(w http.ResponseWriter, r *http.Request) {
 	sp := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("species")))
-	var templates []domain.FeedingPreset
+	var templates []domain.FeedingRecipe
 	if sp != "" {
 		templates = feeding.BySpecies(sp)
 	} else {
 		templates = feeding.All()
 	}
 	if templates == nil {
-		templates = []domain.FeedingPreset{}
+		templates = []domain.FeedingRecipe{}
 	}
 	writeJSON(w, http.StatusOK, templates)
 }
 
-func (s *Server) getFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	p, ok, err := s.store.FeedingPreset(r.PathValue("id"))
+func (s *Server) getRecipe(w http.ResponseWriter, r *http.Request) {
+	p, ok, err := s.store.FeedingRecipe(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errBody("feeding preset not found"))
+		writeJSON(w, http.StatusNotFound, errBody("recipe not found"))
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
 }
 
-type feedingPresetBody struct {
+type recipeBody struct {
 	Species     string                  `json:"species"`
 	Name        string                  `json:"name"`
 	Brand       string                  `json:"brand"`
@@ -67,9 +67,9 @@ type feedingPresetBody struct {
 	Phases      []domain.FeedingPhase   `json:"phases"`
 }
 
-// sanitizeFeeding trims text and drops empty product/phase/week entries so the
+// sanitizeRecipe trims text and drops empty product/phase/week entries so the
 // stored preset stays clean regardless of editor churn.
-func sanitizeFeeding(b feedingPresetBody) (products []domain.FeedingProduct, phases []domain.FeedingPhase) {
+func sanitizeRecipe(b recipeBody) (products []domain.FeedingProduct, phases []domain.FeedingPhase) {
 	valid := map[string]bool{}
 	for _, p := range b.Products {
 		key := strings.TrimSpace(p.Key)
@@ -104,8 +104,8 @@ func sanitizeFeeding(b feedingPresetBody) (products []domain.FeedingProduct, pha
 	return products, phases
 }
 
-func (s *Server) createFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	var b feedingPresetBody
+func (s *Server) createRecipe(w http.ResponseWriter, r *http.Request) {
+	var b recipeBody
 	if err := decode(r, &b); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -119,9 +119,9 @@ func (s *Server) createFeedingPreset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errBody("species must be one of the predefined crop families"))
 		return
 	}
-	products, phases := sanitizeFeeding(b)
-	p := domain.FeedingPreset{
-		ID:          id(b.Name, "feeding"),
+	products, phases := sanitizeRecipe(b)
+	p := domain.FeedingRecipe{
+		ID:          id(b.Name, "recipe"),
 		Species:     sp.ID,
 		Name:        strings.TrimSpace(b.Name),
 		Brand:       strings.TrimSpace(b.Brand),
@@ -132,25 +132,25 @@ func (s *Server) createFeedingPreset(w http.ResponseWriter, r *http.Request) {
 		Phases:      phases,
 		CreatedAt:   time.Now(),
 	}
-	if err := s.store.SaveFeedingPreset(p); err != nil {
+	if err := s.store.SaveFeedingRecipe(p); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	s.activity("", "", "info", "configuration", "Created feeding preset "+p.Name)
+	s.activity("", "", "info", "configuration", "Created feeding recipe "+p.Name)
 	writeJSON(w, http.StatusOK, p)
 }
 
-func (s *Server) updateFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	p, ok, err := s.store.FeedingPreset(r.PathValue("id"))
+func (s *Server) updateRecipe(w http.ResponseWriter, r *http.Request) {
+	p, ok, err := s.store.FeedingRecipe(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errBody("feeding preset not found"))
+		writeJSON(w, http.StatusNotFound, errBody("recipe not found"))
 		return
 	}
-	var b feedingPresetBody
+	var b recipeBody
 	if err := decode(r, &b); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -164,7 +164,7 @@ func (s *Server) updateFeedingPreset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errBody("species must be one of the predefined crop families"))
 		return
 	}
-	products, phases := sanitizeFeeding(b)
+	products, phases := sanitizeRecipe(b)
 	p.Species = sp.ID
 	p.Name = strings.TrimSpace(b.Name)
 	p.Brand = strings.TrimSpace(b.Brand)
@@ -172,15 +172,15 @@ func (s *Server) updateFeedingPreset(w http.ResponseWriter, r *http.Request) {
 	p.Unit = strings.TrimSpace(b.Unit)
 	p.Products = products
 	p.Phases = phases
-	if err := s.store.SaveFeedingPreset(p); err != nil {
+	if err := s.store.SaveFeedingRecipe(p); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
 }
 
-func (s *Server) deleteFeedingPreset(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteFeedingPreset(r.PathValue("id")); err != nil {
+func (s *Server) deleteRecipe(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteFeedingRecipe(r.PathValue("id")); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}

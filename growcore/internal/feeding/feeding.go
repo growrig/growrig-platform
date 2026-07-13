@@ -30,26 +30,26 @@ import (
 
 // file is the on-disk shape of species/<id>/feedings.yaml.
 type file struct {
-	Presets []domain.FeedingPreset `yaml:"presets"`
+	Recipes []domain.FeedingRecipe `yaml:"presets"`
 }
 
 var (
 	once   sync.Once
-	loaded []domain.FeedingPreset
-	byID   map[string]domain.FeedingPreset
+	loaded []domain.FeedingRecipe
+	byID   map[string]domain.FeedingRecipe
 )
 
-// All returns every built-in preset, loaded once, sorted by species then id.
-func All() []domain.FeedingPreset {
+// All returns every built-in recipe template, loaded once, sorted by species then id.
+func All() []domain.FeedingRecipe {
 	once.Do(load)
 	return loaded
 }
 
-// BySpecies returns the built-in presets for one species (case-insensitive).
-func BySpecies(speciesID string) []domain.FeedingPreset {
+// BySpecies returns the built-in recipe templates for one species (case-insensitive).
+func BySpecies(speciesID string) []domain.FeedingRecipe {
 	once.Do(load)
 	id := strings.ToLower(strings.TrimSpace(speciesID))
-	var out []domain.FeedingPreset
+	var out []domain.FeedingRecipe
 	for _, p := range loaded {
 		if p.Species == id {
 			out = append(out, p)
@@ -58,17 +58,17 @@ func BySpecies(speciesID string) []domain.FeedingPreset {
 	return out
 }
 
-// Get returns the built-in preset with the given fully-qualified id
+// Get returns the built-in recipe template with the given fully-qualified id
 // ("<species>/<yaml-id>"), or false if there is none.
-func Get(id string) (domain.FeedingPreset, bool) {
+func Get(id string) (domain.FeedingRecipe, bool) {
 	once.Do(load)
 	p, ok := byID[id]
 	return p, ok
 }
 
 func load() {
-	byID = map[string]domain.FeedingPreset{}
-	loaded = []domain.FeedingPreset{}
+	byID = map[string]domain.FeedingRecipe{}
+	loaded = []domain.FeedingRecipe{}
 	src := species.SourceFS()
 	if src == nil {
 		return
@@ -93,7 +93,7 @@ func load() {
 			log.Printf("feeding: %s: %v", path, err)
 			continue
 		}
-		for _, p := range f.Presets {
+		for _, p := range f.Recipes {
 			p.Species = speciesID
 			p.Source = "builtin"
 			p.ID = fmt.Sprintf("%s/%s", speciesID, p.ID)

@@ -8,8 +8,13 @@ import type {
 	AuthStatus,
 	BindingKind,
 	CameraType,
+	CareActionDef,
+	CareEvent,
+	CareHistory,
 	CatalogProduct,
 	Cultivar,
+	GrowCareActionConfig,
+	LogCareInput,
 	DeviceSeries,
 	DiscoveredEntity,
 	Environment,
@@ -17,7 +22,7 @@ import type {
 	EnvAccess,
 	EnvPlantsGroup,
 	FanType,
-	FeedingPreset,
+	FeedingRecipe,
 	FeedingProduct,
 	FeedingPhase,
 	GeocodeResult,
@@ -350,6 +355,33 @@ export const removePlant = (plantID: string) =>
 export const getEnvironmentPlants = (envID: string) =>
 	json<EnvPlantsGroup[]>(`/api/environments/${encodeURIComponent(envID)}/plants`);
 
+// --- care (the grow's manual-action journal) ---
+
+/** A grow's care history plus a summary (last action per type, skipped plants). */
+export const getCare = (growID: string) =>
+	json<CareHistory>(`/api/grows/${encodeURIComponent(growID)}/care`);
+
+/** Log one care action against a grow's plants. */
+export const logCare = (growID: string, b: LogCareInput) =>
+	json<CareEvent>(`/api/grows/${encodeURIComponent(growID)}/care`, {
+		method: 'POST',
+		body: JSON.stringify(b)
+	});
+
+export const deleteCare = (id: string) =>
+	req(`/api/care/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** A grow's effective care actions (species defaults overlaid with per-grow config). */
+export const getCareConfig = (growID: string) =>
+	json<{ actions: CareActionDef[] }>(`/api/grows/${encodeURIComponent(growID)}/care-config`);
+
+/** Replace a grow's care customization (order, enable/disable, rename, quick, custom). */
+export const saveCareConfig = (growID: string, actions: GrowCareActionConfig[]) =>
+	json<{ actions: CareActionDef[] }>(`/api/grows/${encodeURIComponent(growID)}/care-config`, {
+		method: 'PUT',
+		body: JSON.stringify({ actions })
+	});
+
 // --- species catalog & cultivars ---
 
 export const getSpecies = () => json<Species[]>('/api/species');
@@ -430,19 +462,19 @@ export const updateInventoryItem = (id: string, b: InventoryItemInput) =>
 export const deleteInventoryItem = (id: string) =>
 	req(`/api/inventory/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
-// --- Feeding presets ---
+// --- Feeding recipes ---
 
-/** The user's own feeding presets (stored as YAML on disk). */
-export const getFeedingPresets = () => json<FeedingPreset[]>('/api/feedings');
+/** The user's own feeding recipes (stored as YAML on disk). */
+export const getRecipes = () => json<FeedingRecipe[]>('/api/recipes');
 
 /** Built-in presets, offered only as templates to seed a new preset. */
-export const getFeedingTemplates = (species?: string) =>
-	json<FeedingPreset[]>(`/api/feeding-templates${species ? `?species=${encodeURIComponent(species)}` : ''}`);
+export const getRecipeTemplates = (species?: string) =>
+	json<FeedingRecipe[]>(`/api/recipe-templates${species ? `?species=${encodeURIComponent(species)}` : ''}`);
 
-export const getFeedingPreset = (id: string) =>
-	json<FeedingPreset>(`/api/feedings/${encodeURIComponent(id)}`);
+export const getRecipe = (id: string) =>
+	json<FeedingRecipe>(`/api/recipes/${encodeURIComponent(id)}`);
 
-export interface FeedingPresetInput {
+export interface RecipeInput {
 	species: string;
 	name: string;
 	brand: string;
@@ -452,14 +484,14 @@ export interface FeedingPresetInput {
 	phases: FeedingPhase[];
 }
 
-export const createFeedingPreset = (p: FeedingPresetInput) =>
-	json<FeedingPreset>('/api/feedings', { method: 'POST', body: JSON.stringify(p) });
+export const createRecipe = (p: RecipeInput) =>
+	json<FeedingRecipe>('/api/recipes', { method: 'POST', body: JSON.stringify(p) });
 
-export const updateFeedingPreset = (id: string, p: FeedingPresetInput) =>
-	json<FeedingPreset>(`/api/feedings/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(p) });
+export const updateRecipe = (id: string, p: RecipeInput) =>
+	json<FeedingRecipe>(`/api/recipes/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(p) });
 
-export const deleteFeedingPreset = (id: string) =>
-	req(`/api/feedings/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const deleteRecipe = (id: string) =>
+	req(`/api/recipes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 /** Authenticated same-origin URL for a cultivar's stored image. */
 export const cultivarImageURL = (id: string): string =>
@@ -533,12 +565,13 @@ export const clearActivity = () => req('/api/activity', { method: 'DELETE' });
 export const restartCore = () => req('/api/admin/restart', { method: 'POST' });
 
 export const getActivity = async (
-	opts: { environmentId?: string; growId?: string; levels?: string[]; limit?: number; offset?: number } = {}
+	opts: { environmentId?: string; growId?: string; levels?: string[]; types?: string[]; limit?: number; offset?: number } = {}
 ): Promise<ActivityPage> => {
 	const params = new URLSearchParams({ limit: String(opts.limit ?? 100) });
 	if (opts.environmentId) params.set('environmentId', opts.environmentId);
 	if (opts.growId) params.set('growId', opts.growId);
 	if (opts.levels?.length) params.set('levels', opts.levels.join(','));
+	if (opts.types?.length) params.set('types', opts.types.join(','));
 	if (opts.offset) params.set('offset', String(opts.offset));
 	// Tolerate the pre-pagination response (a bare array) so the UI doesn't break
 	// during a rolling deploy where the backend hasn't been restarted yet.

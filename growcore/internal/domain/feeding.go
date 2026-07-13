@@ -2,15 +2,16 @@ package domain
 
 import "time"
 
-// FeedingPreset is a nutrient schedule: an ordered set of products (nutrient
+// FeedingRecipe is a nutrient schedule: an ordered set of products (nutrient
 // lines) dosed across an ordered set of phases, each phase spanning one or more
 // weeks. It is deliberately flexible so it can model any brand's chart (e.g.
 // BioBizz): phases are free-form and only optionally linked to a species stage.
 //
-// Built-in presets are defined as YAML under species/<id>/feedings.yaml and are
-// read-only (Source == "builtin"); user presets are created in-app and stored
-// in the DB (Source == "user"). Both share this shape and one API surface.
-type FeedingPreset struct {
+// Built-in recipe templates are defined as YAML under species/<id>/feedings.yaml
+// and are read-only (Source == "builtin"); user recipes are created in-app and
+// stored as YAML on disk (Source == "user"). Both share this shape and one API
+// surface.
+type FeedingRecipe struct {
 	ID          string           `json:"id" yaml:"id"`
 	Species     string           `json:"species" yaml:"-"`
 	Name        string           `json:"name" yaml:"name"`

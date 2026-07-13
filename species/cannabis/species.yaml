@@ -19,3 +19,17 @@ cultivarAttributes:
   - { key: thc, label: THC, type: percent }
   - { key: cbd, label: CBD, type: percent }
   - { key: floweringWeeks, label: Flowering time, type: number, unit: weeks }
+# `careActions` lists the manual actions a grower can log against this crop's
+# plants, and which form fields each shows. Actions and fields define what is
+# relevant; exact amounts/doses stay per-grow and per-event.
+careActions:
+  - { key: water,      label: Water,         icon: droplet,       fields: [amount, runoff, note],                  quick: true }
+  - { key: feed,       label: Feed,          icon: flask-conical, fields: [recipe, amount, ph, ec, runoff, note],  quick: true }
+  - { key: inspect,    label: Inspect,       icon: search,        fields: [note, photos],                          quick: true }
+  - { key: train,      label: Train,         icon: spline,        fields: [trainType, note, photos] }
+  - { key: trim,       label: Trim / prune,  icon: scissors,      fields: [note, photos] }
+  - { key: transplant, label: Transplant,    icon: shovel,        fields: [potSize, note] }
+  - { key: treat,      label: Spray / treat, icon: spray-can,     fields: [product, note] }
+  - { key: flush,      label: Flush,         icon: waves,         fields: [amount, runoff, note] }
+  - { key: harvest,    label: Harvest,       icon: sprout,        fields: [note] }
+  - { key: custom,     label: Custom,        icon: list-plus,     fields: [note, photos] }

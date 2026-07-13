@@ -17,18 +17,26 @@
 		harvestPlant,
 		removePlant,
 		getCultivars,
-		cultivarImageURL
+		cultivarImageURL,
+		getRecipes,
+		getCare,
+		getCareConfig
 	} from '$lib/api';
-	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar } from '$lib/types';
+	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar, CareActionDef, CareHistory, FeedingRecipe } from '$lib/types';
 	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
 	import ActivityLog from '$lib/components/ActivityLog.svelte';
+	import LogCareModal from '$lib/components/LogCareModal.svelte';
+	import CareSummary from '$lib/components/CareSummary.svelte';
+	import CareSettingsModal from '$lib/components/CareSettingsModal.svelte';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Droplet from '@lucide/svelte/icons/droplet';
+	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
 
 	const id = $derived(page.params.id);
@@ -49,11 +57,55 @@
 	// Resolve a plant's cultivar name to its record for the row thumbnail.
 	const cultivarByName = $derived(new Map(cultivars.map((c) => [c.name, c])));
 
+	// --- care ---
+	let care = $state<CareHistory | null>(null);
+	// Effective care actions for this grow (species defaults overlaid with the
+	// grow's customization). The log dialog uses only the enabled ones; the
+	// settings editor works on the full list.
+	let careDefs = $state<CareActionDef[]>([]);
+	const careActions = $derived(careDefs.filter((d) => d.enabled));
+	let recipes = $state<FeedingRecipe[]>([]);
+	let careOpen = $state(false);
+	let careInitialAction = $state<string | undefined>(undefined);
+	let carePreselect = $state<string[]>([]);
+	let careSettingsOpen = $state(false);
+
+	async function reloadCare() {
+		if (!id) return;
+		try {
+			care = await getCare(id);
+		} catch {
+			/* care history is non-critical; leave the last value */
+		}
+	}
+	// Load the grow's effective care actions and the feeding recipes offered when
+	// feeding. Runs once the grow (hence species) is known. Feeding uses only the
+	// user's own recipes — built-in brand charts stay in the Knowledge library as
+	// templates for creating recipes, not as things to log directly.
+	async function loadCareActions(_species: string) {
+		try {
+			if (id) careDefs = (await getCareConfig(id)).actions;
+			recipes = await getRecipes();
+		} catch {
+			/* non-critical */
+		}
+	}
+
+	function openLogCare(actionKey?: string, plantIds: string[] = []) {
+		careInitialAction = actionKey;
+		carePreselect = plantIds;
+		careOpen = true;
+	}
+	async function onCareLogged() {
+		await Promise.all([reload(), reloadCare()]);
+	}
+
 	async function reload() {
 		if (!id) return;
 		try {
 			grow = await getGrow(id);
 			err = '';
+			if (grow.species && careDefs.length === 0) loadCareActions(grow.species);
 		} catch (e) {
 			err = e instanceof Error ? e.message : 'Failed to load grow';
 		} finally {
@@ -62,6 +114,7 @@
 	}
 	onMount(() => {
 		reload();
+		reloadCare();
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
@@ -351,12 +404,32 @@
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Plants · {grow.plantCount} active</h2>
 				{#if isAdmin}
-					<button
-						onclick={() => (addingPlants = true)}
-						class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
-					>
-						<Plus size={14} /> Add plant
-					</button>
+					<div class="flex items-center gap-2">
+						{#if careActions.length > 0 && grow.plantCount > 0}
+							<button
+								onclick={() => openLogCare()}
+								class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
+							>
+								<Droplet size={14} /> Log care
+							</button>
+						{/if}
+						{#if careDefs.length > 0}
+							<button
+								onclick={() => (careSettingsOpen = true)}
+								title="Care actions"
+								aria-label="Care actions"
+								class="inline-flex items-center rounded-md border border-rig-700 p-1.5 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-200"
+							>
+								<Settings2 size={15} />
+							</button>
+						{/if}
+						<button
+							onclick={() => (addingPlants = true)}
+							class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
+						>
+							<Plus size={14} /> Add plant
+						</button>
+					</div>
 				{/if}
 			</div>
 			{#if grow.plants.length === 0}
@@ -422,6 +495,9 @@
 									{#if isAdmin}
 										<td class="px-4 py-2">
 											<div class="flex items-center gap-1.5">
+												{#if p.status === 'active' && careActions.length > 0}
+													<button onclick={() => openLogCare(undefined, [p.id])} title="Log care" aria-label="Log care" class="rounded-md border border-rig-700 p-1.5 text-rig-400 hover:border-sky-500/60 hover:text-sky-300"><Droplet size={14} /></button>
+												{/if}
 												<button onclick={() => openEdit(p)} title="Edit plant" aria-label="Edit plant" class="rounded-md border border-rig-700 p-1.5 text-rig-400 hover:border-rig-500 hover:text-rig-200"><Pencil size={14} /></button>
 												{#if p.status === 'active'}
 													<button onclick={() => harvest(p)} class="rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-300 hover:border-rig-500">Harvest</button>
@@ -445,6 +521,17 @@
 			</section>
 		{/if}
 
+		<!-- Care summary -->
+		{#if care && careActions.length > 0 && grow.plantCount > 0}
+			<CareSummary
+				{care}
+				actions={careActions}
+				canWrite={isAdmin}
+				onQuick={(key) => openLogCare(key)}
+				onLog={() => openLogCare()}
+			/>
+		{/if}
+
 		<!-- Activity log -->
 		<section>
 			<ActivityLog growId={grow.id} limit={30} title="Activity Log" />
@@ -453,6 +540,23 @@
 
 	{#if isAdmin}
 		<GrowFormModal bind:open={editing} grow={grow} {presets} onSaved={reload} />
+
+		<LogCareModal
+			bind:open={careOpen}
+			{grow}
+			actions={careActions}
+			{recipes}
+			preselectedPlantIds={carePreselect}
+			initialActionKey={careInitialAction}
+			onLogged={onCareLogged}
+		/>
+
+		<CareSettingsModal
+			bind:open={careSettingsOpen}
+			growId={grow.id}
+			actions={careDefs}
+			onSaved={(a) => (careDefs = a)}
+		/>
 
 		<Dialog bind:open={moveOpen} title="Change location" description="Move this plant to another environment. Its placement history is kept.">
 			<div class="space-y-4">

@@ -56,13 +56,58 @@ type Stage struct {
 	LightHours float64 `json:"lightHours" yaml:"lightHours"`
 }
 
+// CareField is a form input a care action may show when logging it. The web
+// client renders only the fields a given action declares.
+type CareField string
+
+const (
+	FieldAmount    CareField = "amount"    // volume per plant (ml)
+	FieldRunoff    CareField = "runoff"    // runoff volume / pH
+	FieldRecipe    CareField = "recipe"    // nutrient recipe (FeedingRecipe)
+	FieldPH        CareField = "ph"        // solution pH
+	FieldEC        CareField = "ec"        // solution EC
+	FieldNote      CareField = "note"      // free-text note
+	FieldPhotos    CareField = "photos"    // photo attachments (UI only for now)
+	FieldPotSize   CareField = "potSize"   // new pot size on transplant
+	FieldProduct   CareField = "product"   // treatment product
+	FieldTrainType CareField = "trainType" // training method
+)
+
+// CareAction declares one manual action a grower can log against a grow's
+// plants. The set of actions comes from the grow's species (or DefaultCareActions
+// when the species declares none), so the log-care menu is crop-appropriate.
+type CareAction struct {
+	Key    string      `json:"key" yaml:"key"`
+	Label  string      `json:"label" yaml:"label"`
+	Icon   string      `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Fields []CareField `json:"fields" yaml:"fields"`
+	Quick  bool        `json:"quick,omitempty" yaml:"quick,omitempty"`
+}
+
+// DefaultCareActions is the crop-neutral fallback set used when a species does
+// not declare its own careActions. It defines which actions and fields are
+// relevant; exact amounts, doses and schedules stay per-grow/per-event.
+var DefaultCareActions = []CareAction{
+	{Key: "water", Label: "Water", Icon: "droplet", Fields: []CareField{FieldAmount, FieldRunoff, FieldNote}, Quick: true},
+	{Key: "feed", Label: "Feed", Icon: "flask-conical", Fields: []CareField{FieldRecipe, FieldAmount, FieldPH, FieldEC, FieldRunoff, FieldNote}, Quick: true},
+	{Key: "inspect", Label: "Inspect", Icon: "search", Fields: []CareField{FieldNote, FieldPhotos}, Quick: true},
+	{Key: "train", Label: "Train", Icon: "spline", Fields: []CareField{FieldTrainType, FieldNote, FieldPhotos}},
+	{Key: "trim", Label: "Trim / prune", Icon: "scissors", Fields: []CareField{FieldNote, FieldPhotos}},
+	{Key: "transplant", Label: "Transplant", Icon: "shovel", Fields: []CareField{FieldPotSize, FieldNote}},
+	{Key: "treat", Label: "Spray / treat", Icon: "spray-can", Fields: []CareField{FieldProduct, FieldNote}},
+	{Key: "flush", Label: "Flush", Icon: "waves", Fields: []CareField{FieldAmount, FieldRunoff, FieldNote}},
+	{Key: "harvest", Label: "Harvest", Icon: "sprout", Fields: []CareField{FieldNote}},
+	{Key: "custom", Label: "Custom", Icon: "list-plus", Fields: []CareField{FieldNote, FieldPhotos}},
+}
+
 // Species is a crop family: an ordered stage sequence plus the cultivar
 // attribute schema. ID is the directory name; Label is the display name.
 type Species struct {
-	ID                 string      `json:"id"`
-	Label              string      `json:"label" yaml:"label"`
-	Stages             []Stage     `json:"stages" yaml:"stages"`
-	CultivarAttributes []Attribute `json:"cultivarAttributes,omitempty" yaml:"cultivarAttributes"`
+	ID                 string       `json:"id"`
+	Label              string       `json:"label" yaml:"label"`
+	Stages             []Stage      `json:"stages" yaml:"stages"`
+	CultivarAttributes []Attribute  `json:"cultivarAttributes,omitempty" yaml:"cultivarAttributes"`
+	CareActions        []CareAction `json:"careActions,omitempty" yaml:"careActions,omitempty"`
 }
 
 // StageNames returns the ordered stage names.
@@ -160,10 +205,41 @@ func load() {
 }
 
 func set(sp []Species) {
+	for i := range sp {
+		// A species that declares no care actions inherits the crop-neutral
+		// defaults, so every species carries a usable action set to the client.
+		if len(sp[i].CareActions) == 0 {
+			sp[i].CareActions = DefaultCareActions
+		}
+	}
 	loaded = sp
 	for _, s := range sp {
 		byID[s.ID] = s
 	}
+}
+
+// CareActionsFor returns the care actions available for a species (its own, or
+// the defaults), and whether the species is known.
+func CareActionsFor(id string) ([]CareAction, bool) {
+	s, ok := Get(id)
+	if !ok {
+		return DefaultCareActions, false
+	}
+	if len(s.CareActions) == 0 {
+		return DefaultCareActions, true
+	}
+	return s.CareActions, true
+}
+
+// CareAction returns the definition of one action key for a species.
+func CareActionFor(speciesID, key string) (CareAction, bool) {
+	actions, _ := CareActionsFor(speciesID)
+	for _, a := range actions {
+		if a.Key == key {
+			return a, true
+		}
+	}
+	return CareAction{}, false
 }
 
 // diskDir locates the repo-root species/ directory, or "" if not found.

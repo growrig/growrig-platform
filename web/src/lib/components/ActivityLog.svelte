@@ -9,6 +9,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import Box from '@lucide/svelte/icons/box';
+	import Droplet from '@lucide/svelte/icons/droplet';
 	import { fmtDateTime } from '$lib/datetime';
 
 	// `importantOnly` is the default view: only warnings and errors, hiding
@@ -39,8 +40,11 @@
 	let environments = $state<Environment[]>([]);
 	let grows = $state<Grow[]>([]);
 	let loading = $state(true);
+	// View selects which slice of the journal to show: only warnings/errors
+	// (important), only care actions, or everything.
+	type LogView = 'important' | 'care' | 'all';
 	// svelte-ignore state_referenced_locally -- importantOnly is only the initial default; the toggle owns it thereafter
-	let showAll = $state(!importantOnly);
+	let view = $state<LogView>(importantOnly ? 'important' : 'all');
 	let envFilter = $state('');
 	let growFilter = $state('');
 	const IMPORTANT_LEVELS = ['warning', 'error'];
@@ -51,10 +55,11 @@
 
 	async function reload() {
 		try {
-			const levels = showAll ? undefined : IMPORTANT_LEVELS;
+			const levels = view === 'important' ? IMPORTANT_LEVELS : undefined;
+			const types = view === 'care' ? ['care'] : undefined;
 			const env = showFilters ? envFilter : environmentId;
 			const grow = showFilters ? growFilter : growId;
-			const res = await getActivity({ environmentId: env, growId: grow, levels, limit, offset: (page - 1) * limit });
+			const res = await getActivity({ environmentId: env, growId: grow, levels, types, limit, offset: (page - 1) * limit });
 			events = res.items ?? [];
 			total = res.total ?? 0;
 		} finally {
@@ -66,9 +71,9 @@
 		reload();
 	}
 	// Filter/toggle changes reset to the first page; page changes keep filters.
-	function setShowAll(next: boolean) {
-		if (next === showAll) return;
-		showAll = next;
+	function setView(next: LogView) {
+		if (next === view) return;
+		view = next;
 		page = 1;
 		refetch();
 	}
@@ -129,12 +134,16 @@
 	</div>
 	<div class="inline-flex overflow-hidden rounded-lg border border-rig-800 text-xs">
 		<button
-			onclick={() => setShowAll(false)}
-			class="px-2.5 py-1 {!showAll ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-300'}"
+			onclick={() => setView('important')}
+			class="px-2.5 py-1 {view === 'important' ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-300'}"
 		>Important</button>
 		<button
-			onclick={() => setShowAll(true)}
-			class="border-l border-rig-800 px-2.5 py-1 {showAll ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-300'}"
+			onclick={() => setView('care')}
+			class="border-l border-rig-800 px-2.5 py-1 {view === 'care' ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-300'}"
+		>Care</button>
+		<button
+			onclick={() => setView('all')}
+			class="border-l border-rig-800 px-2.5 py-1 {view === 'all' ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-300'}"
 		>All</button>
 	</div>
 </div>
@@ -142,7 +151,7 @@
 {#if loading}
 	<p class="text-sm text-rig-500">Loading activity…</p>
 {:else if events.length === 0}
-	<div class="rounded-xl border border-dashed border-rig-800 p-6 text-center text-sm text-rig-500">{showAll ? 'No activity recorded yet.' : 'No warnings or errors.'}</div>
+	<div class="rounded-xl border border-dashed border-rig-800 p-6 text-center text-sm text-rig-500">{view === 'care' ? 'No care logged yet.' : view === 'all' ? 'No activity recorded yet.' : 'No warnings or errors.'}</div>
 {:else}
 	<div class="overflow-hidden rounded-xl border border-rig-800 bg-rig-900/30">
 		{#each events as event, i (event.id)}
@@ -154,8 +163,8 @@
 						<span class="truncate {src.kind === 'system' ? 'text-rig-500' : 'text-rig-300'}">{src.name}</span>
 					</div>
 				{/if}
-				<div class="mt-0.5 {event.level === 'error' ? 'text-danger' : event.level === 'warning' ? 'text-warn' : event.type === 'control' ? 'text-leaf' : 'text-rig-400'}">
-					{#if event.level === 'error'}<CircleAlert size={17} />{:else if event.level === 'warning'}<TriangleAlert size={17} />{:else if event.type === 'control'}<SlidersHorizontal size={17} />{:else}<Info size={17} />{/if}
+				<div class="mt-0.5 {event.level === 'error' ? 'text-danger' : event.level === 'warning' ? 'text-warn' : event.type === 'care' ? 'text-sky-400' : event.type === 'control' ? 'text-leaf' : 'text-rig-400'}">
+					{#if event.level === 'error'}<CircleAlert size={17} />{:else if event.level === 'warning'}<TriangleAlert size={17} />{:else if event.type === 'care'}<Droplet size={17} />{:else if event.type === 'control'}<SlidersHorizontal size={17} />{:else}<Info size={17} />{/if}
 				</div>
 				<div class="min-w-0 flex-1">
 					<div class="text-sm text-rig-200">{event.message}</div>

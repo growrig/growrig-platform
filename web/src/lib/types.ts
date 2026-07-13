@@ -129,6 +129,78 @@ export interface EnvPlantsGroup {
 	units: PlantUnit[];
 }
 
+// --- Care: the grow's manual-action journal (GET/POST /api/grows/{id}/care) ---
+
+export type CareSource = 'manual' | 'automation';
+
+/** What one plant received in a care event. */
+export interface CareApplication {
+	id: string;
+	careEventId: string;
+	plantUnitId: string;
+	plantLabel: string;
+	amountMl?: number;
+	note?: string;
+}
+
+/** One care action performed against a grow's plants at a moment in time. */
+export interface CareEvent {
+	id: string;
+	growId: string;
+	type: string;
+	occurredAt: string;
+	source: CareSource;
+	notes?: string;
+	recipeId?: string;
+	recipeName?: string;
+	ph?: number;
+	ec?: number;
+	runoffMl?: number;
+	runoffPh?: number;
+	createdAt: string;
+	applications: CareApplication[];
+}
+
+/** A plant left out of the grow's most recent care action. */
+export interface CareSkip {
+	plantUnitId: string;
+	plantLabel: string;
+	lastCareAt?: string;
+}
+
+export interface CareSummary {
+	lastByType: Record<string, CareEvent>;
+	skipped: CareSkip[];
+}
+
+export interface CareHistory {
+	summary: CareSummary;
+	events: CareEvent[];
+}
+
+/** One plant's line in a log-care request. */
+export interface CareApplicationInput {
+	plantUnitId: string;
+	amountMl?: number;
+	note?: string;
+}
+
+/** Body for POST /api/grows/{id}/care. */
+export interface LogCareInput {
+	type: string;
+	occurredAt?: string;
+	source?: CareSource;
+	notes?: string;
+	recipeId?: string;
+	ph?: number;
+	ec?: number;
+	runoffMl?: number;
+	runoffPh?: number;
+	amountMl?: number;
+	plantUnitIds?: string[];
+	applications?: CareApplicationInput[];
+}
+
 /** Built-in editable stage sequences per crop family (GET /api/stage-presets). */
 export type StagePresets = Record<string, string[]>;
 
@@ -150,12 +222,52 @@ export interface SpeciesStage {
 	lightHours: number;
 }
 
-/** A crop family: its ordered stages and cultivar attribute schema. */
+/** A form field a care action may show when logging it. */
+export type CareField =
+	| 'amount'
+	| 'runoff'
+	| 'recipe'
+	| 'ph'
+	| 'ec'
+	| 'note'
+	| 'photos'
+	| 'potSize'
+	| 'product'
+	| 'trainType';
+
+/** One manual action a grower can log against a grow's plants (species-driven). */
+export interface CareAction {
+	key: string;
+	label: string;
+	icon?: string;
+	fields: CareField[];
+	quick?: boolean;
+}
+
+/** A resolved care action for a grow: the effective action (species default
+ * overlaid with per-grow config) plus its enabled/custom flags. */
+export interface CareActionDef extends CareAction {
+	enabled: boolean;
+	custom: boolean;
+}
+
+/** One action's per-grow customization, sent to PUT /api/grows/{id}/care-config. */
+export interface GrowCareActionConfig {
+	key: string;
+	label?: string;
+	enabled: boolean;
+	quick: boolean;
+	custom?: boolean;
+	fields?: CareField[];
+}
+
+/** A crop family: its ordered stages, cultivar attribute schema and care actions. */
 export interface Species {
 	id: string;
 	label: string;
 	stages: SpeciesStage[];
 	cultivarAttributes?: SpeciesAttribute[];
+	careActions?: CareAction[];
 }
 
 /** A user-defined strain/variety within a species. */
@@ -248,9 +360,9 @@ export interface InventoryItem {
 	updatedAt: string;
 }
 
-// --- Feeding presets (nutrient schedules; GET /api/feedings) ---
+// --- Feeding recipes (nutrient schedules; GET /api/recipes) ---
 
-/** One nutrient line in a schedule. `unit` overrides the preset default. */
+/** One nutrient line in a schedule. `unit` overrides the recipe default. */
 export interface FeedingProduct {
 	key: string;
 	label: string;
@@ -271,10 +383,10 @@ export interface FeedingPhase {
 
 /**
  * A nutrient feeding schedule: products dosed per week across phases. Built-in
- * presets (`source: 'builtin'`) come from species/<id>/feedings.yaml and are
- * read-only; user presets (`source: 'user'`) are created in-app.
+ * recipe templates (`source: 'builtin'`) come from species/<id>/feedings.yaml
+ * and are read-only; user recipes (`source: 'user'`) are created in-app.
  */
-export interface FeedingPreset {
+export interface FeedingRecipe {
 	id: string;
 	species: string;
 	name: string;
@@ -540,7 +652,7 @@ export interface Activity {
 	deviceId?: string;
 	time: string;
 	level: 'info' | 'warning' | 'error';
-	type: 'control' | 'warning' | 'notice' | 'configuration';
+	type: 'control' | 'warning' | 'notice' | 'configuration' | 'care';
 	message: string;
 }
 

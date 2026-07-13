@@ -6,14 +6,14 @@
 		getCultivars,
 		deleteCultivar,
 		cultivarImageURL,
-		getFeedingPresets,
-		getFeedingTemplates,
-		deleteFeedingPreset
+		getRecipes,
+		getRecipeTemplates,
+		deleteRecipe
 	} from '$lib/api';
-	import type { Species, Cultivar, FeedingPreset } from '$lib/types';
+	import type { Species, Cultivar, FeedingRecipe } from '$lib/types';
 	import { titleCase } from '$lib/format';
 	import CultivarFormModal from '$lib/components/CultivarFormModal.svelte';
-	import FeedingPresetFormModal from '$lib/components/FeedingPresetFormModal.svelte';
+	import RecipeFormModal from '$lib/components/RecipeFormModal.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Dna from '@lucide/svelte/icons/dna';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -25,11 +25,11 @@
 	let editingCultivar = $state<Cultivar | undefined>(undefined);
 	let cultivarModalOpen = $state(false);
 
-	// Feeding presets: the user's own (shown in the table) plus built-in
+	// Feeding recipes: the user's own (shown in the table) plus built-in
 	// templates (offered only inside the create form).
-	let feedings = $state<FeedingPreset[]>([]);
-	let feedingTemplates = $state<FeedingPreset[]>([]);
-	let editingFeeding = $state<FeedingPreset | undefined>(undefined);
+	let feedings = $state<FeedingRecipe[]>([]);
+	let feedingTemplates = $state<FeedingRecipe[]>([]);
+	let editingFeeding = $state<FeedingRecipe | undefined>(undefined);
 	let feedingModalOpen = $state(false);
 
 	const speciesById = $derived(new Map(species.map((s) => [s.id, s])));
@@ -38,14 +38,14 @@
 		getSpecies().then((s) => (species = s)).catch(() => {});
 		refreshCultivars();
 		refreshFeedings();
-		getFeedingTemplates().then((t) => (feedingTemplates = t)).catch(() => {});
+		getRecipeTemplates().then((t) => (feedingTemplates = t)).catch(() => {});
 	});
 
 	function refreshCultivars() {
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
 	}
 
-	// Enter/Space activates a clickable cultivar card / preset row.
+	// Enter/Space activates a clickable cultivar card / recipe row.
 	function activateOnKey(e: KeyboardEvent, fn: () => void) {
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
@@ -54,29 +54,29 @@
 	}
 
 	function refreshFeedings() {
-		getFeedingPresets().then((f) => (feedings = f)).catch(() => {});
+		getRecipes().then((f) => (feedings = f)).catch(() => {});
 	}
 
 	function newFeeding() {
 		editingFeeding = undefined;
 		feedingModalOpen = true;
 	}
-	function editFeeding(f: FeedingPreset) {
+	function editFeeding(f: FeedingRecipe) {
 		editingFeeding = f;
 		feedingModalOpen = true;
 	}
-	async function removeFeeding(f: FeedingPreset) {
-		if (!confirm(`Delete feeding preset “${f.name}”?`)) return;
+	async function removeFeeding(f: FeedingRecipe) {
+		if (!confirm(`Delete feeding recipe “${f.name}”?`)) return;
 		try {
-			await deleteFeedingPreset(f.id);
+			await deleteRecipe(f.id);
 			refreshFeedings();
 		} catch {
 			/* ignore */
 		}
 	}
 
-	// Total week count across a preset's phases, for the card summary.
-	function weekCount(f: FeedingPreset): number {
+	// Total week count across a recipe's phases, for the card summary.
+	function weekCount(f: FeedingRecipe): number {
 		return (f.phases ?? []).reduce((n, ph) => n + (ph.weeks?.length ?? 0), 0);
 	}
 
@@ -119,32 +119,32 @@
 </div>
 
 <div class="space-y-10">
-	<!-- Feeding presets: nutrient schedules (built-in + user). -->
+	<!-- Feeding recipes: nutrient schedules (built-in + user). -->
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-4">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
-				Feeding presets{feedings.length ? ` · ${feedings.length}` : ''}
+				Feeding recipes{feedings.length ? ` · ${feedings.length}` : ''}
 			</h2>
 			{#if auth.isAdmin && feedings.length}
 				<button
 					onclick={newFeeding}
 					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-rig-500 hover:text-white"
 				>
-					<Plus size={14} /> New preset
+					<Plus size={14} /> New recipe
 				</button>
 			{/if}
 		</div>
 		{#if feedings.length === 0}
 			<div class="rounded-xl border border-dashed border-rig-800 p-10 text-center">
 				<div class="mb-3 flex justify-center text-rig-500"><FlaskConical size={40} /></div>
-				<h3 class="mb-1 text-lg font-semibold">No feeding presets yet</h3>
+				<h3 class="mb-1 text-lg font-semibold">No feeding recipes yet</h3>
 				<p class="mb-5 text-sm text-rig-400">Build nutrient schedules — products dosed per week across each phase of a grow.</p>
 				{#if auth.isAdmin}
 					<button
 						onclick={newFeeding}
 						class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
 					>
-						Add a preset
+						Add a recipe
 					</button>
 				{/if}
 			</div>
@@ -189,14 +189,14 @@
 										<div class="flex justify-end gap-1">
 											<button
 												onclick={(e) => { e.stopPropagation(); editFeeding(f); }}
-												aria-label="Edit preset"
+												aria-label="Edit recipe"
 												class="rounded p-1.5 text-rig-400 hover:text-rig-100"
 											>
 												<Pencil size={14} />
 											</button>
 											<button
 												onclick={(e) => { e.stopPropagation(); removeFeeding(f); }}
-												aria-label="Delete preset"
+												aria-label="Delete recipe"
 												class="rounded p-1.5 text-rig-400 hover:text-danger"
 											>
 												<Trash2 size={14} />
@@ -311,9 +311,9 @@
 		{species}
 		onSaved={refreshCultivars}
 	/>
-	<FeedingPresetFormModal
+	<RecipeFormModal
 		bind:open={feedingModalOpen}
-		preset={editingFeeding}
+		recipe={editingFeeding}
 		{species}
 		templates={feedingTemplates}
 		onSaved={refreshFeedings}

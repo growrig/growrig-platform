@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS grows (
     started_at    INTEGER NOT NULL DEFAULT 0,
     stage_started INTEGER NOT NULL DEFAULT 0,
     status        TEXT NOT NULL DEFAULT 'active',
-    notes         TEXT NOT NULL DEFAULT ''
+    notes         TEXT NOT NULL DEFAULT '',
+    care_config   TEXT NOT NULL DEFAULT '' -- JSON GrowCareConfig; '' = species defaults
 );
 CREATE TABLE IF NOT EXISTS plant_units (
     id         TEXT PRIMARY KEY,
@@ -277,6 +278,30 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
     data    TEXT NOT NULL               -- JSON-encoded webauthn.Credential record
 );
 CREATE INDEX IF NOT EXISTS idx_webauthn_user ON webauthn_credentials (user_id);
+CREATE TABLE IF NOT EXISTS care_events (
+    id          TEXT PRIMARY KEY,
+    grow_id     TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'manual',
+    notes       TEXT NOT NULL DEFAULT '',
+    recipe_id   TEXT NOT NULL DEFAULT '',
+    ph          REAL NOT NULL DEFAULT 0,
+    ec          REAL NOT NULL DEFAULT 0,
+    runoff_ml   REAL NOT NULL DEFAULT 0,
+    runoff_ph   REAL NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_care_grow_ts ON care_events (grow_id, occurred_at DESC);
+CREATE TABLE IF NOT EXISTS care_applications (
+    id            TEXT PRIMARY KEY,
+    care_event_id TEXT NOT NULL,
+    plant_unit_id TEXT NOT NULL,
+    amount_ml     REAL NOT NULL DEFAULT 0,
+    note          TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_care_app_event ON care_applications (care_event_id);
+CREATE INDEX IF NOT EXISTS idx_care_app_plant ON care_applications (plant_unit_id);
 -- Superseded by the bindings model.
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS devices;
@@ -338,6 +363,7 @@ DROP TABLE IF EXISTS devices;
 		{"inventory_items", "product_id", "TEXT NOT NULL DEFAULT ''"},
 		{"inventory_items", "image_data", "BLOB"},
 		{"inventory_items", "image_type", "TEXT NOT NULL DEFAULT ''"},
+		{"grows", "care_config", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
@@ -674,6 +700,13 @@ func (s *Store) DeleteGrow(id string) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM plant_units WHERE grow_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM care_applications WHERE care_event_id IN (SELECT id FROM care_events WHERE grow_id=?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM care_events WHERE grow_id=?`, id); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE environments SET control_grow_id='' WHERE control_grow_id=?`, id); err != nil {
@@ -1515,7 +1548,7 @@ func (s *Store) AddActivity(a domain.Activity) error {
 
 // activityWhere builds the shared WHERE clause and its args for the activity
 // filters, so Activities and CountActivities stay in sync.
-func activityWhere(envID, growID string, levels []string) (string, []any) {
+func activityWhere(envID, growID string, levels, types []string) (string, []any) {
 	where := []string{}
 	args := []any{}
 	if envID != "" {
@@ -1534,6 +1567,14 @@ func activityWhere(envID, growID string, levels []string) (string, []any) {
 		}
 		where = append(where, "level IN ("+strings.Join(placeholders, ",")+")")
 	}
+	if len(types) > 0 {
+		placeholders := make([]string, len(types))
+		for i, t := range types {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		where = append(where, "type IN ("+strings.Join(placeholders, ",")+")")
+	}
 	if len(where) == 0 {
 		return "", args
 	}
@@ -1544,14 +1585,14 @@ func activityWhere(envID, growID string, levels []string) (string, []any) {
 // optional filters; levels, when non-empty, restricts to those severity levels
 // (e.g. "warning", "error") so callers can hide routine control/notice noise.
 // offset skips that many rows for pagination.
-func (s *Store) Activities(envID, growID string, levels []string, limit, offset int) ([]domain.Activity, error) {
+func (s *Store) Activities(envID, growID string, levels, types []string, limit, offset int) ([]domain.Activity, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	clause, args := activityWhere(envID, growID, levels)
+	clause, args := activityWhere(envID, growID, levels, types)
 	query := `SELECT id, environment_id, grow_id, device_id, ts, level, type, message FROM activity_log` + clause + ` ORDER BY ts DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 	rows, err := s.db.Query(query, args...)
@@ -1574,8 +1615,8 @@ func (s *Store) Activities(envID, growID string, levels []string, limit, offset 
 
 // CountActivities returns the total number of activity rows matching the same
 // filters Activities uses, for pagination.
-func (s *Store) CountActivities(envID, growID string, levels []string) (int, error) {
-	clause, args := activityWhere(envID, growID, levels)
+func (s *Store) CountActivities(envID, growID string, levels, types []string) (int, error) {
+	clause, args := activityWhere(envID, growID, levels, types)
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM activity_log`+clause, args...).Scan(&n)
 	return n, err
