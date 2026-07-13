@@ -7,9 +7,9 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/catalogsource"
 )
 
-// Custom catalog sources: GitHub repositories with a catalog.yaml manifest
-// that extend the built-in device/integration catalogs. Managed by admins
-// under Control panel → Catalog.
+// Custom catalog sources: supported public Git repositories with a catalog.yaml
+// manifest that extend the built-in device/integration catalogs. Grow Core
+// derives and downloads a provider source archive; it never clones the repo.
 
 func (s *Server) getCatalogSources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -20,19 +20,24 @@ func (s *Server) getCatalogSources(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createCatalogSource(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Repo string `json:"repo"`
-		Ref  string `json:"ref"`
+		Repository string `json:"repository"`
+		Repo       string `json:"repo"` // accepted for compatibility with older clients
+		Ref        string `json:"ref"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	src, err := s.catalogSources.Add(in.Repo, in.Ref)
+	repository := in.Repository
+	if repository == "" {
+		repository = in.Repo
+	}
+	src, err := s.catalogSources.Add(repository, in.Ref)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	s.activity("", "", "info", "catalog", "Catalog source added: "+src.Name+" ("+src.Repo+")")
+	s.activity("", "", "info", "catalog", "Catalog source added: "+src.Name+" ("+src.Repository+")")
 	writeJSON(w, http.StatusCreated, src)
 }
 
@@ -46,7 +51,7 @@ func (s *Server) refreshCatalogSource(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err)
 		return
 	}
-	s.activity("", "", "info", "catalog", "Catalog source refreshed: "+src.Name+" ("+src.Repo+")")
+	s.activity("", "", "info", "catalog", "Catalog source refreshed: "+src.Name+" ("+src.Repository+")")
 	writeJSON(w, http.StatusOK, src)
 }
 

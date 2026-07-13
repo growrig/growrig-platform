@@ -5,12 +5,14 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Library from '@lucide/svelte/icons/library';
+	import Lock from '@lucide/svelte/icons/lock';
 	import { createCatalogSource, deleteCatalogSource, getCatalogSources, refreshCatalogSource } from '$lib/api';
 	import type { CatalogSource } from '$lib/types';
 
 	let sources = $state<CatalogSource[]>([]);
 	let mergedKinds = $state<string[]>([]);
-	let repo = $state('');
+	let repository = $state('');
 	let ref = $state('');
 	let loading = $state(true);
 	let saving = $state(false);
@@ -36,12 +38,12 @@
 	}
 
 	async function add() {
-		if (!repo.trim()) return;
+		if (!repository.trim()) return;
 		saving = true;
 		error = null;
 		try {
-			await createCatalogSource(repo.trim(), ref.trim());
-			repo = '';
+			await createCatalogSource(repository.trim(), ref.trim());
+			repository = '';
 			ref = '';
 			await load();
 		} catch (e) {
@@ -75,8 +77,17 @@
 		}
 	}
 
-	function repoURL(source: CatalogSource) {
-		return `https://github.com/${source.repo}`;
+	function repositoryLabel(url: string) {
+		try {
+			const parsed = new URL(url);
+			return `${parsed.host}${parsed.pathname}`;
+		} catch {
+			return url;
+		}
+	}
+
+	function providerLabel(provider: CatalogSource['provider']) {
+		return provider === 'forgejo' ? 'Forgejo / Gitea' : provider;
 	}
 
 	function formattedDate(value: string) {
@@ -86,30 +97,57 @@
 
 <div class="space-y-8">
 	<div>
-		<h2 class="text-lg font-semibold">Catalog sources</h2>
-		<p class="mt-1 text-sm text-rig-400">Add public GitHub repositories that follow the GrowRig catalog layout.</p>
+		<h2 class="text-lg font-semibold">Catalogs</h2>
+		<p class="mt-1 text-sm text-rig-400">Add public catalog repositories from a supported Git provider.</p>
 	</div>
 
 	{#if error}
 		<div class="rounded-lg bg-danger/15 px-4 py-2 text-sm text-danger">{error}</div>
 	{/if}
 
+	<section class="space-y-3">
+		<div>
+			<h3 class="font-medium">Default source</h3>
+			<p class="text-xs text-rig-500">The official catalog included with every GrowRig installation.</p>
+		</div>
+		<div class="rounded-xl border border-leaf/25 bg-rig-900/40 p-4">
+			<div class="flex items-start gap-3">
+				<Library size={22} class="mt-0.5 shrink-0 text-leaf" />
+				<div class="min-w-0 flex-1">
+					<div class="flex flex-wrap items-center gap-2">
+						<h4 class="font-medium">GrowRig Official Catalog</h4>
+						<span class="rounded bg-leaf/15 px-1.5 py-0.5 text-[10px] font-medium uppercase text-leaf">Default</span>
+						<span class="flex items-center gap-1 rounded bg-rig-800 px-1.5 py-0.5 text-[10px] uppercase text-rig-400"><Lock size={9} /> Read-only</span>
+					</div>
+					<p class="mt-1 text-sm text-rig-400">Built-in devices, integrations, species, inventory definitions, and vendors maintained by GrowRig.</p>
+					<div class="mt-2 flex flex-wrap gap-1.5">
+						{#each ['devices', 'integrations', 'species', 'inventory', 'vendors'] as kind}
+							<span class="rounded bg-leaf/15 px-1.5 py-0.5 text-[10px] uppercase text-leaf">{kind}</span>
+						{/each}
+					</div>
+					<a href="https://github.com/growrig/growrig-catalog" target="_blank" rel="noreferrer" class="mt-3 inline-flex items-center gap-1 text-xs text-rig-400 hover:text-rig-100">growrig/growrig-catalog<ExternalLink size={11} /></a>
+					<p class="mt-1 text-[11px] text-rig-600">Managed by the platform and updated with GrowRig releases. It cannot be edited or removed here.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
 	<form onsubmit={(event) => { event.preventDefault(); add(); }} class="rounded-xl border border-rig-800 bg-rig-900/30 p-4">
 		<div class="flex items-center gap-2">
 			<GitFork size={18} class="text-rig-400" />
 			<h3 class="font-medium">Add a repository</h3>
 		</div>
-		<p class="mt-1 text-xs text-rig-500">The repository must contain a valid <code>catalog.yaml</code>. Only public GitHub repositories are supported.</p>
+		<p class="mt-1 text-xs text-rig-500">Supported providers: GitHub, GitLab.com, Bitbucket Cloud, Codeberg, Gitea.com, and self-hosted Forgejo or Gitea. GrowRig downloads a source archive automatically; the repository must contain <code>catalog.yaml</code>.</p>
 		<div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(10rem,0.35fr)_auto]">
 			<label>
-				<span class="mb-1 block text-xs text-rig-400">Repository</span>
-				<input class={fieldClass} bind:value={repo} placeholder="owner/repository" required />
+				<span class="mb-1 block text-xs text-rig-400">Public repository URL</span>
+				<input class={fieldClass} type="url" bind:value={repository} placeholder="https://github.com/owner/catalog" required />
 			</label>
 			<label>
 				<span class="mb-1 block text-xs text-rig-400">Branch, tag, or commit</span>
 				<input class={fieldClass} bind:value={ref} placeholder="Default branch" />
 			</label>
-			<button type="submit" disabled={saving || !repo.trim()} class="mt-5 flex items-center justify-center gap-1.5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">
+			<button type="submit" disabled={saving || !repository.trim()} class="mt-5 flex items-center justify-center gap-1.5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">
 				<Plus size={15} /> {saving ? 'Fetching…' : 'Add source'}
 			</button>
 		</div>
@@ -125,8 +163,8 @@
 		{:else if sources.length === 0}
 			<div class="rounded-xl border border-dashed border-rig-700 p-8 text-center">
 				<GitFork class="mx-auto text-rig-500" size={28} />
-				<p class="mt-2 font-medium">Only the built-in catalog is active</p>
-				<p class="text-sm text-rig-400">Add a repository above to extend it.</p>
+				<p class="mt-2 font-medium">No additional sources</p>
+				<p class="text-sm text-rig-400">The default catalog above is active. Add a repository to extend it.</p>
 			</div>
 		{:else}
 			<div class="grid gap-3 lg:grid-cols-2">
@@ -137,12 +175,13 @@
 							<div class="min-w-0 flex-1">
 								<div class="flex flex-wrap items-center gap-2">
 									<h4 class="font-medium">{source.name}</h4>
+									<span class="rounded bg-rig-800 px-1.5 py-0.5 text-[10px] uppercase text-rig-400">{providerLabel(source.provider)}</span>
 									{#each source.provides as kind}
 										<span class={`rounded px-1.5 py-0.5 text-[10px] uppercase ${mergedKinds.includes(kind) ? 'bg-leaf/15 text-leaf' : 'bg-rig-800 text-rig-500'}`}>{kind}</span>
 									{/each}
 								</div>
 								{#if source.description}<p class="mt-1 text-sm text-rig-400">{source.description}</p>{/if}
-								<a href={repoURL(source)} target="_blank" rel="noreferrer" class="mt-2 inline-flex items-center gap-1 text-xs text-rig-400 hover:text-rig-100">{source.repo}{source.ref ? ` @ ${source.ref}` : ''}<ExternalLink size={11} /></a>
+								<a href={source.repository} target="_blank" rel="noreferrer" class="mt-2 inline-flex max-w-full items-center gap-1 truncate text-xs text-rig-400 hover:text-rig-100" title={source.repository}>{repositoryLabel(source.repository)}{source.ref ? ` @ ${source.ref}` : ''}<ExternalLink size={11} class="shrink-0" /></a>
 								<p class="mt-1 text-[11px] text-rig-600">Fetched {formattedDate(source.fetchedAt)}{source.maintainer ? ` · ${source.maintainer}` : ''}</p>
 							</div>
 						</div>

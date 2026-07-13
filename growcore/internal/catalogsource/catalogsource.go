@@ -2,7 +2,7 @@
 //
 // GrowRig ships a default catalog (the catalog/ submodule, see
 // github.com/growrig/growrig-catalog), but growers can register additional
-// GitHub repositories that follow the same layout to add their own devices or
+// public repositories that follow the same layout to add their own devices or
 // integrations without forking the platform. A catalog repository is
 // identified by a catalog.yaml manifest at its root:
 //
@@ -13,15 +13,16 @@
 //
 // Each entry in provides names a top-level directory using the standard
 // catalog layout (devices/<category>/<id>/device.yaml, …). Sources are
-// fetched as GitHub tarballs — no git binary required — extracted under the
-// storage directory (catalog-cache/<id>/), and recorded in
-// catalog-sources.yaml beside the database so they survive restarts. After
-// any change the manager fires its Apply hook so the in-memory catalogs
-// reload.
+// fetched through predefined provider source-archive endpoints — no git binary
+// required — extracted under the storage directory (catalog-cache/<id>/), and
+// recorded in catalog-sources.yaml beside the database so they survive
+// restarts. After any change the manager fires its Apply hook so the in-memory
+// catalogs reload.
 package catalogsource
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -84,11 +85,15 @@ func isKind(k string) bool {
 	return false
 }
 
-// Source is one registered catalog repository.
+// Source is one registered catalog package.
 type Source struct {
 	ID          string    `json:"id" yaml:"id"`
-	Repo        string    `json:"repo" yaml:"repo"` // owner/name on GitHub
+	Repository  string    `json:"repository" yaml:"repository"`
+	Provider    string    `json:"provider" yaml:"provider"`
 	Ref         string    `json:"ref,omitempty" yaml:"ref,omitempty"`
+	ArchiveURL  string    `json:"-" yaml:"archiveUrl"`
+	Repo        string    `json:"-" yaml:"repo,omitempty"` // legacy GitHub owner/name
+	URL         string    `json:"-" yaml:"url,omitempty"`  // legacy direct archive URL
 	Name        string    `json:"name" yaml:"name"`
 	Description string    `json:"description,omitempty" yaml:"description,omitempty"`
 	Maintainer  string    `json:"maintainer,omitempty" yaml:"maintainer,omitempty"`
@@ -139,8 +144,38 @@ func New(storageDir string) (*Manager, error) {
 		return nil, fmt.Errorf("parse %s: %w", m.file, err)
 	}
 	seen := make(map[string]bool, len(f.Sources))
-	for _, source := range f.Sources {
-		if err := validateSource(source); err != nil {
+	for i := range f.Sources {
+		source := &f.Sources[i]
+		if source.Repository == "" && source.Repo != "" {
+			repository := source.Repo
+			if !strings.Contains(repository, "://") {
+				repository = "https://github.com/" + strings.Trim(repository, "/")
+			}
+			spec, err := resolveRepository(repository, source.Ref)
+			if err != nil {
+				return nil, fmt.Errorf("parse %s: %w", m.file, err)
+			}
+			source.Repository = spec.Repository
+			source.Provider = spec.Provider
+			source.ArchiveURL = spec.ArchiveURL
+			source.Repo = ""
+		} else if source.Repository == "" && source.URL != "" {
+			// Transitional builds accepted direct archive URLs. Keep those saved
+			// sources refreshable, while all newly-added sources use repositories.
+			source.Repository = source.URL
+			source.Provider = "archive"
+			source.ArchiveURL = source.URL
+			source.URL = ""
+		} else if source.Provider != "archive" {
+			spec, err := resolveRepository(source.Repository, source.Ref)
+			if err != nil {
+				return nil, fmt.Errorf("parse %s: %w", m.file, err)
+			}
+			source.Repository = spec.Repository
+			source.Provider = spec.Provider
+			source.ArchiveURL = spec.ArchiveURL
+		}
+		if err := validateSource(*source); err != nil {
 			return nil, fmt.Errorf("parse %s: %w", m.file, err)
 		}
 		if seen[source.ID] {
@@ -156,7 +191,11 @@ func validateSource(source Source) error {
 	if !idPattern.MatchString(source.ID) {
 		return fmt.Errorf("source id %q must be lowercase letters, digits and hyphens", source.ID)
 	}
-	if _, _, err := parseRepo(source.Repo); err != nil {
+	if source.Provider == "archive" {
+		if _, err := normalizeArchiveURL(source.ArchiveURL); err != nil {
+			return err
+		}
+	} else if _, err := resolveRepository(source.Repository, source.Ref); err != nil {
 		return err
 	}
 	if strings.TrimSpace(source.Name) == "" {
@@ -205,15 +244,14 @@ func (m *Manager) Dirs(kind string) []ExtraDir {
 	return out
 }
 
-// Add fetches a GitHub repository, validates its manifest and registers it.
-// repo accepts "owner/name", "github.com/owner/name" or a full GitHub URL;
-// ref is a branch, tag or commit (empty means the default branch).
-func (m *Manager) Add(repo, ref string) (Source, error) {
-	owner, name, err := parseRepo(repo)
+// Add resolves a supported public repository URL to its provider's source
+// archive endpoint, validates the catalog manifest and registers it.
+func (m *Manager) Add(repository, ref string) (Source, error) {
+	spec, err := resolveRepository(repository, ref)
 	if err != nil {
 		return Source{}, err
 	}
-	man, dir, err := m.fetch(owner, name, ref)
+	man, dir, err := m.fetch(spec.ArchiveURL)
 	if err != nil {
 		return Source{}, err
 	}
@@ -222,18 +260,21 @@ func (m *Manager) Add(repo, ref string) (Source, error) {
 		if s.ID == man.ID {
 			m.mu.Unlock()
 			_ = os.RemoveAll(dir)
-			return Source{}, fmt.Errorf("a catalog with id %q is already registered (from %s)", man.ID, s.Repo)
+			return Source{}, fmt.Errorf("a catalog with id %q is already registered (from %s)", man.ID, s.Repository)
 		}
 	}
 	if err := m.install(man.ID, dir); err != nil {
 		m.mu.Unlock()
+		_ = os.RemoveAll(dir)
 		return Source{}, err
 	}
 	now := time.Now().UTC()
 	src := Source{
 		ID:          man.ID,
-		Repo:        owner + "/" + name,
-		Ref:         ref,
+		Repository:  spec.Repository,
+		Provider:    spec.Provider,
+		Ref:         strings.TrimSpace(ref),
+		ArchiveURL:  spec.ArchiveURL,
 		Name:        man.Name,
 		Description: man.Description,
 		Maintainer:  man.Maintainer,
@@ -263,11 +304,15 @@ func (m *Manager) Refresh(id string) (Source, error) {
 	src := m.sources[idx]
 	m.mu.Unlock()
 
-	owner, name, err := parseRepo(src.Repo)
-	if err != nil {
-		return Source{}, err
+	archiveURL := src.ArchiveURL
+	if src.Provider != "archive" {
+		spec, err := resolveRepository(src.Repository, src.Ref)
+		if err != nil {
+			return Source{}, err
+		}
+		archiveURL = spec.ArchiveURL
 	}
-	man, dir, err := m.fetch(owner, name, src.Ref)
+	man, dir, err := m.fetch(archiveURL)
 	if err != nil {
 		return Source{}, err
 	}
@@ -284,6 +329,7 @@ func (m *Manager) Refresh(id string) (Source, error) {
 	}
 	if err := m.install(id, dir); err != nil {
 		m.mu.Unlock()
+		_ = os.RemoveAll(dir)
 		return Source{}, err
 	}
 	m.sources[idx].Name = man.Name
@@ -365,26 +411,99 @@ func (m *Manager) apply() {
 	}
 }
 
-// parseRepo normalizes "owner/name", "github.com/owner/name" or a full
-// GitHub URL into its owner and name.
-func parseRepo(in string) (owner, name string, err error) {
-	s := strings.TrimSpace(in)
-	s = strings.TrimPrefix(s, "https://")
-	s = strings.TrimPrefix(s, "http://")
-	s = strings.TrimPrefix(s, "git@github.com:")
-	s = strings.TrimPrefix(s, "github.com/")
-	s = strings.TrimSuffix(s, ".git")
-	s = strings.Trim(s, "/")
-	parts := strings.Split(s, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("repository %q: expected owner/name or a GitHub URL", in)
+func normalizeArchiveURL(in string) (string, error) {
+	raw := strings.TrimSpace(in)
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("archive URL %q: expected a public HTTP(S) URL", in)
 	}
-	for _, p := range parts {
-		if strings.ContainsAny(p, " \t?#&") {
-			return "", "", fmt.Errorf("repository %q: expected owner/name or a GitHub URL", in)
+	if parsed.User != nil {
+		return "", fmt.Errorf("archive URL must not contain credentials")
+	}
+	if parsed.Fragment != "" {
+		return "", fmt.Errorf("archive URL must not contain a fragment")
+	}
+	return parsed.String(), nil
+}
+
+type repositorySpec struct {
+	Repository string
+	Provider   string
+	ArchiveURL string
+}
+
+// resolveRepository recognizes hosted providers with stable source-archive
+// endpoints. Other owner/repository URLs use the compatible public API shared
+// by Forgejo and Gitea; download errors identify incompatible hosts. Git is
+// never invoked.
+func resolveRepository(in, ref string) (repositorySpec, error) {
+	raw := strings.TrimSpace(in)
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return repositorySpec{}, fmt.Errorf("repository %q: expected a public HTTP(S) repository URL", in)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return repositorySpec{}, fmt.Errorf("repository URL must not contain credentials, query parameters, or a fragment")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	path := strings.TrimSuffix(strings.Trim(parsed.Path, "/"), ".git")
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return repositorySpec{}, fmt.Errorf("repository URL has an invalid path")
 		}
 	}
-	return parts[0], parts[1], nil
+	if len(parts) < 2 {
+		return repositorySpec{}, fmt.Errorf("repository URL must include an owner and repository")
+	}
+	cleanRef := strings.TrimSpace(ref)
+	repository := parsed.Scheme + "://" + parsed.Host + "/" + path
+	archiveRef := cleanRef
+	if archiveRef == "" {
+		archiveRef = "HEAD"
+	}
+
+	var provider, archiveURL string
+	switch host {
+	case "github.com":
+		if len(parts) != 2 {
+			return repositorySpec{}, fmt.Errorf("GitHub repository URL must be https://github.com/owner/repository")
+		}
+		provider = "github"
+		archiveURL = fmt.Sprintf("https://codeload.github.com/%s/%s/tar.gz/%s", parts[0], parts[1], url.PathEscape(archiveRef))
+	case "gitlab.com":
+		provider = "gitlab"
+		project := url.PathEscape(strings.Join(parts, "/"))
+		archiveURL = parsed.Scheme + "://" + parsed.Host + "/api/v4/projects/" + project + "/repository/archive.tar.gz"
+		if cleanRef != "" {
+			archiveURL += "?sha=" + url.QueryEscape(cleanRef)
+		}
+	case "bitbucket.org":
+		if len(parts) != 2 {
+			return repositorySpec{}, fmt.Errorf("Bitbucket repository URL must be https://bitbucket.org/workspace/repository")
+		}
+		provider = "bitbucket"
+		archiveURL = fmt.Sprintf("https://bitbucket.org/%s/%s/get/%s.gz", parts[0], parts[1], url.PathEscape(archiveRef))
+	case "codeberg.org", "gitea.com":
+		if len(parts) != 2 {
+			return repositorySpec{}, fmt.Errorf("%s repository URL must include one owner and repository", parsed.Host)
+		}
+		provider = "gitea"
+		if host == "codeberg.org" {
+			provider = "codeberg"
+		}
+		archiveURL = fmt.Sprintf("%s://%s/api/v1/repos/%s/%s/archive/%s.tar.gz", parsed.Scheme, parsed.Host, parts[0], parts[1], url.PathEscape(archiveRef))
+	default:
+		// Forgejo and Gitea instances are self-hosted on arbitrary domains and
+		// expose the same public repository archive endpoint, so a normal
+		// host/owner/repository URL is enough to derive it without cloning.
+		if len(parts) != 2 {
+			return repositorySpec{}, fmt.Errorf("self-hosted Forgejo or Gitea repository URL must include one owner and repository")
+		}
+		provider = "forgejo"
+		archiveURL = fmt.Sprintf("%s://%s/api/v1/repos/%s/%s/archive/%s.tar.gz", parsed.Scheme, parsed.Host, parts[0], parts[1], url.PathEscape(archiveRef))
+	}
+	return repositorySpec{Repository: repository, Provider: provider, ArchiveURL: archiveURL}, nil
 }
 
 func contains(list []string, v string) bool {

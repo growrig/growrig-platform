@@ -13,7 +13,7 @@
 		{ href: '/admin/preferences', label: 'Preferences', icon: SlidersHorizontal },
 		{ href: '/admin/users', label: 'Users', icon: Users },
 		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },
-		{ href: '/admin/catalog', label: 'Catalog', icon: Library },
+		{ href: '/admin/catalog', label: 'Catalogs', icon: Library },
 		{ href: '/admin/home-assistant', label: 'Home Assistant', icon: HousePlug },
 		{ href: '/admin/debug', label: 'Debug', icon: Bug }
 	];
@@ -26,7 +26,7 @@
 		<p class="mt-1 text-sm text-rig-400">Manage this GrowRig instance.</p>
 	</div>
 
-	<nav class="flex gap-1 overflow-x-auto border-b border-rig-800">
+	<nav class="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-rig-800">
 		{#each tabs as tab (tab.href)}
 			<a
 				href={tab.href}

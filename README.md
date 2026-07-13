@@ -49,9 +49,11 @@ linked here as a git submodule at `catalog/` — clone with
 existing checkout.
 
 Admins can also add public repositories with a compatible `catalog.yaml`
-manifest under **Control panel → Catalog**. Custom device and integration
-entries are cached beside the Grow Core database and merged without requiring
-a rebuild.
+manifest under **Control panel → Catalogs**. GrowRig recognizes GitHub,
+GitLab.com, Bitbucket Cloud, Codeberg, Gitea.com, and self-hosted Forgejo or
+Gitea repository URLs and downloads the provider's source archive automatically.
+Custom device and integration entries are cached beside the Grow Core database
+and merged without requiring a rebuild or Git client.
 
 No Home Assistant or hardware required — two processes:
 

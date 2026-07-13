@@ -2,6 +2,7 @@ package catalogsource
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"errors"
@@ -47,25 +48,82 @@ provides: [devices]
 	}
 }
 
-func TestExtractTarballStripsRootAndRejectsTraversal(t *testing.T) {
-	archive := tarball(t, []tarEntry{
+func TestResolveRepositoryProviders(t *testing.T) {
+	tests := []struct {
+		name       string
+		repository string
+		ref        string
+		provider   string
+		archive    string
+	}{
+		{"github", "https://github.com/owner/catalog.git", "main", "github", "https://codeload.github.com/owner/catalog/tar.gz/main"},
+		{"gitlab", "https://gitlab.com/group/subgroup/catalog", "release/v1", "gitlab", "https://gitlab.com/api/v4/projects/group%2Fsubgroup%2Fcatalog/repository/archive.tar.gz?sha=release%2Fv1"},
+		{"gitlab default", "https://gitlab.com/owner/catalog", "", "gitlab", "https://gitlab.com/api/v4/projects/owner%2Fcatalog/repository/archive.tar.gz"},
+		{"bitbucket", "https://bitbucket.org/workspace/catalog", "main", "bitbucket", "https://bitbucket.org/workspace/catalog/get/main.gz"},
+		{"codeberg", "https://codeberg.org/owner/catalog", "v1", "codeberg", "https://codeberg.org/api/v1/repos/owner/catalog/archive/v1.tar.gz"},
+		{"gitea", "https://gitea.com/owner/catalog", "", "gitea", "https://gitea.com/api/v1/repos/owner/catalog/archive/HEAD.tar.gz"},
+		{"forgejo", "https://forge.example.test/owner/catalog", "main", "forgejo", "https://forge.example.test/api/v1/repos/owner/catalog/archive/main.tar.gz"},
+		{"self-hosted gitea", "https://git.example.test/owner/catalog", "v2", "forgejo", "https://git.example.test/api/v1/repos/owner/catalog/archive/v2.tar.gz"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := resolveRepository(test.repository, test.ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Provider != test.provider || got.ArchiveURL != test.archive {
+				t.Fatalf("resolveRepository() = %#v", got)
+			}
+		})
+	}
+	for _, invalid := range []string{
+		"owner/catalog",
+		"ftp://github.com/owner/catalog",
+		"https://user:secret@github.com/owner/catalog",
+		"https://forge.example.test/group/subgroup/catalog",
+	} {
+		if _, err := resolveRepository(invalid, ""); err == nil {
+			t.Errorf("resolveRepository(%q) succeeded", invalid)
+		}
+	}
+}
+
+func TestExtractArchiveFormatsAndRejectsTraversal(t *testing.T) {
+	entries := []tarEntry{
 		{name: "repo-main/catalog.yaml", body: "manifest: 1\n"},
 		{name: "repo-main/devices/fan/example/device.yaml", body: "brand: Example\n"},
-	})
-	dir := t.TempDir()
-	if err := extractTarball(bytes.NewReader(archive), dir); err != nil {
-		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "devices", "fan", "example", "device.yaml"))
-	if err != nil {
-		t.Fatal(err)
+	formats := map[string][]byte{
+		"tar.gz": tarArchive(t, entries, true),
+		"tar":    tarArchive(t, entries, false),
+		"zip":    zipArchive(t, entries),
 	}
-	if string(raw) != "brand: Example\n" {
-		t.Fatalf("extracted content = %q", raw)
+	for name, archive := range formats {
+		t.Run(name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "catalog."+name)
+			if err := os.WriteFile(archivePath, archive, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			if err := extractArchive(archivePath, dir); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(filepath.Join(dir, "repo-main", "devices", "fan", "example", "device.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(raw) != "brand: Example\n" {
+				t.Fatalf("extracted content = %q", raw)
+			}
+		})
 	}
 
-	escape := tarball(t, []tarEntry{{name: "repo-main/../../outside", body: "nope"}})
-	if err := extractTarball(bytes.NewReader(escape), t.TempDir()); err == nil {
+	escape := tarArchive(t, []tarEntry{{name: "repo-main/../../outside", body: "nope"}}, true)
+	escapePath := filepath.Join(t.TempDir(), "escape.tar.gz")
+	if err := os.WriteFile(escapePath, escape, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractArchive(escapePath, t.TempDir()); err == nil {
 		t.Fatal("expected path traversal to be rejected")
 	}
 }
@@ -73,12 +131,14 @@ func TestExtractTarballStripsRootAndRejectsTraversal(t *testing.T) {
 func TestNewLoadsValidatedSourcesAndDirs(t *testing.T) {
 	dir := t.TempDir()
 	source := Source{
-		ID:        "community",
-		Repo:      "growrig/community-catalog",
-		Name:      "Community",
-		Provides:  []string{"devices", "species"},
-		AddedAt:   time.Now().UTC(),
-		FetchedAt: time.Now().UTC(),
+		ID:         "community",
+		Repository: "https://gitlab.com/growrig/community-catalog",
+		Provider:   "gitlab",
+		ArchiveURL: "https://gitlab.com/api/v4/projects/growrig%2Fcommunity-catalog/repository/archive.tar.gz",
+		Name:       "Community",
+		Provides:   []string{"devices", "species"},
+		AddedAt:    time.Now().UTC(),
+		FetchedAt:  time.Now().UTC(),
 	}
 	m := &Manager{
 		file:     filepath.Join(dir, "catalog-sources.yaml"),
@@ -111,14 +171,39 @@ func TestNewLoadsValidatedSourcesAndDirs(t *testing.T) {
 	}
 }
 
+func TestNewMigratesLegacyGitHubSource(t *testing.T) {
+	dir := t.TempDir()
+	m := &Manager{
+		file:     filepath.Join(dir, "catalog-sources.yaml"),
+		cacheDir: filepath.Join(dir, "catalog-cache"),
+		sources: []Source{{
+			ID: "legacy", Repo: "growrig/community-catalog", Ref: "main", Name: "Legacy",
+			Provides: []string{"devices"}, AddedAt: time.Now().UTC(), FetchedAt: time.Now().UTC(),
+		}},
+	}
+	if err := m.save(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := loaded.List()[0]
+	if source.Repository != "https://github.com/growrig/community-catalog" || source.Provider != "github" || source.ArchiveURL != "https://codeload.github.com/growrig/community-catalog/tar.gz/main" || source.Repo != "" || source.Ref != "main" {
+		t.Fatalf("migrated source = %#v", source)
+	}
+}
+
 func TestAddPersistsAppliesAndRemovesSource(t *testing.T) {
-	archive := tarball(t, []tarEntry{
+	archive := tarArchive(t, []tarEntry{
 		{name: "community-main/catalog.yaml", body: "manifest: 1\nid: community\nname: Community Catalog\nprovides: [devices]\n"},
 		{name: "community-main/devices/sensor/example/device.yaml", body: "brand: Example\n"},
-	})
+	}, true)
+	repository := "https://gitlab.com/growrig/community"
+	archiveURL := "https://gitlab.com/api/v4/projects/growrig%2Fcommunity/repository/archive.tar.gz?sha=main"
 	previousClient := httpClient
 	httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.String() != "https://codeload.github.com/growrig/community/tar.gz/main" {
+		if request.URL.String() != archiveURL {
 			t.Fatalf("download URL = %s", request.URL)
 		}
 		return &http.Response{
@@ -138,11 +223,11 @@ func TestAddPersistsAppliesAndRemovesSource(t *testing.T) {
 	}
 	applied := 0
 	m.Apply = func() { applied++ }
-	source, err := m.Add("https://github.com/growrig/community.git", "main")
+	source, err := m.Add(repository, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source.ID != "community" || source.Repo != "growrig/community" || applied != 1 {
+	if source.ID != "community" || source.Repository != repository || source.Provider != "gitlab" || source.Ref != "main" || applied != 1 {
 		t.Fatalf("source = %#v, applied = %d", source, applied)
 	}
 	if len(m.Dirs("devices")) != 1 {
@@ -170,11 +255,16 @@ func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error)
 	return fn(request)
 }
 
-func tarball(t *testing.T, entries []tarEntry) []byte {
+func tarArchive(t *testing.T, entries []tarEntry, compressed bool) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
+	var writer io.Writer = &buf
+	var gz *gzip.Writer
+	if compressed {
+		gz = gzip.NewWriter(&buf)
+		writer = gz
+	}
+	tw := tar.NewWriter(writer)
 	for _, entry := range entries {
 		if err := tw.WriteHeader(&tar.Header{Name: entry.name, Mode: 0o644, Size: int64(len(entry.body)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
@@ -186,7 +276,28 @@ func tarball(t *testing.T, entries []tarEntry) []byte {
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := gz.Close(); err != nil {
+	if gz != nil {
+		if err := gz.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return buf.Bytes()
+}
+
+func zipArchive(t *testing.T, entries []tarEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, entry := range entries {
+		writer, err := zw.Create(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writer.Write([]byte(entry.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()

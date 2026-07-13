@@ -753,10 +753,11 @@ export interface IntegrationBundle {
 	documentation?: string;
 }
 
-// --- Additional catalog repositories (Control panel → Catalog) ---
+// --- Additional catalog packages (Control panel → Catalogs) ---
 export interface CatalogSource {
 	id: string;
-	repo: string;
+	repository: string;
+	provider: 'github' | 'gitlab' | 'bitbucket' | 'codeberg' | 'gitea' | 'forgejo' | 'archive';
 	ref?: string;
 	name: string;
 	description?: string;
