@@ -19,8 +19,10 @@ func TestAIChatsArePersistedScopedAndArchived(t *testing.T) {
 		t.Fatal(err)
 	}
 	chat := domain.AIChat{ID: "chat-1", UserID: "user-1", GrowID: "grow-1", Title: "How is VPD?", CreatedAt: now, UpdatedAt: now}
-	userMessage := domain.AIChatMessage{ID: "msg-1", ChatID: chat.ID, Role: "user", Content: "How is VPD?", CreatedAt: now}
-	assistantMessage := domain.AIChatMessage{ID: "msg-2", ChatID: chat.ID, Role: "assistant", Content: "VPD is stable.", CreatedAt: now.Add(time.Millisecond)}
+	// Equal timestamps must retain insertion order. Message IDs are random in
+	// production and therefore cannot be used as a chronological tie-breaker.
+	userMessage := domain.AIChatMessage{ID: "z-user", ChatID: chat.ID, Role: "user", Content: "How is VPD?", CreatedAt: now}
+	assistantMessage := domain.AIChatMessage{ID: "a-assistant", ChatID: chat.ID, Role: "assistant", Content: "VPD is stable.", CreatedAt: now}
 	if err := st.SaveAIChatExchange(&chat, userMessage, assistantMessage); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ func TestAIChatsArePersistedScopedAndArchived(t *testing.T) {
 		t.Fatalf("loaded chat = %#v, %v, %v", loaded, ok, err)
 	}
 	messages, err := st.AIChatMessages(chat.ID)
-	if err != nil || len(messages) != 2 || messages[1].Role != "assistant" {
+	if err != nil || len(messages) != 2 || messages[0].Role != "user" || messages[1].Role != "assistant" {
 		t.Fatalf("messages = %#v, %v", messages, err)
 	}
 	if ok, err := st.SetAIChatArchived(chat.ID, "user-2", true); err != nil || ok {

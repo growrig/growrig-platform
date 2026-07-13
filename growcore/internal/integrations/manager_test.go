@@ -103,6 +103,17 @@ runtime:
 	if resolved == nil || resolved.ID != inst.ID {
 		t.Fatal("global binding did not resolve as grow fallback")
 	}
+	environmentBinding, err := m.SaveBinding(BindingInput{Feature: "critical-alerts", EnvironmentID: "env-1", Capability: "notification.send", InstanceID: inst.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = m.ResolveFor("critical-alerts", "", "env-1", "notification.send")
+	if err != nil || resolved == nil || resolved.ID != inst.ID {
+		t.Fatal("environment binding did not resolve")
+	}
+	if err := m.DeleteBinding(environmentBinding.ID); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.DeleteBinding(binding.ID); err != nil {
 		t.Fatal(err)
 	}

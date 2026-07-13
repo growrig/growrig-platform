@@ -110,7 +110,7 @@ func (s *Server) deleteIntegrationBinding(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 func (s *Server) resolveIntegrationBinding(w http.ResponseWriter, r *http.Request) {
-	item, err := s.integrations.Resolve(r.URL.Query().Get("feature"), r.URL.Query().Get("growId"), r.URL.Query().Get("capability"))
+	item, err := s.integrations.ResolveFor(r.URL.Query().Get("feature"), r.URL.Query().Get("growId"), r.URL.Query().Get("environmentId"), r.URL.Query().Get("capability"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return

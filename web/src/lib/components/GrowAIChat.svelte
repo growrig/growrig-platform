@@ -2,8 +2,9 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
-	import { getGrowAIStatus, chatWithGrowAI, getAIChat, setAIChatArchived } from '$lib/api';
-	import type { GrowAIMessage } from '$lib/api';
+	import { getAIStatus, chatWithGrowAI, getAIChat, getAIChats, setAIChatArchived, getGrows, getEnvironments } from '$lib/api';
+	import type { AIChat, GrowAIMessage } from '$lib/api';
+	import type { Grow, Environment } from '$lib/types';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -14,18 +15,24 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
-
-	interface Props { growId: string; growName: string }
-	let { growId, growName }: Props = $props();
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
+	import Minimize2 from '@lucide/svelte/icons/minimize-2';
 
 	let checked = $state(false);
 	let available = $state(false);
 	let opened = $state(false);
+	let expanded = $state(false);
 	let instanceName = $state('');
 	let chatID = $state('');
 	let chatTitle = $state('');
 	let archived = $state(false);
 	let archiving = $state(false);
+	let grows = $state<Grow[]>([]);
+	let environments = $state<Environment[]>([]);
+	let activeChats = $state<AIChat[]>([]);
+	let scopeKey = $state('all');
+	let handledChatID = $state('');
+	let observedPath = '';
 	let messages = $state<GrowAIMessage[]>([]);
 	let draft = $state('');
 	let sending = $state(false);
@@ -34,9 +41,10 @@
 	let messageList = $state<HTMLDivElement>();
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let startedAt = 0;
+	let requestedChatID = $derived(page.url.searchParams.get('chat') ?? '');
 	let waitingLabel = $derived(
 		elapsedSeconds < 3
-			? 'Preparing grow context'
+			? 'Preparing context'
 			: elapsedSeconds < 15
 				? 'Ollama is thinking'
 				: elapsedSeconds < 30
@@ -45,36 +53,70 @@
 	);
 
 	const suggestions = [
-		'What changed during the last week?',
-		'Are there any patterns in recent care?',
-		'How is the current environment looking?'
+		'What needs my attention right now?',
+		'Summarize recent activity.',
+		'Are there any unusual environmental patterns?'
 	];
+	const currentChatStorageKey = 'growrig.ai.currentChat';
 
 	onMount(async () => {
 		try {
-			const status = await getGrowAIStatus(growId);
+			const status = await getAIStatus();
 			available = status.available;
 			instanceName = status.instanceName ?? '';
 		} catch {
 			available = false;
 		}
-		const requestedChatID = page.url.searchParams.get('chat');
-		if (requestedChatID) {
-			try {
-				const chat = await getAIChat(requestedChatID);
-				if (chat.growId !== growId) throw new Error('This chat belongs to a different grow.');
-				chatID = chat.id;
-				chatTitle = chat.title;
-				archived = chat.archived;
-				instanceName = chat.instanceName || instanceName;
-				messages = chat.messages ?? [];
-				opened = true;
-			} catch (e) {
-				error = e instanceof Error ? e.message : 'The chat could not be loaded.';
-			}
+		try { grows = await getGrows(); } catch { grows = []; }
+		try { environments = await getEnvironments(); } catch { environments = []; }
+		try { activeChats = await getAIChats(false); } catch { activeChats = []; }
+		if (!chatID) scopeKey = routeScope(page.url.pathname);
+		if (!requestedChatID) {
+			const resumeID = localStorage.getItem(currentChatStorageKey) ?? '';
+			if (activeChats.some((chat) => chat.id === resumeID)) await loadChat(resumeID, false);
 		}
 		checked = true;
 	});
+
+	$effect(() => {
+		const requested = requestedChatID;
+		if (!requested) handledChatID = '';
+		else if (requested === chatID && !opened) {
+			opened = true;
+			void scrollToLatest();
+		}
+		else if (requested !== chatID && requested !== handledChatID) {
+			handledChatID = requested;
+			void loadChat(requested);
+		}
+	});
+
+	$effect(() => {
+		const pathname = page.url.pathname;
+		if (pathname !== observedPath) {
+			observedPath = pathname;
+			if (!chatID && !opened) scopeKey = routeScope(pathname);
+		}
+	});
+
+	async function loadChat(id: string, shouldOpen = true) {
+		error = '';
+		try {
+			const chat = await getAIChat(id);
+			chatID = chat.id;
+			chatTitle = chat.title;
+			archived = chat.archived;
+			instanceName = chat.instanceName || instanceName;
+			messages = chat.messages ?? [];
+			scopeKey = chat.growId ? `grow:${chat.growId}` : chat.environmentId ? `environment:${chat.environmentId}` : 'all';
+			if (!chat.archived) upsertActiveChat(chat);
+			opened = shouldOpen;
+			localStorage.setItem(currentChatStorageKey, chat.id);
+			await scrollToLatest();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'The chat could not be loaded.';
+		}
+	}
 
 	onDestroy(stopTimer);
 
@@ -97,14 +139,72 @@
 		return DOMPurify.sanitize(html);
 	}
 
-	async function scrollToLatest() {
+	async function scrollToLatest(behavior: ScrollBehavior = 'auto') {
 		await tick();
-		messageList?.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
+		messageList?.scrollTo({ top: messageList.scrollHeight, behavior });
 	}
 
 	async function openChat() {
 		opened = true;
 		await scrollToLatest();
+	}
+
+	async function toggleAssistant() {
+		if (opened) minimizeChat();
+		else await openChat();
+	}
+
+	function minimizeChat() {
+		opened = false;
+		if (requestedChatID) replaceChatParam();
+	}
+
+	function routeScope(pathname: string) {
+		const grow = pathname.match(/^\/grows\/([^/]+)/);
+		if (grow) return `grow:${decodeURIComponent(grow[1])}`;
+		const environment = pathname.match(/^\/env\/([^/]+)/);
+		if (environment) return `environment:${decodeURIComponent(environment[1])}`;
+		return 'all';
+	}
+
+	function scopeName() {
+		if (scopeKey.startsWith('grow:')) return grows.find((grow) => `grow:${grow.id}` === scopeKey)?.name ?? 'Grow';
+		if (scopeKey.startsWith('environment:')) return environments.find((environment) => `environment:${environment.id}` === scopeKey)?.name ?? 'Environment';
+		return 'All GrowRig';
+	}
+
+	function chatScopeName(chat: AIChat) {
+		if (chat.growId) return chat.growName || 'Grow';
+		if (chat.environmentId) return chat.environmentName || 'Environment';
+		return 'All GrowRig';
+	}
+
+	function upsertActiveChat(chat: AIChat) {
+		activeChats = [chat, ...activeChats.filter((item) => item.id !== chat.id)]
+			.filter((item) => !item.archived)
+			.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+	}
+
+	async function openActiveChat(chat: AIChat) {
+		if (chat.id === chatID && opened) {
+			minimizeChat();
+			return;
+		}
+		if (chat.id === chatID) {
+			opened = true;
+			await scrollToLatest();
+			return;
+		}
+		handledChatID = chat.id;
+		replaceChatParam(chat.id);
+		await loadChat(chat.id);
+	}
+
+	function replaceChatParam(id = '') {
+		const url = new URL(page.url);
+		if (id) url.searchParams.set('chat', id);
+		else url.searchParams.delete('chat');
+		replaceState(url, {});
 	}
 
 	function newChat() {
@@ -115,7 +215,9 @@
 		draft = '';
 		error = '';
 		opened = true;
-		replaceState(page.url.pathname, {});
+		scopeKey = routeScope(page.url.pathname);
+		localStorage.removeItem(currentChatStorageKey);
+		replaceChatParam();
 	}
 
 	async function toggleArchived() {
@@ -125,6 +227,10 @@
 		try {
 			const chat = await setAIChatArchived(chatID, !archived);
 			archived = chat.archived;
+			if (chat.archived) activeChats = activeChats.filter((item) => item.id !== chat.id);
+			else upsertActiveChat(chat);
+			if (chat.archived) localStorage.removeItem(currentChatStorageKey);
+			else localStorage.setItem(currentChatStorageKey, chat.id);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'The chat could not be updated.';
 		} finally {
@@ -141,15 +247,19 @@
 		sending = true;
 		startTimer();
 		error = '';
-		await scrollToLatest();
+		await scrollToLatest('smooth');
 		try {
-			const reply = await chatWithGrowAI(growId, chatID, question);
+			const growID = scopeKey.startsWith('grow:') ? scopeKey.slice(5) : '';
+			const environmentID = scopeKey.startsWith('environment:') ? scopeKey.slice(12) : '';
+			const reply = await chatWithGrowAI(chatID, question, growID, environmentID);
 			messages = [...messages, reply.message];
 			chatID = reply.chat.id;
 			chatTitle = reply.chat.title;
 			archived = reply.chat.archived;
 			instanceName = reply.instanceName;
-			replaceState(`${page.url.pathname}?chat=${encodeURIComponent(chatID)}`, {});
+			upsertActiveChat(reply.chat);
+			localStorage.setItem(currentChatStorageKey, reply.chat.id);
+			replaceChatParam(chatID);
 		} catch (e) {
 			messages = previousMessages;
 			draft = question;
@@ -157,7 +267,7 @@
 		} finally {
 			sending = false;
 			stopTimer();
-			await scrollToLatest();
+			await scrollToLatest('smooth');
 		}
 	}
 
@@ -169,16 +279,16 @@
 	}
 </script>
 
-{#if checked && (available || chatID)}
+{#if checked && (available || chatID || activeChats.length)}
 	{#if opened}
-		<section aria-label="Ask GrowRig chat" class="chat-window fixed z-50 flex h-[min(42rem,calc(100dvh-1.5rem))] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-rig-600/80 bg-rig-900 shadow-2xl shadow-black/50 sm:h-[min(42rem,calc(100dvh-2.5rem))] sm:w-[28rem]">
+		<section aria-label="GrowRig Assistant chat" class:chat-expanded={expanded} class="chat-window fixed z-50 flex h-[min(42rem,calc(100dvh-6.5rem))] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-rig-600/80 bg-rig-900 shadow-2xl shadow-black/50 sm:h-[min(42rem,calc(100dvh-7rem))] sm:w-[28rem]">
 			<div class="flex shrink-0 items-center gap-3 border-b border-rig-800 px-4 py-3">
 				<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-leaf/10 text-leaf">
 					<Sparkles size={18} />
 				</div>
 				<div class="min-w-0 flex-1">
-					<h2 class="truncate text-sm font-semibold text-rig-200">{chatTitle || 'Ask GrowRig'}</h2>
-					<p class="truncate text-xs text-rig-500">{growName} · {instanceName}{archived ? ' · Archived' : ''}</p>
+					<h2 class="truncate text-sm font-semibold text-rig-200">{chatTitle || 'GrowRig Assistant'}</h2>
+					<p class="truncate text-xs text-rig-500">{scopeName()} · {instanceName}{archived ? ' · Archived' : ''}</p>
 				</div>
 				<a href="/ai/chats" aria-label="All AI chats" title="All chats" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-rig-400 transition hover:bg-rig-800 hover:text-rig-100"><MessagesSquare size={17} /></a>
 				{#if chatID}
@@ -187,17 +297,32 @@
 						{#if archived}<ArchiveRestore size={17} />{:else}<Archive size={17} />{/if}
 					</button>
 				{/if}
-				<button onclick={() => opened = false} aria-label="Minimize chat" title="Minimize" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-rig-400 transition hover:bg-rig-800 hover:text-rig-100">
+				<button onclick={() => expanded = !expanded} aria-label={expanded ? 'Use compact chat size' : 'Expand chat window'} title={expanded ? 'Compact size' : 'Expand'} class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-rig-400 transition hover:bg-rig-800 hover:text-rig-100">
+					{#if expanded}<Minimize2 size={17} />{:else}<Maximize2 size={17} />{/if}
+				</button>
+				<button onclick={minimizeChat} aria-label="Minimize chat" title="Minimize" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-rig-400 transition hover:bg-rig-800 hover:text-rig-100">
 					<Minus size={20} />
 				</button>
 			</div>
+			{#if !chatID}
+				<div class="shrink-0 border-b border-rig-800 bg-rig-900/70 px-4 py-3">
+					<label class="flex items-center gap-3 text-xs text-rig-400">
+						<span class="shrink-0 font-medium uppercase tracking-wide">Context</span>
+						<select bind:value={scopeKey} class="min-w-0 flex-1 rounded-md border border-rig-700 bg-rig-950 px-2.5 py-2 text-sm text-rig-200 outline-none focus:border-rig-500">
+							<option value="all">All GrowRig</option>
+							{#if grows.length}<optgroup label="Grows">{#each grows as grow (grow.id)}<option value={`grow:${grow.id}`}>{grow.name}</option>{/each}</optgroup>{/if}
+							{#if environments.length}<optgroup label="Environments">{#each environments as environment (environment.id)}<option value={`environment:${environment.id}`}>{environment.name}</option>{/each}</optgroup>{/if}
+						</select>
+					</label>
+				</div>
+			{/if}
 
 			<div bind:this={messageList} class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
 			{#if messages.length === 0}
 				<div class="flex gap-3 text-sm text-rig-300">
 					<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-leaf/10 text-leaf"><Bot size={16} /></div>
 					<div>
-						<p>Ask about this grow’s plants, stage, current environment, recent care, or activity.</p>
+						<p>Ask about {scopeName()}. Choose all of GrowRig, one grow, or one environment as the conversation context.</p>
 						<div class="mt-3 flex flex-wrap gap-2">
 							{#each suggestions as suggestion}
 								<button onclick={() => send(suggestion)} class="rounded-full border border-rig-700 px-3 py-1.5 text-left text-xs text-rig-400 transition hover:border-rig-500 hover:text-rig-100">{suggestion}</button>
@@ -237,34 +362,54 @@
 			{:else}
 			<div class="shrink-0 border-t border-rig-800 bg-rig-900 p-3">
 				<div class="flex items-end gap-2">
-					<textarea bind:value={draft} onkeydown={onKeydown} rows="2" maxlength="4000" placeholder="Ask about this grow…" class="min-h-11 flex-1 resize-none rounded-lg border border-rig-700 bg-rig-950 px-3 py-2 text-sm outline-none placeholder:text-rig-600 focus:border-rig-500"></textarea>
+					<textarea bind:value={draft} onkeydown={onKeydown} rows="2" maxlength="4000" placeholder="Ask GrowRig…" class="min-h-11 flex-1 resize-none rounded-lg border border-rig-700 bg-rig-950 px-3 py-2 text-sm outline-none placeholder:text-rig-600 focus:border-rig-500"></textarea>
 					<button onclick={() => send()} disabled={sending || !draft.trim()} aria-label="Send message" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rig-500 text-rig-950 transition hover:bg-rig-400 disabled:cursor-not-allowed disabled:opacity-40"><Send size={17} /></button>
 				</div>
-				<p class="mt-2 text-[11px] text-rig-600">Read-only · Grow context is sent to {instanceName}</p>
+				<p class="mt-2 text-[11px] text-rig-600">Read-only · {scopeName()} context is sent to {instanceName}</p>
 			</div>
 			{/if}
 		</section>
-	{:else}
-		<button onclick={openChat} aria-label="Open Ask GrowRig chat" title="Ask GrowRig" class="chat-launcher fixed z-50 flex h-16 w-16 items-center justify-center rounded-full border border-leaf/30 bg-rig-500 text-rig-950 shadow-xl shadow-black/40 transition hover:scale-105 hover:bg-rig-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf">
-			<Sparkles size={27} />
-			{#if sending}
-				<span class="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-rig-900 bg-leaf px-1 text-[10px] font-semibold tabular-nums text-rig-950">{elapsedSeconds}s</span>
-			{/if}
-		</button>
 	{/if}
+	<div class="assistant-dock fixed z-[51] flex max-w-full items-end gap-2 pl-3">
+		<div class="chat-tabs flex min-w-0 flex-1 gap-2 overflow-x-auto">
+		{#each activeChats as chat (chat.id)}
+			<button onclick={() => openActiveChat(chat)} title={`${chat.title} · ${chatScopeName(chat)}`} class={`flex h-12 max-w-52 shrink-0 items-center gap-2 rounded-t-xl border border-b-0 px-3 text-left shadow-lg transition ${chat.id === chatID && opened ? 'border-rig-600 bg-rig-800 text-rig-100' : 'border-rig-700 bg-rig-900 text-rig-300 hover:bg-rig-800'}`}>
+				<MessagesSquare size={15} class="shrink-0 text-leaf" />
+				<span class="min-w-0"><span class="block truncate text-xs font-medium">{chat.title}</span><span class="block truncate text-[10px] text-rig-500">{chatScopeName(chat)}</span></span>
+			</button>
+		{/each}
+		</div>
+		<button onclick={toggleAssistant} aria-label={opened ? 'Minimize GrowRig Assistant' : 'Open GrowRig Assistant'} title={opened ? 'Minimize' : 'GrowRig Assistant'} class="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-leaf/30 bg-rig-500 text-rig-950 shadow-xl shadow-black/40 transition hover:scale-105 hover:bg-rig-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf">
+			<Sparkles size={27} />
+			{#if sending}<span class="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-rig-900 bg-leaf px-1 text-[10px] font-semibold tabular-nums text-rig-950">{elapsedSeconds}s</span>{/if}
+		</button>
+	</div>
 {/if}
 
 <style>
-	.chat-window,
-	.chat-launcher {
+	.chat-window {
+		right: 0.75rem;
+		bottom: calc(5.25rem + env(safe-area-inset-bottom));
+	}
+	.assistant-dock {
+		left: 0.75rem;
 		right: 0.75rem;
 		bottom: max(0.75rem, env(safe-area-inset-bottom));
 	}
+	.chat-tabs { justify-content: safe flex-end; }
 	@media (min-width: 640px) {
-		.chat-window,
-		.chat-launcher {
+		.chat-window {
+			right: 1.25rem;
+			bottom: calc(6rem + env(safe-area-inset-bottom));
+		}
+		.assistant-dock {
+			left: 1.25rem;
 			right: 1.25rem;
 			bottom: max(1.25rem, env(safe-area-inset-bottom));
+		}
+		.chat-window.chat-expanded {
+			width: min(72rem, calc(100vw - 2.5rem));
+			height: calc(100dvh - 8rem);
 		}
 	}
 	.markdown :global(p),

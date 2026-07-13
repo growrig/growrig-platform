@@ -4,19 +4,21 @@ import "time"
 
 // AIChat is a persisted, user-owned conversation scoped to one grow.
 type AIChat struct {
-	ID           string          `json:"id"`
-	UserID       string          `json:"-"`
-	GrowID       string          `json:"growId"`
-	GrowName     string          `json:"growName"`
-	Title        string          `json:"title"`
-	InstanceID   string          `json:"-"`
-	InstanceName string          `json:"instanceName"`
-	Archived     bool            `json:"archived"`
-	MessageCount int             `json:"messageCount"`
-	Preview      string          `json:"preview"`
-	Messages     []AIChatMessage `json:"messages,omitempty"`
-	CreatedAt    time.Time       `json:"createdAt"`
-	UpdatedAt    time.Time       `json:"updatedAt"`
+	ID              string          `json:"id"`
+	UserID          string          `json:"-"`
+	GrowID          string          `json:"growId"`
+	GrowName        string          `json:"growName"`
+	EnvironmentID   string          `json:"environmentId"`
+	EnvironmentName string          `json:"environmentName"`
+	Title           string          `json:"title"`
+	InstanceID      string          `json:"-"`
+	InstanceName    string          `json:"instanceName"`
+	Archived        bool            `json:"archived"`
+	MessageCount    int             `json:"messageCount"`
+	Preview         string          `json:"preview"`
+	Messages        []AIChatMessage `json:"messages,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
 }
 
 // AIChatMessage is one immutable user or assistant turn in a conversation.

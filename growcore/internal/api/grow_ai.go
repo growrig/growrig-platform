@@ -16,6 +16,19 @@ type growAIStatus struct {
 	InstanceName string `json:"instanceName,omitempty"`
 }
 
+func (s *Server) getAIStatus(w http.ResponseWriter, r *http.Request) {
+	instance, err := s.integrations.Resolve("grow-assistant", "", "ai.chat")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if instance == nil {
+		writeJSON(w, http.StatusOK, growAIStatus{})
+		return
+	}
+	writeJSON(w, http.StatusOK, growAIStatus{Available: true, InstanceName: instance.Name})
+}
+
 func (s *Server) getGrowAIStatus(w http.ResponseWriter, r *http.Request) {
 	if _, ok, err := s.store.Grow(r.PathValue("id")); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -37,8 +50,10 @@ func (s *Server) getGrowAIStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type growAIChatBody struct {
-	ChatID  string `json:"chatId"`
-	Content string `json:"content"`
+	ChatID        string `json:"chatId"`
+	Content       string `json:"content"`
+	GrowID        string `json:"growId"`
+	EnvironmentID string `json:"environmentId"`
 }
 
 func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +68,15 @@ func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	growID := r.PathValue("id")
+	growID, environmentID := body.GrowID, body.EnvironmentID
+	pathGrowID := r.PathValue("id")
+	if pathGrowID != "" {
+		growID = pathGrowID
+	}
+	if growID != "" && environmentID != "" {
+		writeJSON(w, http.StatusBadRequest, errBody("choose either a grow or an environment context"))
+		return
+	}
 	user, _ := currentUser(r)
 	var chat domain.AIChat
 	var history []domain.AIChatMessage
@@ -66,10 +89,11 @@ func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
-		if !ok || chat.GrowID != growID {
+		if !ok || (pathGrowID != "" && chat.GrowID != pathGrowID) {
 			writeJSON(w, http.StatusNotFound, errBody("chat not found"))
 			return
 		}
+		growID, environmentID = chat.GrowID, chat.EnvironmentID
 		if chat.Archived {
 			writeJSON(w, http.StatusConflict, errBody("restore this chat before sending another message"))
 			return
@@ -81,7 +105,7 @@ func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		instance, err := s.integrations.Resolve("grow-assistant", growID, "ai.chat")
+		instance, err := s.integrations.ResolveFor("grow-assistant", growID, environmentID, "ai.chat")
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -92,9 +116,9 @@ func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
 		}
 		instanceID, instanceName = instance.ID, instance.Name
 	}
-	contextJSON, err := s.growAIContext(growID)
-	if errors.Is(err, errGrowNotFound) {
-		writeJSON(w, http.StatusNotFound, errBody("grow not found"))
+	contextJSON, err := s.assistantAIContext(user, growID, environmentID)
+	if errors.Is(err, errGrowNotFound) || errors.Is(err, errEnvironmentNotFound) {
+		writeJSON(w, http.StatusNotFound, errBody(err.Error()))
 		return
 	}
 	if err != nil {
@@ -104,7 +128,7 @@ func (s *Server) chatWithGrowAI(w http.ResponseWriter, r *http.Request) {
 
 	messages := []map[string]string{{
 		"role": "system",
-		"content": `You are GrowRig's read-only grow assistant. Answer only about the supplied grow and cultivation context. Use measurements and timestamps as evidence, distinguish facts from hypotheses, and say when context is insufficient. Never claim that you changed a device, automation, care log, or plant record. Any action must be phrased as a proposal requiring user review. Do not give pesticide, chemical, or safety-critical instructions without a caution to verify the product label and local guidance. Keep answers concise and practical.
+		"content": `You are GrowRig's read-only assistant. Answer using the supplied GrowRig context and respect its selected scope. Use measurements and timestamps as evidence, distinguish facts from hypotheses, and say when context is insufficient. Never claim that you changed a device, automation, care log, or plant record. Any action must be phrased as a proposal requiring user review. Do not give pesticide, chemical, or safety-critical instructions without a caution to verify the product label and local guidance. Keep answers concise and practical.
 
 Current GrowRig context (JSON):
 ` + string(contextJSON),
@@ -116,6 +140,7 @@ Current GrowRig context (JSON):
 		messages = append(messages, map[string]string{"role": message.Role, "content": message.Content})
 	}
 	messages = append(messages, map[string]string{"role": "user", "content": body.Content})
+	userMessageCreatedAt := time.Now()
 	result, err := s.integrations.Invoke(r.Context(), instanceID, "ai.chat", map[string]any{"messages": messages, "stream": false})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
@@ -126,11 +151,11 @@ Current GrowRig context (JSON):
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	now := time.Now()
+	now := userMessageCreatedAt
 	var create *domain.AIChat
 	if chat.ID == "" {
 		chat = domain.AIChat{
-			ID: id(body.Content, "chat"), UserID: user.ID, GrowID: growID,
+			ID: id(body.Content, "chat"), UserID: user.ID, GrowID: growID, EnvironmentID: environmentID,
 			Title: chatTitle(body.Content), InstanceID: instanceID,
 			CreatedAt: now, UpdatedAt: now,
 		}
@@ -222,6 +247,114 @@ func (s *Server) updateAIChat(w http.ResponseWriter, r *http.Request) {
 }
 
 var errGrowNotFound = errors.New("grow not found")
+var errEnvironmentNotFound = errors.New("environment not found")
+
+func (s *Server) assistantAIContext(user *domain.User, growID, environmentID string) ([]byte, error) {
+	if growID != "" {
+		context, err := s.growAIContext(growID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"scope": "grow", "context": json.RawMessage(context)})
+	}
+	if environmentID != "" {
+		allowed, all := s.accessibleEnvIDs(user)
+		if !all && !allowed[environmentID] {
+			return nil, errEnvironmentNotFound
+		}
+		environments, err := s.store.Environments()
+		if err != nil {
+			return nil, err
+		}
+		var selected *domain.Environment
+		for i := range environments {
+			if environments[i].ID == environmentID {
+				selected = &environments[i]
+				break
+			}
+		}
+		if selected == nil {
+			return nil, errEnvironmentNotFound
+		}
+		plants, err := s.store.PlantsInEnvironment(environmentID)
+		if err != nil {
+			return nil, err
+		}
+		growIDs := map[string]bool{}
+		for _, plant := range plants {
+			growIDs[plant.GrowID] = true
+		}
+		grows := []domain.Grow{}
+		for growID := range growIDs {
+			grow, ok, err := s.store.Grow(growID)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				grows = append(grows, grow)
+			}
+		}
+		var live *domain.EnvironmentView
+		snapshot := s.engine.Latest()
+		for i := range snapshot.Environments {
+			if snapshot.Environments[i].ID == environmentID {
+				value := snapshot.Environments[i]
+				live = &value
+				break
+			}
+		}
+		readings, err := s.store.ReadingsSince(environmentID, time.Now().Add(-7*24*time.Hour), 48)
+		if err != nil {
+			return nil, err
+		}
+		activities, err := s.store.Activities(environmentID, "", nil, nil, 25, 0)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{
+			"scope": "environment", "generatedAt": time.Now(), "environment": selected,
+			"currentState": live, "plants": plants, "grows": grows,
+			"historyWindow":  "last 7 days, downsampled to at most 48 averaged readings",
+			"climateHistory": readings, "recentActivity": activities,
+		})
+	}
+	allowed, all := s.accessibleEnvIDs(user)
+	snapshot := filterSnapshot(s.engine.Latest(), allowed, all)
+	if !all {
+		visibleGrows := make([]domain.GrowView, 0, len(snapshot.Grows))
+		for _, grow := range snapshot.Grows {
+			for _, environment := range grow.Environments {
+				if allowed[environment.ID] {
+					visibleGrows = append(visibleGrows, grow)
+					break
+				}
+			}
+		}
+		snapshot.Grows = visibleGrows
+	}
+	activities, err := s.store.Activities("", "", nil, nil, 100, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !all {
+		filtered := make([]domain.Activity, 0, 25)
+		for _, activity := range activities {
+			if activity.EnvironmentID == "" || allowed[activity.EnvironmentID] {
+				filtered = append(filtered, activity)
+				if len(filtered) == 25 {
+					break
+				}
+			}
+		}
+		activities = filtered
+	} else if len(activities) > 25 {
+		activities = activities[:25]
+	}
+	return json.Marshal(map[string]any{
+		"scope": "all GrowRig", "generatedAt": time.Now(),
+		"currentState": snapshot, "recentActivity": activities,
+	})
+}
 
 func (s *Server) growAIContext(growID string) ([]byte, error) {
 	grow, ok, err := s.store.Grow(growID)

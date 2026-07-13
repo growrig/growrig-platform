@@ -7,13 +7,15 @@ import (
 	"github.com/growrig/growrig-platform/growcore/internal/domain"
 )
 
-const aiChatSelect = `SELECT c.id, c.user_id, c.grow_id, COALESCE(g.name, ''), c.title,
+const aiChatSelect = `SELECT c.id, c.user_id, c.grow_id, COALESCE(g.name, ''),
+	c.environment_id, COALESCE(e.name, ''), c.title,
 	c.instance_id, COALESCE(i.name, ''), c.archived, c.created, c.updated,
 	(SELECT COUNT(*) FROM ai_chat_messages m WHERE m.chat_id=c.id),
 	COALESCE((SELECT substr(m.content, 1, 180) FROM ai_chat_messages m
-		WHERE m.chat_id=c.id ORDER BY m.created DESC, m.id DESC LIMIT 1), '')
+		WHERE m.chat_id=c.id ORDER BY m.created DESC, m.rowid DESC LIMIT 1), '')
 	FROM ai_chats c
 	LEFT JOIN grows g ON g.id=c.grow_id
+	LEFT JOIN environments e ON e.id=c.environment_id
 	LEFT JOIN integration_instances i ON i.id=c.instance_id`
 
 type rowScanner interface {
@@ -24,7 +26,8 @@ func scanAIChat(row rowScanner) (domain.AIChat, error) {
 	var chat domain.AIChat
 	var archived int
 	var created, updated int64
-	err := row.Scan(&chat.ID, &chat.UserID, &chat.GrowID, &chat.GrowName, &chat.Title,
+	err := row.Scan(&chat.ID, &chat.UserID, &chat.GrowID, &chat.GrowName,
+		&chat.EnvironmentID, &chat.EnvironmentName, &chat.Title,
 		&chat.InstanceID, &chat.InstanceName, &archived, &created, &updated,
 		&chat.MessageCount, &chat.Preview)
 	chat.Archived = archived != 0
@@ -35,8 +38,8 @@ func scanAIChat(row rowScanner) (domain.AIChat, error) {
 
 func (s *Store) SaveAIChat(chat domain.AIChat) error {
 	_, err := s.db.Exec(`INSERT INTO ai_chats
-		(id, user_id, grow_id, title, instance_id, archived, created, updated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, chat.ID, chat.UserID, chat.GrowID,
+		(id, user_id, grow_id, environment_id, title, instance_id, archived, created, updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, chat.ID, chat.UserID, chat.GrowID, chat.EnvironmentID,
 		chat.Title, chat.InstanceID, chat.Archived, chat.CreatedAt.UnixMilli(), chat.UpdatedAt.UnixMilli())
 	return err
 }
@@ -76,7 +79,7 @@ func (s *Store) AIChat(id, userID string) (domain.AIChat, bool, error) {
 
 func (s *Store) AIChatMessages(chatID string) ([]domain.AIChatMessage, error) {
 	rows, err := s.db.Query(`SELECT id, role, content, created FROM ai_chat_messages
-		WHERE chat_id=? ORDER BY created, id`, chatID)
+		WHERE chat_id=? ORDER BY created, rowid`, chatID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +108,8 @@ func (s *Store) SaveAIChatExchange(chat *domain.AIChat, userMessage, assistantMe
 	defer tx.Rollback()
 	if chat != nil {
 		if _, err := tx.Exec(`INSERT INTO ai_chats
-			(id, user_id, grow_id, title, instance_id, archived, created, updated)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, chat.ID, chat.UserID, chat.GrowID,
+			(id, user_id, grow_id, environment_id, title, instance_id, archived, created, updated)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, chat.ID, chat.UserID, chat.GrowID, chat.EnvironmentID,
 			chat.Title, chat.InstanceID, chat.Archived, chat.CreatedAt.UnixMilli(), chat.UpdatedAt.UnixMilli()); err != nil {
 			return err
 		}

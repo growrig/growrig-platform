@@ -43,6 +43,12 @@
 			updating = '';
 		}
 	}
+
+	function contextName(chat: AIChat) {
+		if (chat.growId) return `Grow · ${chat.growName || 'Deleted grow'}`;
+		if (chat.environmentId) return `Environment · ${chat.environmentName || 'Deleted environment'}`;
+		return 'All GrowRig';
+	}
 </script>
 
 <div class="space-y-5">
@@ -71,7 +77,7 @@
 		<div class="overflow-x-auto rounded-xl border border-rig-800 bg-rig-900/30">
 			<table class="w-full min-w-[700px] text-left text-sm">
 				<thead class="border-b border-rig-800 bg-rig-900/70 text-xs uppercase tracking-wide text-rig-500">
-					<tr><th class="px-4 py-3">Conversation</th><th class="px-4 py-3">Grow</th><th class="px-4 py-3">Provider</th><th class="px-4 py-3">Updated</th><th class="px-4 py-3 text-right">Actions</th></tr>
+					<tr><th class="px-4 py-3">Conversation</th><th class="px-4 py-3">Context</th><th class="px-4 py-3">Provider</th><th class="px-4 py-3">Updated</th><th class="px-4 py-3 text-right">Actions</th></tr>
 				</thead>
 				<tbody class="divide-y divide-rig-800">
 					{#each visibleChats as chat (chat.id)}
@@ -80,12 +86,12 @@
 								<div class="font-medium text-rig-100">{chat.title}</div>
 								<div class="mt-0.5 truncate text-xs text-rig-500">{chat.preview || 'No messages'}</div>
 							</td>
-							<td class="px-4 py-3 text-rig-300">{chat.growName || 'Deleted grow'}</td>
+							<td class="px-4 py-3 text-rig-300">{contextName(chat)}</td>
 							<td class="px-4 py-3"><span class="rounded-full bg-rig-800 px-2 py-1 text-xs text-rig-400">{chat.instanceName || 'Unavailable'}</span></td>
 							<td class="whitespace-nowrap px-4 py-3 text-rig-400"><div>{fmtDateTime(chat.updatedAt)}</div><div class="mt-0.5 text-xs text-rig-600">{chat.messageCount} messages</div></td>
 							<td class="px-4 py-3">
 								<div class="flex justify-end gap-2">
-									{#if chat.growName}<a href={`/grows/${encodeURIComponent(chat.growId)}?chat=${encodeURIComponent(chat.id)}`} class="inline-flex items-center gap-1.5 rounded-md bg-rig-700 px-3 py-2 text-xs font-medium text-rig-100 hover:bg-rig-600">Open <ExternalLink size={13} /></a>{/if}
+									<a href={`/ai/chats?chat=${encodeURIComponent(chat.id)}`} class="inline-flex items-center gap-1.5 rounded-md bg-rig-700 px-3 py-2 text-xs font-medium text-rig-100 hover:bg-rig-600">Open <ExternalLink size={13} /></a>
 									<button onclick={() => toggleArchived(chat)} disabled={updating === chat.id} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-2 text-xs text-rig-300 hover:border-rig-500 hover:text-rig-100 disabled:opacity-40">
 										{#if chat.archived}<ArchiveRestore size={13} /> Restore{:else}<Archive size={13} /> Archive{/if}
 									</button>

@@ -9,6 +9,7 @@
 	import { fmtClock } from '$lib/datetime';
 	import { fmtLatencyMs } from '$lib/format';
 	import { Button } from '$lib/components/ui';
+	import GrowAIChat from '$lib/components/GrowAIChat.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -186,5 +187,6 @@
 				{/snippet}
 			</svelte:boundary>
 		</main>
+		<GrowAIChat />
 	</div>
 {/if}

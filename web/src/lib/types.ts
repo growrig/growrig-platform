@@ -767,6 +767,7 @@ export interface IntegrationBinding {
 	id: string;
 	feature: string;
 	growId?: string;
+	environmentId?: string;
 	capability: string;
 	instanceId: string;
 	createdAt: string;

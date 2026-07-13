@@ -320,17 +320,19 @@ CREATE TABLE IF NOT EXISTS integration_bindings (
     id            TEXT PRIMARY KEY,
     feature       TEXT NOT NULL,
     grow_id       TEXT NOT NULL DEFAULT '',
+    environment_id TEXT NOT NULL DEFAULT '',
     capability    TEXT NOT NULL,
     instance_id   TEXT NOT NULL,
     created       INTEGER NOT NULL,
     updated       INTEGER NOT NULL,
-    UNIQUE(feature, grow_id, capability)
+    UNIQUE(feature, grow_id, environment_id, capability)
 );
 CREATE INDEX IF NOT EXISTS idx_integration_binding_instance ON integration_bindings (instance_id);
 CREATE TABLE IF NOT EXISTS ai_chats (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL,
     grow_id     TEXT NOT NULL,
+    environment_id TEXT NOT NULL DEFAULT '',
     title       TEXT NOT NULL DEFAULT '',
     instance_id TEXT NOT NULL DEFAULT '',
     archived    INTEGER NOT NULL DEFAULT 0,
@@ -375,6 +377,29 @@ DROP TABLE IF EXISTS devices;
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_bindings_device ON bindings (device_id)`); err != nil {
 		return err
 	}
+	// Environment-scoped integration bindings expanded the original global/grow
+	// uniqueness key. Rebuild older tables because SQLite cannot drop the old
+	// UNIQUE(feature, grow_id, capability) constraint in place.
+	var hasIntegrationEnvironment int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('integration_bindings') WHERE name='environment_id'`).Scan(&hasIntegrationEnvironment); err != nil {
+		return err
+	}
+	if hasIntegrationEnvironment == 0 {
+		if _, err := s.db.Exec(`
+			DROP INDEX IF EXISTS idx_integration_binding_instance;
+			ALTER TABLE integration_bindings RENAME TO integration_bindings_legacy;
+			CREATE TABLE integration_bindings (
+				id TEXT PRIMARY KEY, feature TEXT NOT NULL, grow_id TEXT NOT NULL DEFAULT '',
+				environment_id TEXT NOT NULL DEFAULT '', capability TEXT NOT NULL,
+				instance_id TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL,
+				UNIQUE(feature, grow_id, environment_id, capability));
+			INSERT INTO integration_bindings (id, feature, grow_id, environment_id, capability, instance_id, created, updated)
+				SELECT id, feature, grow_id, '', capability, instance_id, created, updated FROM integration_bindings_legacy;
+			DROP TABLE integration_bindings_legacy;
+			CREATE INDEX idx_integration_binding_instance ON integration_bindings (instance_id);`); err != nil {
+			return err
+		}
+	}
 	// Additive migrations for databases created before these columns existed.
 	for _, m := range []struct{ table, column, def string }{
 		{"environments", "model", "TEXT NOT NULL DEFAULT ''"},
@@ -409,6 +434,7 @@ DROP TABLE IF EXISTS devices;
 		{"inventory_items", "image_data", "BLOB"},
 		{"inventory_items", "image_type", "TEXT NOT NULL DEFAULT ''"},
 		{"grows", "care_config", "TEXT NOT NULL DEFAULT ''"},
+		{"ai_chats", "environment_id", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err

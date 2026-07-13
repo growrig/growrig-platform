@@ -12,14 +12,15 @@
 		getIntegrationBundles, getIntegrationInstances, createIntegrationInstance,
 		updateIntegrationInstance, deleteIntegrationInstance, testIntegrationInstance,
 		getIntegrationBindings, saveIntegrationBinding, deleteIntegrationBinding,
-		getGrows
+		getGrows, getEnvironments
 	} from '$lib/api';
-	import type { IntegrationBundle, IntegrationInstance, IntegrationBinding, Grow } from '$lib/types';
+	import type { IntegrationBundle, IntegrationInstance, IntegrationBinding, Grow, Environment } from '$lib/types';
 
 	let bundles = $state<IntegrationBundle[]>([]);
 	let instances = $state<IntegrationInstance[]>([]);
 	let bindings = $state<IntegrationBinding[]>([]);
 	let grows = $state<Grow[]>([]);
+	let environments = $state<Environment[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let modalOpen = $state(false);
@@ -32,12 +33,12 @@
 	let bindFeature = $state('grow-assistant');
 	let bindCapability = $state('ai.chat');
 	let bindInstance = $state('');
-	let bindGrow = $state('');
+	let bindScope = $state('all');
 	let bindingSaving = $state(false);
 
 	const fieldClass = 'mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm text-rig-100 outline-none focus:border-rig-500';
 	const features = [
-		{ value: 'grow-assistant', label: 'Grow assistant', capability: 'ai.chat' },
+		{ value: 'grow-assistant', label: 'GrowRig assistant', capability: 'ai.chat' },
 		{ value: 'camera-analysis', label: 'Camera analysis', capability: 'ai.vision' },
 		{ value: 'critical-alerts', label: 'Critical alerts', capability: 'notification.send' },
 		{ value: 'daily-summary', label: 'Daily summary', capability: 'notification.send' },
@@ -47,7 +48,7 @@
 	onMount(load);
 	async function load() {
 		loading = true; error = null;
-		try { [bundles, instances, bindings, grows] = await Promise.all([getIntegrationBundles(), getIntegrationInstances(), getIntegrationBindings(), getGrows()]); }
+		try { [bundles, instances, bindings, grows, environments] = await Promise.all([getIntegrationBundles(), getIntegrationInstances(), getIntegrationBindings(), getGrows(), getEnvironments()]); }
 		catch (e) { error = e instanceof Error ? e.message : 'Failed to load integrations'; }
 		finally { loading = false; }
 	}
@@ -73,10 +74,10 @@
 	async function remove(i: IntegrationInstance) { if (!confirm(`Remove “${i.name}”? Feature bindings using it will also be removed.`)) return; try { await deleteIntegrationInstance(i.id); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to remove integration'; } }
 	function capable(capability: string) { return instances.filter((i) => i.enabled && bundle(i.bundleId)?.capabilities.includes(capability)); }
 	function selectFeature(value: string) { bindFeature = value; bindCapability = features.find((f) => f.value === value)?.capability ?? ''; bindInstance = capable(bindCapability)[0]?.id ?? ''; }
-	async function addBinding() { if (!bindInstance) return; bindingSaving = true; try { await saveIntegrationBinding({ feature: bindFeature, growId: bindGrow, capability: bindCapability, instanceId: bindInstance }); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to save binding'; } finally { bindingSaving = false; } }
+	async function addBinding() { if (!bindInstance) return; bindingSaving = true; const growId = bindScope.startsWith('grow:') ? bindScope.slice(5) : ''; const environmentId = bindScope.startsWith('environment:') ? bindScope.slice(12) : ''; try { await saveIntegrationBinding({ feature: bindFeature, growId, environmentId, capability: bindCapability, instanceId: bindInstance }); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to save binding'; } finally { bindingSaving = false; } }
 	async function removeBinding(id: string) { await deleteIntegrationBinding(id); await load(); }
 	function instanceName(id: string) { return instances.find((i) => i.id === id)?.name ?? 'Missing instance'; }
-	function growName(id?: string) { return id ? (grows.find((g) => g.id === id)?.name ?? id) : 'All grows'; }
+	function scopeName(binding: IntegrationBinding) { if (binding.growId) return `Grow · ${grows.find((g) => g.id === binding.growId)?.name ?? binding.growId}`; if (binding.environmentId) return `Environment · ${environments.find((e) => e.id === binding.environmentId)?.name ?? binding.environmentId}`; return 'All GrowRig'; }
 	function statusClass(status: string) { return status === 'healthy' ? 'bg-leaf/15 text-leaf' : status === 'error' ? 'bg-danger/15 text-danger' : 'bg-rig-800 text-rig-400'; }
 </script>
 
@@ -106,7 +107,18 @@
 
 	<section class="space-y-3"><div><h2 class="text-lg font-semibold">Available integrations</h2><p class="text-sm text-rig-400">Create as many independently configured instances as you need.</p></div><div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{#each bundles as b (b.id)}<button onclick={() => openCreate(b)} class="group rounded-xl border border-rig-800 bg-rig-900/30 p-4 text-left transition hover:border-rig-600 hover:bg-rig-900"><div class="flex items-start gap-3">{#if b.icon}<img src={iconURL(b)} alt="" class="h-11 w-11 rounded-lg" />{/if}<div><div class="flex items-center gap-2"><h3 class="font-medium">{b.name}</h3><span class="rounded bg-rig-800 px-1.5 py-0.5 text-[10px] uppercase text-rig-400">{b.category}</span></div><p class="mt-1 text-sm text-rig-400">{b.description}</p><div class="mt-3 flex items-center gap-1 text-xs text-leaf"><Plus size={13}/> Add instance</div></div></div></button>{/each}</div></section>
 
-	<section class="space-y-3"><div><h2 class="flex items-center gap-2 text-lg font-semibold"><Link2 size={18}/>Feature bindings</h2><p class="text-sm text-rig-400">Features select a configured instance; grow-specific choices override the all-grows default.</p></div><div class="rounded-xl border border-rig-800 bg-rig-900/30 p-4"><div class="grid gap-3 md:grid-cols-[1fr_1fr_1.4fr_auto]"><label><span class="text-xs text-rig-400">Feature</span><select class={fieldClass} value={bindFeature} onchange={(e) => selectFeature(e.currentTarget.value)}>{#each features as f}<option value={f.value}>{f.label}</option>{/each}</select></label><label><span class="text-xs text-rig-400">Scope</span><select class={fieldClass} bind:value={bindGrow}><option value="">All grows (default)</option>{#each grows as grow}<option value={grow.id}>{grow.name}</option>{/each}</select></label><label><span class="text-xs text-rig-400">Integration instance ({bindCapability})</span><select class={fieldClass} bind:value={bindInstance}><option value="">Choose an instance</option>{#each capable(bindCapability) as i}<option value={i.id}>{i.name}</option>{/each}</select></label><button onclick={addBinding} disabled={!bindInstance || bindingSaving} class="mt-5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">Bind</button></div>{#if bindings.length}<div class="mt-4 divide-y divide-rig-800 border-t border-rig-800">{#each bindings as binding (binding.id)}<div class="flex items-center gap-3 py-3 text-sm"><span class="font-medium">{features.find((f) => f.value === binding.feature)?.label ?? binding.feature}</span><span class="rounded bg-rig-800 px-1.5 py-0.5 text-[11px] text-rig-400">{growName(binding.growId)}</span><span class="text-rig-500">→</span><span>{instanceName(binding.instanceId)}</span><span class="text-xs text-rig-500">{binding.capability}</span><button onclick={() => removeBinding(binding.id)} class="ml-auto text-rig-500 hover:text-danger" aria-label="Remove binding"><Trash2 size={14}/></button></div>{/each}</div>{/if}</div></section>
+	<section class="space-y-3">
+		<div><h2 class="flex items-center gap-2 text-lg font-semibold"><Link2 size={18}/>Feature bindings</h2><p class="text-sm text-rig-400">Grow- and environment-specific choices override the global GrowRig default.</p></div>
+		<div class="rounded-xl border border-rig-800 bg-rig-900/30 p-4">
+			<div class="grid gap-3 md:grid-cols-[1fr_1fr_1.4fr_auto]">
+				<label><span class="text-xs text-rig-400">Feature</span><select class={fieldClass} value={bindFeature} onchange={(e) => selectFeature(e.currentTarget.value)}>{#each features as f}<option value={f.value}>{f.label}</option>{/each}</select></label>
+				<label><span class="text-xs text-rig-400">Scope</span><select class={fieldClass} bind:value={bindScope}><option value="all">All GrowRig (default)</option><optgroup label="Grows">{#each grows as grow}<option value={`grow:${grow.id}`}>{grow.name}</option>{/each}</optgroup><optgroup label="Environments">{#each environments as environment}<option value={`environment:${environment.id}`}>{environment.name}</option>{/each}</optgroup></select></label>
+				<label><span class="text-xs text-rig-400">Integration instance ({bindCapability})</span><select class={fieldClass} bind:value={bindInstance}><option value="">Choose an instance</option>{#each capable(bindCapability) as i}<option value={i.id}>{i.name}</option>{/each}</select></label>
+				<button onclick={addBinding} disabled={!bindInstance || bindingSaving} class="mt-5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">Bind</button>
+			</div>
+			{#if bindings.length}<div class="mt-4 divide-y divide-rig-800 border-t border-rig-800">{#each bindings as binding (binding.id)}<div class="flex items-center gap-3 py-3 text-sm"><span class="font-medium">{features.find((f) => f.value === binding.feature)?.label ?? binding.feature}</span><span class="rounded bg-rig-800 px-1.5 py-0.5 text-[11px] text-rig-400">{scopeName(binding)}</span><span class="text-rig-500">→</span><span>{instanceName(binding.instanceId)}</span><span class="text-xs text-rig-500">{binding.capability}</span><button onclick={() => removeBinding(binding.id)} class="ml-auto text-rig-500 hover:text-danger" aria-label="Remove binding"><Trash2 size={14}/></button></div>{/each}</div>{/if}
+		</div>
+	</section>
 </div>
 
 <Dialog bind:open={modalOpen} title={editing ? `Configure ${editing.name}` : `Add ${selected?.name ?? 'integration'}`} description="Credentials are encrypted and never returned after saving." size="xl">

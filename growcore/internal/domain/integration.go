@@ -19,14 +19,15 @@ type IntegrationInstance struct {
 	UpdatedAt     time.Time         `json:"updatedAt"`
 }
 
-// IntegrationBinding selects an instance for a capability. GrowID is empty
-// for a global feature binding; a grow-specific row overrides it.
+// IntegrationBinding selects an instance for a capability. GrowID and
+// EnvironmentID are both empty for a global binding; a scoped row overrides it.
 type IntegrationBinding struct {
-	ID         string    `json:"id"`
-	Feature    string    `json:"feature"`
-	GrowID     string    `json:"growId,omitempty"`
-	Capability string    `json:"capability"`
-	InstanceID string    `json:"instanceId"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID            string    `json:"id"`
+	Feature       string    `json:"feature"`
+	GrowID        string    `json:"growId,omitempty"`
+	EnvironmentID string    `json:"environmentId,omitempty"`
+	Capability    string    `json:"capability"`
+	InstanceID    string    `json:"instanceId"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }

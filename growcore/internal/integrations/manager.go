@@ -31,10 +31,11 @@ type InstanceInput struct {
 	Enabled  *bool             `json:"enabled,omitempty"`
 }
 type BindingInput struct {
-	Feature    string `json:"feature"`
-	GrowID     string `json:"growId"`
-	Capability string `json:"capability"`
-	InstanceID string `json:"instanceId"`
+	Feature       string `json:"feature"`
+	GrowID        string `json:"growId"`
+	EnvironmentID string `json:"environmentId"`
+	Capability    string `json:"capability"`
+	InstanceID    string `json:"instanceId"`
 }
 
 func NewManager(st *store.Store, root, keyPath string) (*Manager, error) {
@@ -98,7 +99,7 @@ func (m *Manager) ensureDefaultIntegrations() error {
 		return err
 	}
 	for _, binding := range bindings {
-		if binding.Feature == "weather-context" && binding.GrowID == "" && binding.Capability == "weather.forecast" {
+		if binding.Feature == "weather-context" && binding.GrowID == "" && binding.EnvironmentID == "" && binding.Capability == "weather.forecast" {
 			return nil
 		}
 	}
@@ -119,7 +120,7 @@ func (m *Manager) ensureDefaultAIChatBinding() error {
 		return err
 	}
 	for _, binding := range bindings {
-		if binding.Feature == "grow-assistant" && binding.GrowID == "" && binding.Capability == "ai.chat" {
+		if binding.Feature == "grow-assistant" && binding.GrowID == "" && binding.EnvironmentID == "" && binding.Capability == "ai.chat" {
 			return nil
 		}
 	}
@@ -321,6 +322,9 @@ func (m *Manager) SaveBinding(in BindingInput) (domain.IntegrationBinding, error
 	if strings.TrimSpace(in.Feature) == "" || strings.TrimSpace(in.Capability) == "" {
 		return domain.IntegrationBinding{}, errors.New("feature and capability are required")
 	}
+	if in.GrowID != "" && in.EnvironmentID != "" {
+		return domain.IntegrationBinding{}, errors.New("a binding can target either a grow or an environment")
+	}
 	rec, b, _, err := m.runtimeConfig(in.InstanceID)
 	if err != nil {
 		return domain.IntegrationBinding{}, err
@@ -332,7 +336,7 @@ func (m *Manager) SaveBinding(in BindingInput) (domain.IntegrationBinding, error
 		return domain.IntegrationBinding{}, fmt.Errorf("%s does not provide %s", rec.Instance.Name, in.Capability)
 	}
 	now := time.Now()
-	binding := domain.IntegrationBinding{ID: newID("ib"), Feature: in.Feature, GrowID: in.GrowID, Capability: in.Capability, InstanceID: in.InstanceID, CreatedAt: now, UpdatedAt: now}
+	binding := domain.IntegrationBinding{ID: newID("ib"), Feature: in.Feature, GrowID: in.GrowID, EnvironmentID: in.EnvironmentID, Capability: in.Capability, InstanceID: in.InstanceID, CreatedAt: now, UpdatedAt: now}
 	if err = m.store.SaveIntegrationBinding(binding); err != nil {
 		return domain.IntegrationBinding{}, err
 	}
@@ -340,6 +344,12 @@ func (m *Manager) SaveBinding(in BindingInput) (domain.IntegrationBinding, error
 }
 func (m *Manager) DeleteBinding(id string) error { return m.store.DeleteIntegrationBinding(id) }
 func (m *Manager) Resolve(feature, growID, capability string) (*domain.IntegrationInstance, error) {
+	return m.ResolveFor(feature, growID, "", capability)
+}
+
+// ResolveFor selects the most specific enabled instance: grow or environment
+// first, then the global feature default.
+func (m *Manager) ResolveFor(feature, growID, environmentID, capability string) (*domain.IntegrationInstance, error) {
 	instances, err := m.Instances()
 	if err != nil {
 		return nil, err
@@ -352,9 +362,17 @@ func (m *Manager) Resolve(feature, growID, capability string) (*domain.Integrati
 	if err != nil {
 		return nil, err
 	}
-	for _, wantedGrow := range []string{growID, ""} {
+	scopes := [][2]string{}
+	if growID != "" {
+		scopes = append(scopes, [2]string{growID, ""})
+	}
+	if environmentID != "" {
+		scopes = append(scopes, [2]string{"", environmentID})
+	}
+	scopes = append(scopes, [2]string{"", ""})
+	for _, scope := range scopes {
 		for _, b := range bindings {
-			if b.Feature == feature && b.GrowID == wantedGrow && b.Capability == capability {
+			if b.Feature == feature && b.GrowID == scope[0] && b.EnvironmentID == scope[1] && b.Capability == capability {
 				if i, ok := byID[b.InstanceID]; ok && i.Enabled {
 					return &i, nil
 				}

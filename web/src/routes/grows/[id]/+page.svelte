@@ -30,7 +30,6 @@
 	import LogCareModal from '$lib/components/LogCareModal.svelte';
 	import CareSummary from '$lib/components/CareSummary.svelte';
 	import CareSettingsModal from '$lib/components/CareSettingsModal.svelte';
-	import GrowAIChat from '$lib/components/GrowAIChat.svelte';
 	import { Button, Dialog, Select } from '$lib/components/ui';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Sprout from '@lucide/svelte/icons/sprout';
@@ -532,8 +531,6 @@
 				onLog={() => openLogCare()}
 			/>
 		{/if}
-
-		<GrowAIChat growId={grow.id} growName={grow.name} />
 
 		<!-- Activity log -->
 		<section>

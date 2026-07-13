@@ -95,6 +95,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/grows/{id}", s.requireAuth(s.getGrow))
 	mux.HandleFunc("GET /api/grows/{id}/ai", s.requireAuth(s.getGrowAIStatus))
 	mux.HandleFunc("POST /api/grows/{id}/ai/chat", s.requireAuth(s.chatWithGrowAI))
+	mux.HandleFunc("GET /api/ai/status", s.requireAuth(s.getAIStatus))
+	mux.HandleFunc("POST /api/ai/chat", s.requireAuth(s.chatWithGrowAI))
 	mux.HandleFunc("GET /api/ai/chats", s.requireAuth(s.getAIChats))
 	mux.HandleFunc("GET /api/ai/chats/{id}", s.requireAuth(s.getAIChat))
 	mux.HandleFunc("PUT /api/ai/chats/{id}", s.requireAuth(s.updateAIChat))

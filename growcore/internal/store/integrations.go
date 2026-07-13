@@ -91,7 +91,7 @@ func (s *Store) DeleteIntegrationInstance(id string) error {
 }
 
 func (s *Store) IntegrationBindings() ([]domain.IntegrationBinding, error) {
-	rows, err := s.db.Query(`SELECT id,feature,grow_id,capability,instance_id,created,updated FROM integration_bindings ORDER BY feature,grow_id`)
+	rows, err := s.db.Query(`SELECT id,feature,grow_id,environment_id,capability,instance_id,created,updated FROM integration_bindings ORDER BY feature,grow_id,environment_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (s *Store) IntegrationBindings() ([]domain.IntegrationBinding, error) {
 	for rows.Next() {
 		var b domain.IntegrationBinding
 		var c, u int64
-		if err := rows.Scan(&b.ID, &b.Feature, &b.GrowID, &b.Capability, &b.InstanceID, &c, &u); err != nil {
+		if err := rows.Scan(&b.ID, &b.Feature, &b.GrowID, &b.EnvironmentID, &b.Capability, &b.InstanceID, &c, &u); err != nil {
 			return nil, err
 		}
 		b.CreatedAt = time.UnixMilli(c)
@@ -111,7 +111,7 @@ func (s *Store) IntegrationBindings() ([]domain.IntegrationBinding, error) {
 }
 
 func (s *Store) SaveIntegrationBinding(b domain.IntegrationBinding) error {
-	_, err := s.db.Exec(`INSERT INTO integration_bindings(id,feature,grow_id,capability,instance_id,created,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(feature,grow_id,capability) DO UPDATE SET id=excluded.id,instance_id=excluded.instance_id,created=excluded.created,updated=excluded.updated`, b.ID, b.Feature, b.GrowID, b.Capability, b.InstanceID, b.CreatedAt.UnixMilli(), b.UpdatedAt.UnixMilli())
+	_, err := s.db.Exec(`INSERT INTO integration_bindings(id,feature,grow_id,environment_id,capability,instance_id,created,updated) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(feature,grow_id,environment_id,capability) DO UPDATE SET id=excluded.id,instance_id=excluded.instance_id,created=excluded.created,updated=excluded.updated`, b.ID, b.Feature, b.GrowID, b.EnvironmentID, b.Capability, b.InstanceID, b.CreatedAt.UnixMilli(), b.UpdatedAt.UnixMilli())
 	return err
 }
 

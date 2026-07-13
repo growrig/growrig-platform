@@ -385,13 +385,15 @@ export const saveCareConfig = (growID: string, actions: GrowCareActionConfig[]) 
 		body: JSON.stringify({ actions })
 	});
 
-// --- grow-scoped AI assistant ---
+// --- optional-context GrowRig assistant ---
 export interface GrowAIStatus { available: boolean; instanceName?: string }
 export interface GrowAIMessage { id?: string; role: 'user' | 'assistant'; content: string; createdAt?: string }
 export interface AIChat {
 	id: string;
 	growId: string;
 	growName: string;
+	environmentId: string;
+	environmentName: string;
 	title: string;
 	instanceName: string;
 	archived: boolean;
@@ -402,12 +404,13 @@ export interface AIChat {
 	updatedAt: string;
 }
 export interface GrowAIReply { chat: AIChat; message: GrowAIMessage; instanceName: string }
+export const getAIStatus = () => json<GrowAIStatus>('/api/ai/status');
 export const getGrowAIStatus = (growID: string) =>
 	json<GrowAIStatus>(`/api/grows/${encodeURIComponent(growID)}/ai`);
-export const chatWithGrowAI = (growID: string, chatID: string, content: string) =>
-	json<GrowAIReply>(`/api/grows/${encodeURIComponent(growID)}/ai/chat`, {
+export const chatWithGrowAI = (chatID: string, content: string, growID = '', environmentID = '') =>
+	json<GrowAIReply>('/api/ai/chat', {
 		method: 'POST',
-		body: JSON.stringify({ chatId: chatID, content })
+		body: JSON.stringify({ chatId: chatID, content, growId: growID, environmentId: environmentID })
 	});
 export const getAIChats = (archived?: boolean) =>
 	json<AIChat[]>(`/api/ai/chats${archived == null ? '' : `?archived=${archived}`}`);
@@ -733,7 +736,7 @@ export const deleteIntegrationInstance = (id: string) =>
 export const testIntegrationInstance = (id: string) =>
 	json<IntegrationInstance>(`/api/integration-instances/${encodeURIComponent(id)}/test`, { method: 'POST' });
 export const getIntegrationBindings = () => json<IntegrationBinding[]>('/api/integration-bindings');
-export const saveIntegrationBinding = (input: Pick<IntegrationBinding, 'feature' | 'capability' | 'instanceId'> & { growId?: string }) =>
+export const saveIntegrationBinding = (input: Pick<IntegrationBinding, 'feature' | 'capability' | 'instanceId'> & { growId?: string; environmentId?: string }) =>
 	json<IntegrationBinding>('/api/integration-bindings', { method: 'POST', body: JSON.stringify(input) });
 export const deleteIntegrationBinding = (id: string) =>
 	req(`/api/integration-bindings/${encodeURIComponent(id)}`, { method: 'DELETE' });
