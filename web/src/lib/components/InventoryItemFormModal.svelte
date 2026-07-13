@@ -93,15 +93,18 @@
 		if (productId && boundProduct?.category !== categoryId) productId = '';
 	}
 
-	// Picking a preset fills name and columns, and seeds one stock line at the
-	// product's first pack size (quantity 0) for the user to fill in.
+	// Picking a preset fills name and columns, and seeds a stock line per pack
+	// size (quantity 0) for the user to fill in.
 	function onPresetChange() {
 		const p = products.find((x) => x.id === productId);
 		if (!p) return; // "Custom" — leave fields, just unbind
 		name = p.name;
 		attributes = { ...(p.attributes ?? {}) };
-		const firstSize = p.variants?.[0]?.size ?? p.unit ?? '';
-		lines = [blankLine(firstSize)];
+		if (p.variants?.length) {
+			lines = p.variants.map((v) => blankLine(v.size));
+		} else {
+			lines = [blankLine(p.unit ?? '')];
+		}
 	}
 
 	function addLine() {
