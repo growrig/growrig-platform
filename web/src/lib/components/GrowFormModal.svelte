@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Grow, StagePresets } from '$lib/types';
 	import { createGrow, updateGrow } from '$lib/api';
-	import { Button, Dialog } from '$lib/components/ui';
+	import { Button, Dialog, Select, DatePicker } from '$lib/components/ui';
+	import { titleCase } from '$lib/format';
 
 	interface Props {
 		open?: boolean;
@@ -68,14 +69,16 @@
 		<div class="grid gap-3 sm:grid-cols-2">
 			<label class="block">
 				<span class="text-xs text-rig-400">Species</span>
-				<select bind:value={species} class="{field} mt-1 capitalize">
-					<option value="" disabled>Select a species…</option>
-					{#each presetKeys as k (k)}<option value={k} class="capitalize">{k}</option>{/each}
-				</select>
+				<Select
+					class="mt-1"
+					bind:value={species}
+					placeholder="Select a species…"
+					items={presetKeys.map((k) => ({ value: k, label: titleCase(k) }))}
+				/>
 			</label>
 			<label class="block">
 				<span class="text-xs text-rig-400">Start date</span>
-				<input type="date" bind:value={startDate} class="{field} mt-1" />
+				<DatePicker class="mt-1" bind:value={startDate} />
 			</label>
 		</div>
 		<div class="block">

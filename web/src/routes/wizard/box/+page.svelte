@@ -19,7 +19,8 @@
 	import KindIcon from '$lib/components/KindIcon.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
-	import { Select } from '$lib/components/ui';
+	import { Select, DatePicker } from '$lib/components/ui';
+	import { titleCase } from '$lib/format';
 
 	let catalog = $state<CatalogProduct[]>([]);
 	let discovered = $state<DiscoveredEntity[]>([]);
@@ -272,14 +273,16 @@
 				<div class="grid gap-4 sm:grid-cols-2">
 					<label class="block">
 						<span class="text-sm text-rig-400">Species</span>
-						<select bind:value={species} class="{field} mt-1 capitalize">
-							<option value="">Select a species…</option>
-							{#each Object.keys(presets) as k (k)}<option value={k} class="capitalize">{k}</option>{/each}
-						</select>
+						<Select
+							class="mt-1"
+							bind:value={species}
+							placeholder="Select a species…"
+							items={Object.keys(presets).map((k) => ({ value: k, label: titleCase(k) }))}
+						/>
 					</label>
 					<label class="block">
 						<span class="text-sm text-rig-400">Start date</span>
-						<input type="date" bind:value={startDate} class="{field} mt-1" />
+						<DatePicker class="mt-1" bind:value={startDate} />
 					</label>
 				</div>
 				{#if growStages.length}

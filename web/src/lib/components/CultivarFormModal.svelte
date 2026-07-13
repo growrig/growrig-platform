@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Cultivar, Species } from '$lib/types';
 	import { createCultivar, updateCultivar, cultivarImageURL } from '$lib/api';
-	import { Button, Dialog } from '$lib/components/ui';
-	import { titleCase } from '$lib/format';
+	import { Button, Dialog, Select, fieldClass } from '$lib/components/ui';
+	import AttributeFields from '$lib/components/AttributeFields.svelte';
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import X from '@lucide/svelte/icons/x';
 
@@ -108,8 +108,7 @@
 		}
 	}
 
-	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const field = fieldClass;
 </script>
 
 <Dialog
@@ -153,10 +152,12 @@
 				</label>
 				<label class="block">
 					<span class="text-xs text-rig-400">Species</span>
-					<select bind:value={speciesId} class="{field} mt-1 capitalize">
-						<option value="" disabled>Select a species…</option>
-						{#each species as sp (sp.id)}<option value={sp.id}>{sp.label}</option>{/each}
-					</select>
+					<Select
+						class="mt-1"
+						bind:value={speciesId}
+						placeholder="Select a species…"
+						items={species.map((sp) => ({ value: sp.id, label: sp.label }))}
+					/>
 				</label>
 			</div>
 		</div>
@@ -168,35 +169,7 @@
 
 		<!-- Species-specific attributes, rendered from the species schema -->
 		{#if attrSchema.length}
-			<div class="grid gap-3 sm:grid-cols-2">
-				{#each attrSchema as attr (attr.key)}
-					<label class="block">
-						<span class="text-xs text-rig-400">
-							{attr.label}{#if attr.unit}<span class="text-rig-600"> ({attr.unit})</span>{/if}
-						</span>
-						{#if attr.type === 'enum'}
-							<select bind:value={attributes[attr.key]} class="{field} mt-1 capitalize">
-								<option value="">—</option>
-								{#each attr.options ?? [] as opt (opt)}
-									<option value={opt}>{titleCase(opt)}</option>
-								{/each}
-							</select>
-						{:else if attr.type === 'number' || attr.type === 'percent'}
-							<input
-								type="number"
-								inputmode="decimal"
-								step="any"
-								min="0"
-								bind:value={attributes[attr.key]}
-								placeholder={attr.type === 'percent' ? '%' : ''}
-								class="{field} mt-1"
-							/>
-						{:else}
-							<input bind:value={attributes[attr.key]} class="{field} mt-1" />
-						{/if}
-					</label>
-				{/each}
-			</div>
+			<AttributeFields schema={attrSchema} bind:values={attributes} />
 		{:else if speciesId}
 			<p class="text-xs text-rig-500">This species has no extra attributes.</p>
 		{/if}

@@ -6,6 +6,11 @@ export function cn(...parts: Array<string | false | null | undefined>): string {
 	return parts.filter(Boolean).join(' ');
 }
 
+/** Shared styling for native inputs/textareas so form fields match the bits-ui
+ *  controls (Select, DatePicker) that carry their own trigger styling. */
+export const fieldClass =
+	'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm text-rig-100 focus:border-rig-500 focus:outline-none';
+
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 

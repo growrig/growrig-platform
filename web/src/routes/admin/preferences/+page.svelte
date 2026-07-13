@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getPreferences, updatePreferences } from '$lib/api';
-	import { Button } from '$lib/components/ui';
+	import { Button, Select } from '$lib/components/ui';
 
 	const localeOptions: { tag: string; label: string }[] = [
 		'en-US',
@@ -82,18 +82,28 @@
 		<label class="block">
 			<span class="text-sm font-medium text-rig-200">Timezone</span>
 			<p class="mt-1 text-xs text-rig-500">Used for the instance clock and localized timestamps.</p>
-			<select bind:value={timezone} disabled={loading} class="mt-3 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none">
-				{#if !timezones.includes(timezone)}<option value={timezone}>{timezone}</option>{/if}
-				{#each timezones as zone}<option value={zone}>{zone}</option>{/each}
-			</select>
+			<Select
+				class="mt-3"
+				bind:value={timezone}
+				disabled={loading}
+				items={(timezones.includes(timezone) ? timezones : [timezone, ...timezones]).map((zone) => ({
+					value: zone,
+					label: zone
+				}))}
+			/>
 		</label>
 		<label class="block">
 			<span class="text-sm font-medium text-rig-200">Locale</span>
 			<p class="mt-1 text-xs text-rig-500">Controls date and time formatting across the web app (order, separators, 12h vs 24h).</p>
-			<select bind:value={locale} disabled={loading} class="mt-3 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none">
-				{#if !localeOptions.some((o) => o.tag === locale)}<option value={locale}>{locale}</option>{/if}
-				{#each localeOptions as opt (opt.tag)}<option value={opt.tag}>{opt.label} ({opt.tag})</option>{/each}
-			</select>
+			<Select
+				class="mt-3"
+				bind:value={locale}
+				disabled={loading}
+				items={[
+					...(localeOptions.some((o) => o.tag === locale) ? [] : [{ value: locale, label: locale }]),
+					...localeOptions.map((opt) => ({ value: opt.tag, label: `${opt.label} (${opt.tag})` }))
+				]}
+			/>
 		</label>
 		<div class="flex justify-end"><Button onclick={save} disabled={loading || saving}>{saving ? 'Saving…' : 'Save preferences'}</Button></div>
 	</div>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { CareAction, CareField, FeedingRecipe, GrowDetail, LogCareInput, PlantDetail } from '$lib/types';
 	import { logCare } from '$lib/api';
-	import { Button, Dialog } from '$lib/components/ui';
+	import { Button, Dialog, Select } from '$lib/components/ui';
 	import { plantDisplayName, plantNumbersById } from '$lib/format';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 
@@ -216,9 +216,7 @@
 				{#if has('recipe')}
 					<label class="block">
 						<span class="text-xs text-rig-400">Nutrient recipe</span>
-						<select bind:value={recipeId} class="{field} mt-1">
-							{#each recipeItems as r (r.value)}<option value={r.value}>{r.label}</option>{/each}
-						</select>
+						<Select class="mt-1" bind:value={recipeId} items={recipeItems} />
 					</label>
 				{/if}
 

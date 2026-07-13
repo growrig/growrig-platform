@@ -11,7 +11,7 @@
 		setSignupSetting
 	} from '$lib/api';
 	import type { User, Environment, EnvAccess, AccessLevel, UserRole } from '$lib/types';
-	import { Switch } from '$lib/components/ui';
+	import { Switch, Select } from '$lib/components/ui';
 	import Shield from '@lucide/svelte/icons/shield';
 	import UserIcon from '@lucide/svelte/icons/user';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -241,10 +241,15 @@
 				</label>
 				<label>
 					<span class="text-sm text-rig-400">Role</span>
-					<select bind:value={nuRole} class="{field} mt-1 block">
-						<option value="user">User</option>
-						<option value="admin">Admin</option>
-					</select>
+					<Select
+						class="mt-1"
+						value={nuRole}
+						onValueChange={(v) => (nuRole = v as UserRole)}
+						items={[
+							{ value: 'user', label: 'User' },
+							{ value: 'admin', label: 'Admin' }
+						]}
+					/>
 				</label>
 			</div>
 			{#if nuRole === 'user'}
@@ -316,10 +321,15 @@
 										<div class="flex flex-wrap items-end gap-3">
 											<label>
 												<span class="text-sm text-rig-400">Role</span>
-												<select bind:value={edRole} class="{field} mt-1 block">
-													<option value="user">User</option>
-													<option value="admin">Admin</option>
-												</select>
+												<Select
+													class="mt-1"
+													value={edRole}
+													onValueChange={(v) => (edRole = v as UserRole)}
+													items={[
+														{ value: 'user', label: 'User' },
+														{ value: 'admin', label: 'Admin' }
+													]}
+												/>
 											</label>
 											<label class="flex-1">
 												<span class="text-sm text-rig-400">Reset password <span class="text-rig-600">(optional)</span></span>

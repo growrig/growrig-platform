@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { FeedingRecipe, FeedingProduct, Species } from '$lib/types';
 	import { createRecipe, updateRecipe, type RecipeInput } from '$lib/api';
-	import { Button, Dialog } from '$lib/components/ui';
+	import { Button, Dialog, Select } from '$lib/components/ui';
 	import { titleCase } from '$lib/format';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -192,10 +192,12 @@
 			</label>
 			<label class="block">
 				<span class="text-xs text-rig-400">Species</span>
-				<select bind:value={speciesId} class="{field} mt-1 capitalize">
-					<option value="" disabled>Select a species…</option>
-					{#each species as sp (sp.id)}<option value={sp.id}>{sp.label}</option>{/each}
-				</select>
+				<Select
+					class="mt-1"
+					bind:value={speciesId}
+					placeholder="Select a species…"
+					items={species.map((sp) => ({ value: sp.id, label: sp.label }))}
+				/>
 			</label>
 		</div>
 
@@ -203,12 +205,19 @@
 		{#if !isEdit && templateOptions.length}
 			<label class="block rounded-lg border border-rig-800 bg-rig-900/40 p-3">
 				<span class="text-xs font-semibold uppercase tracking-wide text-leaf">Start from a built-in template</span>
-				<select bind:value={templateId} onchange={applyTemplate} class="{field} mt-1.5">
-					<option value="">Start blank</option>
-					{#each templateOptions as t (t.id)}
-						<option value={t.id}>{t.name}{t.brand ? ` — ${t.brand}` : ''}</option>
-					{/each}
-				</select>
+				<Select
+					class="mt-1.5"
+					bind:value={templateId}
+					placeholder="Start blank"
+					onValueChange={applyTemplate}
+					items={[
+						{ value: '', label: 'Start blank' },
+						...templateOptions.map((t) => ({
+							value: t.id,
+							label: `${t.name}${t.brand ? ` — ${t.brand}` : ''}`
+						}))
+					]}
+				/>
 				<span class="mt-1 block text-[11px] text-rig-500">Fills the products, phases and weeks below — you can edit everything after.</span>
 			</label>
 		{/if}
@@ -287,10 +296,15 @@
 				<div class="rounded-lg border border-rig-800 bg-rig-900/40 p-3">
 					<div class="mb-2 flex items-center gap-2">
 						<input bind:value={phase.name} placeholder="Phase name" class="{cell} min-w-0 flex-1" />
-						<select bind:value={phase.stage} class="{cell} w-40 shrink-0 capitalize" title="Linked stage (optional)">
-							<option value="">No stage link</option>
-							{#each stages as st (st.name)}<option value={st.name}>{titleCase(st.name)}</option>{/each}
-						</select>
+						<Select
+							class="w-40 shrink-0"
+							bind:value={phase.stage}
+							placeholder="No stage link"
+							items={[
+								{ value: '', label: 'No stage link' },
+								...stages.map((st) => ({ value: st.name, label: titleCase(st.name) }))
+							]}
+						/>
 						<button type="button" onclick={() => movePhase(pi, -1)} disabled={pi === 0} aria-label="Move up" class={iconBtn}>
 							<ChevronUp size={14} />
 						</button>

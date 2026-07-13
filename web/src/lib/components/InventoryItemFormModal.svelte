@@ -6,8 +6,8 @@
 		inventoryItemImageURL,
 		inventoryProductImageURL
 	} from '$lib/api';
-	import { Button, Dialog } from '$lib/components/ui';
-	import { titleCase } from '$lib/format';
+	import { Button, Dialog, Select } from '$lib/components/ui';
+	import AttributeFields from '$lib/components/AttributeFields.svelte';
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
@@ -230,17 +230,27 @@
 				<div class="grid gap-3 sm:grid-cols-2">
 					<label class="block">
 						<span class="text-xs text-rig-400">Category</span>
-						<select bind:value={categoryId} onchange={onCategoryChange} class="{field} mt-1">
-							<option value="" disabled>Select…</option>
-							{#each categories as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
-						</select>
+						<Select
+							class="mt-1"
+							bind:value={categoryId}
+							placeholder="Select…"
+							items={categories.map((c) => ({ value: c.id, label: c.label }))}
+							onValueChange={onCategoryChange}
+						/>
 					</label>
 					<label class="block">
 						<span class="text-xs text-rig-400">Preset <span class="text-rig-600">(optional)</span></span>
-						<select bind:value={productId} onchange={onPresetChange} class="{field} mt-1" disabled={!categoryProducts.length}>
-							<option value="">{categoryProducts.length ? 'Custom (no preset)' : 'No presets'}</option>
-							{#each categoryProducts as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-						</select>
+						<Select
+							class="mt-1"
+							bind:value={productId}
+							disabled={!categoryProducts.length}
+							placeholder={categoryProducts.length ? 'Custom (no preset)' : 'No presets'}
+							items={[
+								{ value: '', label: categoryProducts.length ? 'Custom (no preset)' : 'No presets' },
+								...categoryProducts.map((p) => ({ value: p.id, label: p.name }))
+							]}
+							onValueChange={onPresetChange}
+						/>
 					</label>
 				</div>
 			</div>
@@ -307,39 +317,22 @@
 			</label>
 			<label class="block">
 				<span class="text-xs text-rig-400">Status</span>
-				<select bind:value={status} class="{field} mt-1 capitalize">
-					<option value="active">In stock</option>
-					<option value="ordered">Ordered</option>
-					<option value="archived">Archived</option>
-				</select>
+				<Select
+					class="mt-1"
+					value={status}
+					onValueChange={(v) => (status = v as InventoryStatus)}
+					items={[
+						{ value: 'active', label: 'In stock' },
+						{ value: 'ordered', label: 'Ordered' },
+						{ value: 'archived', label: 'Archived' }
+					]}
+				/>
 			</label>
 		</div>
 
 		<!-- Category-specific columns, rendered from the category schema -->
 		{#if colSchema.length}
-			<div class="grid gap-3 sm:grid-cols-2">
-				{#each colSchema as col (col.key)}
-					<label class="block">
-						<span class="text-xs text-rig-400">
-							{col.label}{#if col.unit}<span class="text-rig-600"> ({col.unit})</span>{/if}
-						</span>
-						{#if col.type === 'enum'}
-							<select bind:value={attributes[col.key]} class="{field} mt-1 capitalize">
-								<option value="">—</option>
-								{#each col.options ?? [] as opt (opt)}
-									<option value={opt}>{titleCase(opt)}</option>
-								{/each}
-							</select>
-						{:else if col.type === 'number'}
-							<input type="number" inputmode="decimal" step="any" bind:value={attributes[col.key]} class="{field} mt-1" />
-						{:else if col.type === 'date'}
-							<input type="date" bind:value={attributes[col.key]} class="{field} mt-1" />
-						{:else}
-							<input bind:value={attributes[col.key]} class="{field} mt-1" />
-						{/if}
-					</label>
-				{/each}
-			</div>
+			<AttributeFields schema={colSchema} bind:values={attributes} />
 		{/if}
 
 		<label class="block">

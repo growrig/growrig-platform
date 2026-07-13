@@ -5,6 +5,7 @@
 	import { getAIStatus, chatWithGrowAI, getAIChat, getAIChats, setAIChatArchived, getGrows, getEnvironments } from '$lib/api';
 	import type { AIChat, GrowAIMessage } from '$lib/api';
 	import type { Grow, Environment } from '$lib/types';
+	import { Select } from '$lib/components/ui';
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -308,11 +309,24 @@
 				<div class="shrink-0 border-b border-rig-800 bg-rig-900/70 px-4 py-3">
 					<label class="flex items-center gap-3 text-xs text-rig-400">
 						<span class="shrink-0 font-medium uppercase tracking-wide">Context</span>
-						<select bind:value={scopeKey} class="min-w-0 flex-1 rounded-md border border-rig-700 bg-rig-950 px-2.5 py-2 text-sm text-rig-200 outline-none focus:border-rig-500">
-							<option value="all">All GrowRig</option>
-							{#if grows.length}<optgroup label="Grows">{#each grows as grow (grow.id)}<option value={`grow:${grow.id}`}>{grow.name}</option>{/each}</optgroup>{/if}
-							{#if environments.length}<optgroup label="Environments">{#each environments as environment (environment.id)}<option value={`environment:${environment.id}`}>{environment.name}</option>{/each}</optgroup>{/if}
-						</select>
+						<Select
+							class="min-w-0 flex-1"
+							bind:value={scopeKey}
+							groups={[
+								{ label: '', items: [{ value: 'all', label: 'All GrowRig' }] },
+								...(grows.length
+									? [{ label: 'Grows', items: grows.map((g) => ({ value: `grow:${g.id}`, label: g.name })) }]
+									: []),
+								...(environments.length
+									? [
+											{
+												label: 'Environments',
+												items: environments.map((e) => ({ value: `environment:${e.id}`, label: e.name }))
+											}
+										]
+									: [])
+							]}
+						/>
 					</label>
 				</div>
 			{/if}
