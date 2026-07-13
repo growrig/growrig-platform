@@ -72,6 +72,7 @@
 	const nav = $derived([
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/grows', label: 'Grows' },
+		{ href: '/inventory', label: 'Inventory' },
 		{ href: '/knowledge', label: 'Knowledge' },
 		{ href: '/activity', label: 'Activity' },
 		...(auth.isAdmin ? [{ href: '/admin', label: 'Admin' }] : [])

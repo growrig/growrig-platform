@@ -23,6 +23,8 @@ VENDOR_SRC    = vendors
 VENDOR_DATA   = growcore/internal/catalog/vendor-data
 SPECIES_SRC   = species
 SPECIES_DATA  = growcore/internal/species/data
+INVENTORY_SRC  = inventory
+INVENTORY_DATA = growcore/internal/inventory/data
 CONFIG_DEV   ?= growcore.dev.yaml
 CONFIG_SIM    = growcore/growcore.sim.yaml
 
@@ -102,6 +104,8 @@ catalog-embed:
 	cp -r $(VENDOR_SRC)/. $(VENDOR_DATA)/
 	find $(SPECIES_DATA) -mindepth 1 ! -name .gitkeep -delete
 	cp -r $(SPECIES_SRC)/. $(SPECIES_DATA)/
+	find $(INVENTORY_DATA) -mindepth 1 ! -name .gitkeep -delete
+	cp -r $(INVENTORY_SRC)/. $(INVENTORY_DATA)/
 
 .PHONY: build
 build: embed catalog-embed

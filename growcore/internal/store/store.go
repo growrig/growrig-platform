@@ -147,6 +147,26 @@ CREATE TABLE IF NOT EXISTS cultivars (
     created_at  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_cultivars_species ON cultivars (species);
+CREATE TABLE IF NOT EXISTS inventory_items (
+    id           TEXT PRIMARY KEY,
+    category     TEXT NOT NULL DEFAULT '',
+    name         TEXT NOT NULL DEFAULT '',
+    quantity     REAL NOT NULL DEFAULT 0,
+    unit         TEXT NOT NULL DEFAULT '',
+    variant      TEXT NOT NULL DEFAULT '',   -- pack size (e.g. "1 L") for product variants
+    location     TEXT NOT NULL DEFAULT '',
+    status       TEXT NOT NULL DEFAULT 'active',
+    low_stock_at REAL NOT NULL DEFAULT 0,
+    notes        TEXT NOT NULL DEFAULT '',
+    attributes   TEXT NOT NULL DEFAULT '{}', -- JSON map keyed by the category's column keys
+    variants     TEXT NOT NULL DEFAULT '[]', -- JSON array of {size, quantity, lowStockAt} stock lines
+    product_id   TEXT NOT NULL DEFAULT '',   -- bound built-in product template, "<category>/<id>"
+    image_data   BLOB,
+    image_type   TEXT NOT NULL DEFAULT '',   -- '' = no user-uploaded image
+    created_at   INTEGER NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory_items (category);
 CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,
@@ -314,6 +334,10 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "camera_retention_days", "INTEGER NOT NULL DEFAULT 7"},
 		{"bindings", "camera_storage_mb", "INTEGER NOT NULL DEFAULT 5120"},
 		{"activity_log", "grow_id", "TEXT NOT NULL DEFAULT ''"},
+		{"inventory_items", "variants", "TEXT NOT NULL DEFAULT '[]'"},
+		{"inventory_items", "product_id", "TEXT NOT NULL DEFAULT ''"},
+		{"inventory_items", "image_data", "BLOB"},
+		{"inventory_items", "image_type", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err

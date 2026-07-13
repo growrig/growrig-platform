@@ -23,6 +23,11 @@ import type {
 	GeocodeResult,
 	Grow,
 	GrowDetail,
+	InventoryCategory,
+	InventoryItem,
+	InventoryProduct,
+	InventoryStockLine,
+	InventoryStatus,
 	HAStatus,
 	HAUpdateTarget,
 	Info,
@@ -375,6 +380,55 @@ export const updateCultivar = (id: string, c: CultivarInput) =>
 
 export const deleteCultivar = (id: string) =>
 	req(`/api/cultivars/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+// --- Inventory catalog & items ---
+
+export const getInventoryCategories = () =>
+	json<InventoryCategory[]>('/api/inventory/categories');
+
+/** Built-in product templates, optionally filtered to a single category. */
+export const getInventoryProducts = (category?: string) =>
+	json<InventoryProduct[]>(`/api/inventory/products${category ? `?category=${encodeURIComponent(category)}` : ''}`);
+
+/** Image of a built-in product. `productId` is fully-qualified "<category>/<id>". */
+export const inventoryProductImageURL = (productId: string): string =>
+	authenticatedMediaURL(`/api/inventory/products/${productId.split('/').map(encodeURIComponent).join('/')}/image`);
+
+/** Image uploaded for a user's inventory item. */
+export const inventoryItemImageURL = (id: string): string =>
+	authenticatedMediaURL(`/api/inventory/items/${encodeURIComponent(id)}/image`);
+
+/** Inventory items, optionally filtered to a single category. */
+export const getInventoryItems = (category?: string) =>
+	json<InventoryItem[]>(`/api/inventory/items${category ? `?category=${encodeURIComponent(category)}` : ''}`);
+
+export const getInventoryItem = (id: string) =>
+	json<InventoryItem>(`/api/inventory/items/${encodeURIComponent(id)}`);
+
+export interface InventoryItemInput {
+	category: string;
+	name: string;
+	variants: InventoryStockLine[];
+	location: string;
+	status: InventoryStatus;
+	notes: string;
+	attributes: Record<string, string>;
+	/** Bind to a built-in product template ("<category>/<id>"); '' to unbind. */
+	productId?: string;
+	/** Optional data URL to set/replace the image; omit to leave unchanged. */
+	image?: string;
+	/** Set on update to clear an existing image. */
+	removeImage?: boolean;
+}
+
+export const createInventoryItem = (b: InventoryItemInput) =>
+	json<InventoryItem>('/api/inventory/items', { method: 'POST', body: JSON.stringify(b) });
+
+export const updateInventoryItem = (id: string, b: InventoryItemInput) =>
+	json<InventoryItem>(`/api/inventory/items/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(b) });
+
+export const deleteInventoryItem = (id: string) =>
+	req(`/api/inventory/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 // --- Feeding presets ---
 

@@ -172,6 +172,82 @@ export interface Cultivar {
 	createdAt: string;
 }
 
+// --- Inventory catalog & items (categories YAML-defined; GET /api/inventory) ---
+
+export type InventoryColumnType = 'text' | 'number' | 'enum' | 'date';
+
+/** One category-specific item field declared in a category's YAML. */
+export interface InventoryColumn {
+	key: string;
+	label: string;
+	type: InventoryColumnType;
+	options?: string[];
+	unit?: string;
+}
+
+/** A stock category: its display metadata and extra column schema. */
+export interface InventoryCategory {
+	id: string;
+	label: string;
+	description?: string;
+	icon?: string;
+	order: number;
+	units?: string[];
+	columns?: InventoryColumn[];
+}
+
+export type InventoryStatus = 'active' | 'ordered' | 'archived';
+
+/** One pack size of a product, with an optional product code (SKU/barcode). */
+export interface InventoryVariant {
+	size: string;
+	code?: string;
+}
+
+/** A built-in product template (GET /api/inventory/products) that seeds and
+ *  binds an item. `id` is fully-qualified as "<category>/<product-id>". */
+export interface InventoryProduct {
+	id: string;
+	category: string;
+	name: string;
+	description?: string;
+	unit?: string;
+	/** Pack sizes this product is sold in; offered as a size picker. */
+	variants?: InventoryVariant[];
+	attributes?: Record<string, string>;
+	/** Whether the catalog ships an image for this product. */
+	hasImage: boolean;
+}
+
+/** One pack size of an owned item with its own on-hand quantity. A simple item
+ *  is a single line with a blank size. */
+export interface InventoryStockLine {
+	size: string;
+	quantity: number;
+	/** Quantity threshold at/below which this size is low; 0/absent disables. */
+	lowStockAt?: number;
+}
+
+/** A stock record the grower owns, within an inventory category. */
+export interface InventoryItem {
+	id: string;
+	category: string;
+	name: string;
+	/** The sizes owned, each with its own quantity. */
+	variants: InventoryStockLine[];
+	location: string;
+	status: InventoryStatus;
+	notes: string;
+	/** Category-specific values keyed by the category's column keys. */
+	attributes: Record<string, string>;
+	/** Bound built-in product template ("<category>/<id>"), or absent. */
+	productId?: string;
+	/** MIME type of a user-uploaded image, or absent when there is none. */
+	imageType?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
 // --- Feeding presets (nutrient schedules; GET /api/feedings) ---
 
 /** One nutrient line in a schedule. `unit` overrides the preset default. */
