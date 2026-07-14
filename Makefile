@@ -27,6 +27,8 @@ INVENTORY_SRC  = catalog/inventory
 INVENTORY_DATA = growcore/internal/inventory/data
 INTEGRATIONS_SRC = catalog/integrations
 INTEGRATIONS_DATA = growcore/internal/integrations/data
+SCHEMA_SRC    = schema/catalog
+SCHEMA_DATA   = growcore/internal/catalogsource/schema
 CONFIG_DEV   ?= growcore.dev.yaml
 CONFIG_SIM    = growcore/growcore.sim.yaml
 
@@ -119,8 +121,15 @@ catalog-embed: catalog-check
 	find $(INTEGRATIONS_DATA) -mindepth 1 ! -name .gitkeep -delete
 	cp -r $(INTEGRATIONS_SRC)/. $(INTEGRATIONS_DATA)/
 
+# Sync the catalog JSON Schemas (repo-root schema/catalog/) into the Go module
+# so a shipped binary validates catalogs offline. Not from the submodule.
+.PHONY: schema-embed
+schema-embed:
+	find $(SCHEMA_DATA) -mindepth 1 ! -name .gitkeep -delete
+	cp $(SCHEMA_SRC)/*.schema.yaml $(SCHEMA_DATA)/
+
 .PHONY: build
-build: embed catalog-embed
+build: embed catalog-embed schema-embed
 	cd growcore && go build -o ../$(BIN) ./cmd/growcore
 	@echo "built $(BIN)"
 

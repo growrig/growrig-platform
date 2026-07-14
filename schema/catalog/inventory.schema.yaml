@@ -1,0 +1,49 @@
+# JSON Schema (2020-12) for an inventory category definition:
+# inventory/<category-id>/inventory.yaml. The category id is the directory name.
+# The category's stock lives beside it in products.yaml (see products.json).
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/inventory.json
+title: GrowRig inventory category
+description: A stock category with its display metadata and item columns.
+type: object
+additionalProperties: false
+required: [label]
+properties:
+  label:
+    description: Display name of the category.
+    type: string
+    minLength: 1
+  description:
+    type: string
+  icon:
+    description: Lucide icon name.
+    type: string
+  order:
+    description: Display order among categories (ascending).
+    type: integer
+  units:
+    description: Suggested measurement units offered in the item form's unit picker.
+    type: array
+    items: { type: string }
+  columns:
+    description: Category-specific item fields.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [key, label, type]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        type:
+          enum: [text, number, enum, date]
+        options:
+          description: Allowed values; required in practice for type "enum".
+          type: array
+          items: { type: string }
+        unit:
+          type: string

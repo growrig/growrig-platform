@@ -1,0 +1,26 @@
+# JSON Schema (2020-12) for a GrowRig vendor definition:
+# vendors/<vendor-id>/vendor.yaml. The vendor id is the directory name.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/vendor.json
+title: GrowRig vendor
+description: A manufacturer represented in the device catalog.
+type: object
+additionalProperties: false
+required: [name]
+properties:
+  name:
+    description: Display name of the vendor.
+    type: string
+    minLength: 1
+  website:
+    type: string
+    format: uri
+  logo:
+    description: Logo filename relative to the vendor directory (svg, png, webp, jpg).
+    type: string
+  color:
+    description: CSS color for the initials fallback foreground (e.g. "#34b16a").
+    type: string
+  background:
+    description: CSS color for the initials fallback background.
+    type: string

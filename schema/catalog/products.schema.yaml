@@ -1,0 +1,53 @@
+# JSON Schema (2020-12) for inventory product templates:
+# inventory/<category-id>/products.yaml. Ready-made items that pre-fill an
+# inventory entry. A product's attribute keys should match the category's
+# columns (see inventory.json); unknown keys are dropped at load.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/products.json
+title: GrowRig inventory products
+description: Built-in product templates for an inventory category.
+type: object
+additionalProperties: false
+required: [products]
+properties:
+  products:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]*$'
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        unit:
+          type: string
+        image:
+          description: Image filename relative to the category directory.
+          type: string
+        attributes:
+          description: Values for the category's columns, keyed by column key.
+          type: object
+          additionalProperties:
+            type: [string, number, boolean]
+        variants:
+          description: Buyable pack sizes. A string is shorthand for { size }.
+          type: array
+          items:
+            oneOf:
+              - type: string
+              - type: object
+                additionalProperties: false
+                required: [size]
+                properties:
+                  size:
+                    type: string
+                    minLength: 1
+                  code:
+                    type: string

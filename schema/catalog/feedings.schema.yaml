@@ -1,0 +1,75 @@
+# JSON Schema (2020-12) for built-in feeding schedules:
+# species/<species-id>/feedings.yaml. Read-only nutrient charts seeded into new
+# recipes; the doses are per product key across free-form weekly phases.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/feedings.json
+title: GrowRig feeding schedules
+description: Built-in nutrient schedules (presets) shipped for a species.
+type: object
+additionalProperties: false
+required: [presets]
+properties:
+  presets:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [id, name, products, phases]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]*$'
+        name:
+          type: string
+          minLength: 1
+        brand:
+          type: string
+        description:
+          type: string
+        unit:
+          description: Default dose unit (e.g. "ml/L"); a product may override it.
+          type: string
+        products:
+          description: The nutrient lines dosed by this schedule.
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [key]
+            properties:
+              key:
+                type: string
+                minLength: 1
+              label:
+                type: string
+              unit:
+                type: string
+        phases:
+          description: Ordered named spans, each with per-week doses keyed by product key.
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, weeks]
+            properties:
+              name:
+                type: string
+                minLength: 1
+              stage:
+                description: Optional link to one of the species' cultivation stages.
+                type: string
+              weeks:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    doses:
+                      description: product key → dose amount in the product's (or preset's) unit.
+                      type: object
+                      additionalProperties:
+                        type: number
+                        minimum: 0

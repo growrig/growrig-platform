@@ -31,6 +31,10 @@
 !/growcore/internal/integrations/data/.gitkeep
 **/.integration-secret-key
 
+# Catalog schemas synced from repo-root schema/catalog/ for embedding.
+/growcore/internal/catalogsource/schema/*
+!/growcore/internal/catalogsource/schema/.gitkeep
+
 # Node / SvelteKit
 node_modules/
 /web/.svelte-kit/

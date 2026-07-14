@@ -1,0 +1,138 @@
+# JSON Schema (2020-12) for a GrowRig device driver:
+# devices/<category>/<driver-id>/device.yaml. Category and driver id come from
+# the directory path, not the file. A driver describes how GrowRig binds to a
+# class of hardware; `products` lists the concrete items it supports. A driver
+# with no `products` is itself a single product. An optional guide.md may sit
+# beside it.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/device.json
+title: GrowRig device driver
+description: A device driver and the products it supports.
+type: object
+additionalProperties: false
+required: [brand, model, connection]
+properties:
+  brand:
+    description: Driver brand; "Generic" keeps it visible as a generic option.
+    type: string
+    minLength: 1
+  model:
+    type: string
+    minLength: 1
+  vendor:
+    description: Vendor id (a directory under vendors/).
+    type: string
+  connection:
+    enum: [ble, esphome, generic, wifi, zigbee, 'n/a']
+  description:
+    type: string
+  version:
+    description: Driver version (defaults to 1.0.0).
+    type: string
+  author:
+    description: Driver author (defaults to GrowRig).
+    type: string
+  haIntegration:
+    description: Home Assistant integration this driver binds through.
+    type: string
+  documentation:
+    type: string
+  maxChannels:
+    type: integer
+    minimum: 0
+  fanType:
+    description: For fans, the physical form (e.g. inline, pwm-pc).
+    type: string
+  group:
+    description: Optional sub-grouping key within the category (see category groups).
+    type: string
+  images:
+    description: Driver-level images. Empty/null when the products carry their own.
+    type: ['array', 'null']
+    items:
+      $ref: '#/$defs/image'
+  provides:
+    description: Semantic capabilities the driver contributes and how they bind to HA entities.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [label, kind]
+      properties:
+        label:
+          type: string
+          minLength: 1
+        kind:
+          description: Binding kind (e.g. sensor, fanChannel, light, switch, camera).
+          type: string
+          minLength: 1
+        measurement:
+          type: string
+        role:
+          description: Semantic channel role (e.g. exhaust, intake, circulation).
+          type: string
+        entityDomain:
+          description: >-
+            Home Assistant entity domain to look for (sensor, fan, light, switch,
+            camera). May be empty when the binding is by role.
+          type: string
+        deviceClass:
+          description: Narrows sensor discovery (e.g. temperature, humidity, carbon_dioxide).
+          type: string
+        wattage:
+          description: Rated power in watts; 0 means the grower specifies it.
+          type: number
+          minimum: 0
+        rpmEntityDomain:
+          description: Requests a separate tachometer entity for this channel.
+          type: string
+  products:
+    description: Concrete products supported by this driver; each may hold exact models.
+    type: array
+    items:
+      $ref: '#/$defs/variant'
+$defs:
+  image:
+    type: object
+    additionalProperties: false
+    required: [src]
+    properties:
+      src:
+        description: Image filename relative to the device directory.
+        type: string
+        minLength: 1
+      model:
+        description: Associates the image with an exact model id; omit for the whole series.
+        type: string
+  variant:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        type: string
+        pattern: '^[a-z0-9][a-z0-9-]*$'
+      brand:
+        type: string
+      vendor:
+        type: string
+      group:
+        type: string
+      model:
+        type: string
+      description:
+        type: string
+      images:
+        type: array
+        items:
+          $ref: '#/$defs/image'
+      specs:
+        description: Free-form numeric specs (e.g. sizeMm, maxRpm, airflowCfm, widthCm).
+        type: object
+        additionalProperties:
+          type: number
+      models:
+        description: Exact models within this product series.
+        type: array
+        items:
+          $ref: '#/$defs/variant'

@@ -1,0 +1,38 @@
+# JSON Schema (2020-12) for a GrowRig catalog manifest — the catalog.yaml every
+# catalog repository carries at its root. Authored in YAML; published as JSON at
+# the $id below. See schema/catalog/README.md.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/manifest.json
+title: GrowRig catalog manifest
+description: Identifies a catalog repository and declares which content kinds it provides.
+type: object
+additionalProperties: false
+required: [manifest, id, name, provides]
+properties:
+  manifest:
+    description: Manifest schema version.
+    const: 1
+  id:
+    description: Stable catalog id, lowercase letters, digits and hyphens.
+    type: string
+    pattern: '^[a-z0-9][a-z0-9-]*$'
+  name:
+    description: Human-readable catalog name.
+    type: string
+    minLength: 1
+  description:
+    type: string
+  maintainer:
+    type: string
+  homepage:
+    type: string
+    format: uri
+  provides:
+    description: >-
+      The content kinds this catalog provides. Each names a top-level directory
+      using the standard layout, e.g. devices/<category>/<id>/device.yaml.
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      enum: [devices, integrations, species, inventory, vendors]

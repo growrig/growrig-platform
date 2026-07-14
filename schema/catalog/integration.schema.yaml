@@ -1,0 +1,97 @@
+# JSON Schema (2020-12) for a GrowRig integration bundle:
+# integrations/<category>/<bundle-id>/integration.yaml. A bundle describes an
+# external service GrowRig can connect to — its capabilities, config fields and
+# runtime. A README.md and icon.svg may sit beside it.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/integration.json
+title: GrowRig integration bundle
+description: An external-service integration bundle definition.
+type: object
+additionalProperties: false
+required: [id, name, category, capabilities]
+properties:
+  id:
+    type: string
+    pattern: '^[a-z0-9][a-z0-9-]*$'
+  name:
+    type: string
+    minLength: 1
+  version:
+    type: string
+  category:
+    description: Presentation grouping (e.g. ai, data, notification).
+    type: string
+    minLength: 1
+  description:
+    type: string
+  capabilities:
+    description: Capability identifiers this bundle implements (e.g. ai.chat, weather.forecast).
+    type: array
+    minItems: 1
+    items:
+      type: string
+      minLength: 1
+  documentation:
+    description: README filename rendered on the integration page (default README.md).
+    type: string
+  config:
+    description: User-configurable fields collected when creating an instance.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [key, label, type]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        type:
+          description: Input kind (e.g. text, password, url, number, select).
+          type: string
+          minLength: 1
+        required:
+          type: boolean
+        secret:
+          description: Store encrypted at rest and never return via the API.
+          type: boolean
+        default:
+          type: [string, number, boolean]
+        placeholder:
+          type: string
+        help:
+          type: string
+  runtime:
+    description: How the bundle runs. type "builtin" uses compiled code; "http" is defined here.
+    type: object
+    additionalProperties: false
+    required: [type]
+    properties:
+      type:
+        type: string
+        minLength: 1
+      handler:
+        description: Builtin handler id (for type "builtin").
+        type: string
+      test:
+        $ref: '#/$defs/httpRequest'
+      operations:
+        type: object
+        additionalProperties:
+          $ref: '#/$defs/httpRequest'
+$defs:
+  httpRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      urlField:
+        description: Config field key holding the base URL.
+        type: string
+      method:
+        type: string
+      headers:
+        type: object
+        additionalProperties: { type: string }
+      body: true

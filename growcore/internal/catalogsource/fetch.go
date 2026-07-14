@@ -299,5 +299,8 @@ func readManifest(dir string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("invalid catalog: manifest provides %q but the package has no %s/ directory", kind, kind)
 		}
 	}
+	if err := validateCatalogContent(dir, man.Provides); err != nil {
+		return Manifest{}, fmt.Errorf("invalid catalog: %w", err)
+	}
 	return man, nil
 }

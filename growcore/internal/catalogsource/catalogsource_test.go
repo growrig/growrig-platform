@@ -197,7 +197,7 @@ func TestNewMigratesLegacyGitHubSource(t *testing.T) {
 func TestAddPersistsAppliesAndRemovesSource(t *testing.T) {
 	archive := tarArchive(t, []tarEntry{
 		{name: "community-main/catalog.yaml", body: "manifest: 1\nid: community\nname: Community Catalog\nprovides: [devices]\n"},
-		{name: "community-main/devices/sensor/example/device.yaml", body: "brand: Example\n"},
+		{name: "community-main/devices/sensor/example/device.yaml", body: "brand: Example\nmodel: Example Sensor\nconnection: wifi\n"},
 	}, true)
 	repository := "https://gitlab.com/growrig/community"
 	archiveURL := "https://gitlab.com/api/v4/projects/growrig%2Fcommunity/repository/archive.tar.gz?sha=main"

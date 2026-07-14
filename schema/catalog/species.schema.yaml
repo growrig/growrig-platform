@@ -1,0 +1,77 @@
+# JSON Schema (2020-12) for a GrowRig species definition:
+# species/<species-id>/species.yaml. The species id is the directory name.
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://growrig.dev/schema/catalog/species.json
+title: GrowRig species
+description: A crop definition — cultivation stages, cultivar attributes and care actions.
+type: object
+additionalProperties: false
+required: [label, stages]
+properties:
+  label:
+    description: Display name of the species.
+    type: string
+    minLength: 1
+  stages:
+    description: Ordered cultivation sequence with each stage's default daily light hours.
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        lightHours:
+          description: Default daily light hours (0–24) used to seed the photoperiod editor.
+          type: number
+          minimum: 0
+          maximum: 24
+  cultivarAttributes:
+    description: Species-specific fields a cultivar carries; the cultivar form renders them.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [key, label, type]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        type:
+          enum: [text, number, percent, enum]
+        options:
+          description: Allowed values; required in practice for type "enum".
+          type: array
+          items: { type: string }
+        unit:
+          type: string
+  careActions:
+    description: Manual actions a grower can log against this crop's plants.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        icon:
+          description: Lucide icon name.
+          type: string
+        fields:
+          description: Form field keys this action captures (e.g. amount, ph, note, photos).
+          type: array
+          items: { type: string }
+        quick:
+          description: Show as a one-tap quick action.
+          type: boolean
