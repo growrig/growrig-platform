@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -114,7 +115,7 @@
 				if (product.products?.length) selectVariant(product.products[0].id);
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Installation data could not be loaded';
+			error = errMsg(e, 'Installation data could not be loaded');
 		} finally {
 			loading = false;
 		}
@@ -228,7 +229,7 @@
 			}
 			goto(`/env/${environmentId}/settings#devices`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Installation failed';
+			error = errMsg(e, 'Installation failed');
 		} finally {
 			busy = false;
 		}

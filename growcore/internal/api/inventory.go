@@ -40,13 +40,7 @@ func (s *Server) getInventoryProducts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getInventoryProductImage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("category") + "/" + r.PathValue("id")
 	data, mime, ok := inventory.ProductImage(id)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write(data)
+	serveImage(w, r, data, mime, ok, "no-cache")
 }
 
 // --- Inventory items ---
@@ -262,13 +256,7 @@ func (s *Server) getInventoryItemImage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write(data)
+	serveImage(w, r, data, mime, ok, "no-cache")
 }
 
 func (s *Server) deleteInventoryItem(w http.ResponseWriter, r *http.Request) {

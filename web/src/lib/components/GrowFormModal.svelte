@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Grow, StagePresets } from '$lib/types';
 	import { createGrow, updateGrow } from '$lib/api';
 	import { Button, Dialog, Select, DatePicker } from '$lib/components/ui';
@@ -49,7 +50,7 @@
 			open = false;
 			onSaved?.(saved);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
+			err = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

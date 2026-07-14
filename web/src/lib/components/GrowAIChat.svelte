@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
@@ -115,7 +116,7 @@
 			localStorage.setItem(currentChatStorageKey, chat.id);
 			await scrollToLatest();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'The chat could not be loaded.';
+			error = errMsg(e, 'The chat could not be loaded.');
 		}
 	}
 
@@ -233,7 +234,7 @@
 			if (chat.archived) localStorage.removeItem(currentChatStorageKey);
 			else localStorage.setItem(currentChatStorageKey, chat.id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'The chat could not be updated.';
+			error = errMsg(e, 'The chat could not be updated.');
 		} finally {
 			archiving = false;
 		}
@@ -264,7 +265,7 @@
 		} catch (e) {
 			messages = previousMessages;
 			draft = question;
-			error = e instanceof Error ? e.message : 'The assistant could not answer.';
+			error = errMsg(e, 'The assistant could not answer.');
 		} finally {
 			sending = false;
 			stopTimer();

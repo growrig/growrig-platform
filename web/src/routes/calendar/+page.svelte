@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { live } from '$lib/live.svelte';
 	import { preferences } from '$lib/preferences.svelte';
 	import { getCalendar } from '$lib/api';
@@ -80,7 +81,7 @@
 		loadError = null;
 		getCalendar(from, to)
 			.then((r) => (events = r.events))
-			.catch((e) => (loadError = e instanceof Error ? e.message : 'Failed to load calendar'))
+			.catch((e) => (loadError = errMsg(e, 'Failed to load calendar')))
 			.finally(() => (loading = false));
 	});
 

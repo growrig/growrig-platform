@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
@@ -44,7 +45,7 @@
 			}
 			err = '';
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed to load plant';
+			err = errMsg(e, 'Failed to load plant');
 		} finally {
 			loading = false;
 		}
@@ -63,7 +64,7 @@
 			await movePlant(plant.id, envId);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 	let editOpen = $state(false);
@@ -120,7 +121,7 @@
 			editOpen = false;
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		} finally {
 			epBusy = false;
 		}
@@ -160,7 +161,7 @@
 			repotOpen = false;
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		} finally {
 			rpBusy = false;
 		}
@@ -172,7 +173,7 @@
 			await harvestPlant(plant.id);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 	async function discard() {
@@ -181,7 +182,7 @@
 			await removePlant(plant.id);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 

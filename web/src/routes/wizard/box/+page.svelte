@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -45,7 +46,7 @@
 				roomId = room;
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load';
+			error = errMsg(e, 'Failed to load');
 		}
 	});
 
@@ -149,7 +150,7 @@
 
 			await goto(`/env/${tent.id}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create grow box';
+			error = errMsg(e, 'Failed to create grow box');
 			saving = false;
 		}
 	}

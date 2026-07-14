@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Cultivar, Species } from '$lib/types';
 	import { createCultivar, updateCultivar, cultivarImageURL } from '$lib/api';
 	import { Button, Dialog, Select, fieldClass } from '$lib/components/ui';
@@ -102,7 +103,7 @@
 			open = false;
 			onSaved?.(saved);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
+			err = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

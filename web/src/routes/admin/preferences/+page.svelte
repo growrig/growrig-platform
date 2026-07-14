@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { getPreferences, updatePreferences } from '$lib/api';
 	import { Button, Select } from '$lib/components/ui';
@@ -50,7 +51,7 @@
 			timezone = prefs.timezone;
 			locale = prefs.locale;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load preferences';
+			error = errMsg(e, 'Failed to load preferences');
 		} finally {
 			loading = false;
 		}
@@ -67,7 +68,7 @@
 			message = 'Preferences saved';
 			window.dispatchEvent(new CustomEvent('growrig-preferences-updated', { detail: saved }));
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Save failed';
+			error = errMsg(e, 'Save failed');
 		} finally {
 			saving = false;
 		}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -394,18 +395,8 @@ func (s *Server) getEnvironments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := currentUser(r)
-	if allowed, all := s.accessibleEnvIDs(u); !all {
-		filtered := make([]domain.Environment, 0, len(envs))
-		for _, e := range envs {
-			if allowed[e.ID] {
-				filtered = append(filtered, e)
-			}
-		}
-		envs = filtered
-	}
-	if envs == nil {
-		envs = []domain.Environment{}
-	}
+	allowed, all := s.accessibleEnvIDs(u)
+	envs = filterAccessible(envs, allowed, all, func(e domain.Environment) string { return e.ID })
 	writeJSON(w, http.StatusOK, envs)
 }
 
@@ -441,15 +432,7 @@ func (s *Server) getHistory(w http.ResponseWriter, r *http.Request) {
 	// ?hours=N returns a downsampled window (for the timeline); otherwise the
 	// legacy ?limit=N most-recent readings (for sparklines).
 	if v := q.Get("hours"); v != "" {
-		hours := 72.0
-		if n, e := strconv.ParseFloat(v, 64); e == nil && n > 0 && n <= 24*30 {
-			hours = n
-		}
-		buckets := 500
-		if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
-			buckets = n
-		}
-		since := time.Now().Add(-time.Duration(hours * float64(time.Hour)))
+		since, buckets := timeWindow(q, 24*30)
 		readings, err = s.store.ReadingsSince(id, since, buckets)
 	} else {
 		limit := 120
@@ -473,16 +456,7 @@ func (s *Server) getHistory(w http.ResponseWriter, r *http.Request) {
 // getDeviceHistory returns downsampled per-device series (fan rpm, light power)
 // over the last ?hours, for the timeline's optional per-device lines.
 func (s *Server) getDeviceHistory(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	hours := 72.0
-	if n, e := strconv.ParseFloat(q.Get("hours"), 64); e == nil && n > 0 && n <= 24*30 {
-		hours = n
-	}
-	buckets := 500
-	if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
-		buckets = n
-	}
-	since := time.Now().Add(-time.Duration(hours * float64(time.Hour)))
+	since, buckets := timeWindow(r.URL.Query(), 24*30)
 	series, err := s.store.DeviceReadingsSince(r.PathValue("id"), since, buckets)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -497,16 +471,7 @@ func (s *Server) getDeviceHistory(w http.ResponseWriter, r *http.Request) {
 // getSensorHistory returns downsampled per-sensor series (each bound sensor's
 // own readings) over the last ?hours, for the metric-detail modal.
 func (s *Server) getSensorHistory(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	hours := 72.0
-	if n, e := strconv.ParseFloat(q.Get("hours"), 64); e == nil && n > 0 && n <= 24*30 {
-		hours = n
-	}
-	buckets := 500
-	if n, e := strconv.Atoi(q.Get("buckets")); e == nil && n > 0 && n <= 2000 {
-		buckets = n
-	}
-	since := time.Now().Add(-time.Duration(hours * float64(time.Hour)))
+	since, buckets := timeWindow(r.URL.Query(), 24*30)
 	series, err := s.store.SensorReadingsSince(r.PathValue("id"), since, buckets)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -525,18 +490,8 @@ func (s *Server) getBindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := currentUser(r)
-	if allowed, all := s.accessibleEnvIDs(u); !all {
-		filtered := make([]domain.Binding, 0, len(bindings))
-		for _, b := range bindings {
-			if allowed[b.EnvironmentID] {
-				filtered = append(filtered, b)
-			}
-		}
-		bindings = filtered
-	}
-	if bindings == nil {
-		bindings = []domain.Binding{}
-	}
+	allowed, all := s.accessibleEnvIDs(u)
+	bindings = filterAccessible(bindings, allowed, all, func(b domain.Binding) string { return b.EnvironmentID })
 	writeJSON(w, http.StatusOK, bindings)
 }
 
@@ -545,19 +500,8 @@ type cameraImageAdapter interface {
 }
 
 func (s *Server) getCameraImage(w http.ResponseWriter, r *http.Request) {
-	bindings, err := s.store.Bindings()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	var camera domain.Binding
-	for _, binding := range bindings {
-		if binding.ID == r.PathValue("id") && binding.Kind == domain.KindCamera {
-			camera = binding
-			break
-		}
-	}
-	if camera.ID == "" {
+	camera, ok := s.cameraBinding(r.PathValue("id"))
+	if !ok {
 		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
 		return
 	}
@@ -595,19 +539,8 @@ func (s *Server) getCameraImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getCameraLive(w http.ResponseWriter, r *http.Request) {
-	bindings, err := s.store.Bindings()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	var camera domain.Binding
-	for _, binding := range bindings {
-		if binding.ID == r.PathValue("id") && binding.Kind == domain.KindCamera {
-			camera = binding
-			break
-		}
-	}
-	if camera.ID == "" {
+	camera, ok := s.cameraBinding(r.PathValue("id"))
+	if !ok {
 		writeJSON(w, http.StatusNotFound, errBody("camera binding not found"))
 		return
 	}
@@ -787,6 +720,53 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeErr(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, errBody(err.Error()))
+}
+
+// timeWindow parses the shared ?hours/?buckets pair used by the history
+// endpoints and returns the resolved lookback start and downsample bucket
+// count. hours defaults to 72 and is clamped to (0, maxHours]; buckets defaults
+// to 500 and is clamped to (0, 2000].
+func timeWindow(q url.Values, maxHours float64) (since time.Time, buckets int) {
+	hours := 72.0
+	if n, err := strconv.ParseFloat(q.Get("hours"), 64); err == nil && n > 0 && n <= maxHours {
+		hours = n
+	}
+	buckets = 500
+	if n, err := strconv.Atoi(q.Get("buckets")); err == nil && n > 0 && n <= 2000 {
+		buckets = n
+	}
+	return time.Now().Add(-time.Duration(hours * float64(time.Hour))), buckets
+}
+
+// serveImage writes an image blob fetched from the store with the standard
+// headers. ok reports whether the image exists; when false a 404 is written.
+func serveImage(w http.ResponseWriter, r *http.Request, data []byte, mime string, ok bool, cacheControl string) {
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", cacheControl)
+	_, _ = w.Write(data)
+}
+
+// filterAccessible narrows a list to the items whose environment the caller may
+// see. When all is true (admin) the list is returned unchanged; otherwise items
+// are kept only when envOf returns an id in allowed. The result is never nil.
+func filterAccessible[T any](items []T, allowed map[string]bool, all bool, envOf func(T) string) []T {
+	if all {
+		if items == nil {
+			return []T{}
+		}
+		return items
+	}
+	filtered := make([]T, 0, len(items))
+	for _, item := range items {
+		if allowed[envOf(item)] {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }
 
 func withCORS(next http.Handler) http.Handler {

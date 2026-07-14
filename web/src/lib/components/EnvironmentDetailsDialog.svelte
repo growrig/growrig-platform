@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Environment, EnvironmentKind, Location } from '$lib/types';
 	import { updateEnvironment } from '$lib/api';
 	import { volumeM3 } from '$lib/format';
@@ -93,7 +94,7 @@
 			open = false;
 			onSaved?.();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Save failed';
+			error = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

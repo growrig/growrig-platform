@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -34,7 +35,7 @@
 			]);
 			envId = page.url.searchParams.get('env') || environments[0]?.id || '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load';
+			error = errMsg(e, 'Failed to load');
 		}
 	});
 
@@ -45,7 +46,7 @@
 			for (const d of added) await createBinding({ environmentId: envId, ...d });
 			await goto(`/env/${envId}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to add devices';
+			error = errMsg(e, 'Failed to add devices');
 			saving = false;
 		}
 	}

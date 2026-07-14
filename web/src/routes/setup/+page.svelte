@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { auth } from '$lib/auth.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 
@@ -21,7 +22,7 @@
 			await auth.bootstrap(username.trim(), password);
 			// The layout guard routes to the dashboard once authed.
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Setup failed';
+			error = errMsg(err, 'Setup failed');
 			saving = false;
 		}
 	}

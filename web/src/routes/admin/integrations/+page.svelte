@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -49,7 +50,7 @@
 	async function load() {
 		loading = true; error = null;
 		try { [bundles, instances, bindings, grows, environments] = await Promise.all([getIntegrationBundles(), getIntegrationInstances(), getIntegrationBindings(), getGrows(), getEnvironments()]); }
-		catch (e) { error = e instanceof Error ? e.message : 'Failed to load integrations'; }
+		catch (e) { error = errMsg(e, 'Failed to load integrations'); }
 		finally { loading = false; }
 	}
 	function bundle(id: string) { return bundles.find((b) => b.id === id); }
@@ -66,15 +67,15 @@
 			if (editing) await updateIntegrationInstance(editing.id, { name: formName, config: formConfig });
 			else await createIntegrationInstance({ bundleId: selected.id, name: formName, config: formConfig });
 			modalOpen = false; await load();
-		} catch (e) { error = e instanceof Error ? e.message : 'Failed to save integration'; }
+		} catch (e) { error = errMsg(e, 'Failed to save integration'); }
 		finally { saving = false; }
 	}
-	async function toggle(i: IntegrationInstance, enabled: boolean) { try { await updateIntegrationInstance(i.id, { enabled, config: {} }); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to update integration'; } }
-	async function test(i: IntegrationInstance) { testing = i.id; error = null; try { await testIntegrationInstance(i.id); } catch (e) { error = e instanceof Error ? e.message : 'Connection test failed'; } finally { testing = null; await load(); } }
-	async function remove(i: IntegrationInstance) { if (!confirm(`Remove “${i.name}”? Feature bindings using it will also be removed.`)) return; try { await deleteIntegrationInstance(i.id); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to remove integration'; } }
+	async function toggle(i: IntegrationInstance, enabled: boolean) { try { await updateIntegrationInstance(i.id, { enabled, config: {} }); await load(); } catch (e) { error = errMsg(e, 'Failed to update integration'); } }
+	async function test(i: IntegrationInstance) { testing = i.id; error = null; try { await testIntegrationInstance(i.id); } catch (e) { error = errMsg(e, 'Connection test failed'); } finally { testing = null; await load(); } }
+	async function remove(i: IntegrationInstance) { if (!confirm(`Remove “${i.name}”? Feature bindings using it will also be removed.`)) return; try { await deleteIntegrationInstance(i.id); await load(); } catch (e) { error = errMsg(e, 'Failed to remove integration'); } }
 	function capable(capability: string) { return instances.filter((i) => i.enabled && bundle(i.bundleId)?.capabilities.includes(capability)); }
 	function selectFeature(value: string) { bindFeature = value; bindCapability = features.find((f) => f.value === value)?.capability ?? ''; bindInstance = capable(bindCapability)[0]?.id ?? ''; }
-	async function addBinding() { if (!bindInstance) return; bindingSaving = true; const growId = bindScope.startsWith('grow:') ? bindScope.slice(5) : ''; const environmentId = bindScope.startsWith('environment:') ? bindScope.slice(12) : ''; try { await saveIntegrationBinding({ feature: bindFeature, growId, environmentId, capability: bindCapability, instanceId: bindInstance }); await load(); } catch (e) { error = e instanceof Error ? e.message : 'Failed to save binding'; } finally { bindingSaving = false; } }
+	async function addBinding() { if (!bindInstance) return; bindingSaving = true; const growId = bindScope.startsWith('grow:') ? bindScope.slice(5) : ''; const environmentId = bindScope.startsWith('environment:') ? bindScope.slice(12) : ''; try { await saveIntegrationBinding({ feature: bindFeature, growId, environmentId, capability: bindCapability, instanceId: bindInstance }); await load(); } catch (e) { error = errMsg(e, 'Failed to save binding'); } finally { bindingSaving = false; } }
 	async function removeBinding(id: string) { await deleteIntegrationBinding(id); await load(); }
 	function instanceName(id: string) { return instances.find((i) => i.id === id)?.name ?? 'Missing instance'; }
 	function scopeName(binding: IntegrationBinding) { if (binding.growId) return `Grow · ${grows.find((g) => g.id === binding.growId)?.name ?? binding.growId}`; if (binding.environmentId) return `Environment · ${environments.find((e) => e.id === binding.environmentId)?.name ?? binding.environmentId}`; return 'All GrowRig'; }

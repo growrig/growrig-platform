@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { CareActionDef, CareField, GrowCareActionConfig } from '$lib/types';
 	import { saveCareConfig } from '$lib/api';
 	import { Button, Dialog } from '$lib/components/ui';
@@ -102,7 +103,7 @@
 			open = false;
 			onSaved?.(res.actions);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed to save';
+			err = errMsg(e, 'Failed to save');
 		} finally {
 			busy = false;
 		}
@@ -117,7 +118,7 @@
 			open = false;
 			onSaved?.(res.actions);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed to reset';
+			err = errMsg(e, 'Failed to reset');
 		} finally {
 			busy = false;
 		}

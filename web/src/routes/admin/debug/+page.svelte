@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { live } from '$lib/live.svelte';
 	import { getInfo, getDatabaseTables, CORE_URL, wsURL, clearActivity, restartCore } from '$lib/api';
@@ -23,7 +24,7 @@
 		try {
 			await clearActivity();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : String(e);
+			actionError = errMsg(e, String(e));
 		} finally {
 			clearing = false;
 		}
@@ -50,7 +51,7 @@
 			adapter = (await getInfo()).adapter;
 			infoError = null;
 		} catch (e) {
-			infoError = e instanceof Error ? e.message : String(e);
+			infoError = errMsg(e, String(e));
 		}
 	}
 
@@ -60,7 +61,7 @@
 			databaseTables = await getDatabaseTables();
 			databaseError = null;
 		} catch (e) {
-			databaseError = e instanceof Error ? e.message : String(e);
+			databaseError = errMsg(e, String(e));
 		} finally {
 			databaseLoading = false;
 		}

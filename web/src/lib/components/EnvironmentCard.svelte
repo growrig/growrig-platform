@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Environment, Location } from '$lib/types';
 	import { updateEnvironment } from '$lib/api';
 	import { formatDimensions, volumeM3 } from '$lib/format';
@@ -52,7 +53,7 @@
 			flash('ok', 'Targets and safety limits saved');
 			onChanged();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Save failed');
+			flash('err', errMsg(e, 'Save failed'));
 		} finally { busy = false; }
 	}
 </script>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { untrack } from 'svelte';
 	import type { GeocodeResult, Location } from '$lib/types';
 	import { geocode, createLocation, updateLocation } from '$lib/api';
@@ -81,7 +82,7 @@
 				lon = null;
 			}
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Could not save location';
+			err = errMsg(e, 'Could not save location');
 		} finally {
 			busy = false;
 		}

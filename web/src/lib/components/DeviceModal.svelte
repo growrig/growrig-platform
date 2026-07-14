@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Binding, CameraType, CatalogProduct, DiscoveredEntity, FanType, Measurement, Role } from '$lib/types';
 	import { createBinding, updateBinding } from '$lib/api';
 	import { Button, Dialog, Select, Switch, type SelectItem } from '$lib/components/ui';
@@ -126,7 +127,7 @@
 			open = false;
 			onSaved();
 		} catch (e) {
-			flash?.('err', e instanceof Error ? e.message : 'Add failed');
+			flash?.('err', errMsg(e, 'Add failed'));
 		} finally {
 			busy = false;
 		}
@@ -178,7 +179,7 @@
 			open = false;
 			onSaved();
 		} catch (e) {
-			flash?.('err', e instanceof Error ? e.message : 'Save failed');
+			flash?.('err', errMsg(e, 'Save failed'));
 		} finally {
 			busy = false;
 		}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { untrack } from 'svelte';
 	import type { Grow, LightSchedule, LightScheduleMode, StageLightDefaults } from '$lib/types';
 	import { setControlGrow, setSchedule } from '$lib/api';
@@ -108,7 +109,7 @@
 			open = false;
 			onSaved?.();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
+			err = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

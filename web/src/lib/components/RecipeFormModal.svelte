@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { FeedingRecipe, FeedingProduct, Species } from '$lib/types';
 	import { createRecipe, updateRecipe, type RecipeInput } from '$lib/api';
 	import { Button, Dialog, Select } from '$lib/components/ui';
@@ -160,7 +161,7 @@
 			open = false;
 			onSaved?.(saved);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
+			err = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

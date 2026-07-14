@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { CareAction, CareField, FeedingRecipe, GrowDetail, LogCareInput, PlantDetail } from '$lib/types';
 	import { logCare } from '$lib/api';
 	import { Button, Dialog, Select } from '$lib/components/ui';
@@ -146,7 +147,7 @@
 			open = false;
 			onLogged?.();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed to log care';
+			err = errMsg(e, 'Failed to log care');
 		} finally {
 			busy = false;
 		}

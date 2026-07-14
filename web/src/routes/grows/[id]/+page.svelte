@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -107,7 +108,7 @@
 			err = '';
 			if (grow.species && careDefs.length === 0) loadCareActions(grow.species);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed to load grow';
+			err = errMsg(e, 'Failed to load grow');
 		} finally {
 			loading = false;
 		}
@@ -146,7 +147,7 @@
 			await changeStage(grow.id, stage);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 
@@ -171,7 +172,7 @@
 			moveOpen = false;
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		} finally {
 			mpBusy = false;
 		}
@@ -229,7 +230,7 @@
 			editOpen = false;
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		} finally {
 			epBusy = false;
 		}
@@ -241,7 +242,7 @@
 			await harvestPlant(plant.id);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 	async function discard(plant: PlantDetail) {
@@ -250,7 +251,7 @@
 			await removePlant(plant.id);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 
@@ -260,7 +261,7 @@
 			await completeGrow(grow.id);
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 	async function destroy() {
@@ -269,7 +270,7 @@
 			await deleteGrow(grow.id);
 			goto('/grows');
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		}
 	}
 
@@ -324,7 +325,7 @@
 			apPotType = '';
 			await reload();
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Failed';
+			err = errMsg(e, 'Failed');
 		} finally {
 			apBusy = false;
 		}

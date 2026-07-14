@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { climateTone, titleCase, toneClass, valueNow, vpdZone } from '$lib/format';
@@ -67,7 +68,7 @@
 			// The live feed pushes the new room on its next reconciliation tick.
 			addingRoom = false;
 		} catch (e) {
-			roomError = e instanceof Error ? e.message : 'Failed to create room';
+			roomError = errMsg(e, 'Failed to create room');
 		} finally {
 			savingRoom = false;
 		}

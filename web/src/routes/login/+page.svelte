@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { auth } from '$lib/auth.svelte';
 	import { passkeysSupported } from '$lib/webauthn';
 	import Sprout from '@lucide/svelte/icons/sprout';
@@ -23,7 +24,7 @@
 			// The layout guard routes to the dashboard once authed.
 		} catch (err) {
 			// A user cancelling the native prompt shouldn't read as a hard error.
-			const msg = err instanceof Error ? err.message : 'Passkey sign-in failed';
+			const msg = errMsg(err, 'Passkey sign-in failed');
 			if (!/cancel|abort|not allowed/i.test(msg)) error = msg;
 		} finally {
 			passkeyBusy = false;
@@ -40,7 +41,7 @@
 			else await auth.login(username.trim(), password);
 			// The layout guard routes to the dashboard once authed.
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Sign in failed';
+			error = errMsg(err, 'Sign in failed');
 			saving = false;
 		}
 	}

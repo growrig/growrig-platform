@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { getHomeAssistant, reloadHomeAssistant, updateHomeAssistant } from '$lib/api';
 	import type { HAStatus, HAComponent, HAUpdateTarget } from '$lib/types';
@@ -24,7 +25,7 @@
 			status = await getHomeAssistant();
 			error = null;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load Home Assistant status';
+			error = errMsg(e, 'Failed to load Home Assistant status');
 		} finally {
 			loading = false;
 		}
@@ -60,7 +61,7 @@
 			await reloadHomeAssistant();
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to check for updates';
+			error = errMsg(e, 'Failed to check for updates');
 		} finally {
 			busy = null;
 		}
@@ -75,7 +76,7 @@
 			// The Supervisor applies updates asynchronously; refresh shortly after.
 			setTimeout(load, 1500);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to start update';
+			error = errMsg(e, 'Failed to start update');
 		} finally {
 			busy = null;
 		}

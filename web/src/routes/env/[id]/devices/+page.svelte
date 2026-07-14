@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -50,7 +51,7 @@
 			]);
 			error = null;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to reach Grow Core';
+			error = errMsg(e, 'Failed to reach Grow Core');
 		} finally {
 			loading = false;
 		}
@@ -147,7 +148,7 @@
 			flash('ok', `${b.name} is now the primary light`);
 			reload();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Update failed');
+			flash('err', errMsg(e, 'Update failed'));
 		}
 	}
 
@@ -177,7 +178,7 @@
 			flash('ok', 'Device removed');
 			reload();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Delete failed');
+			flash('err', errMsg(e, 'Delete failed'));
 		}
 	}
 
@@ -188,7 +189,7 @@
 			flash('ok', 'Device removed');
 			reload();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Delete failed');
+			flash('err', errMsg(e, 'Delete failed'));
 		}
 	}
 </script>

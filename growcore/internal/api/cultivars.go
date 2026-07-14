@@ -178,13 +178,7 @@ func (s *Server) getCultivarImage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "no-cache")
-	_, _ = w.Write(data)
+	serveImage(w, r, data, mime, ok, "no-cache")
 }
 
 // decodeDataURL parses a "data:<mime>;base64,<payload>" image URL. It returns

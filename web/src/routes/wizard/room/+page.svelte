@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -25,7 +26,7 @@
 		try {
 			[catalog, discovered] = await Promise.all([getCatalog(), getDiscovery()]);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load';
+			error = errMsg(e, 'Failed to load');
 		}
 	});
 
@@ -47,7 +48,7 @@
 			for (const d of devices) await createBinding({ environmentId: room.id, ...d });
 			await goto(`/env/${room.id}`);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create room';
+			error = errMsg(e, 'Failed to create room');
 			saving = false;
 		}
 	}

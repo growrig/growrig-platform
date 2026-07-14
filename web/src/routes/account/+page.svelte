@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { getPasskeys, deletePasskey, type Passkey } from '$lib/api';
@@ -24,7 +25,7 @@
 		try {
 			passkeys = await getPasskeys();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load passkeys';
+			error = errMsg(e, 'Failed to load passkeys');
 		} finally {
 			loading = false;
 		}
@@ -39,7 +40,7 @@
 			newName = '';
 			await load();
 		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Failed to add passkey';
+			const msg = errMsg(e, 'Failed to add passkey');
 			if (!/cancel|abort|not allowed/i.test(msg)) error = msg;
 		} finally {
 			registering = false;
@@ -53,7 +54,7 @@
 			await deletePasskey(p.id);
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to remove passkey';
+			error = errMsg(e, 'Failed to remove passkey');
 		}
 	}
 

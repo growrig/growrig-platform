@@ -5,6 +5,7 @@
 // unavailable. The WebSocket is then only responsible for *live updates* — it
 // pushes a fresh snapshot on every reconciliation tick. Auto-reconnects with
 // backoff and keeps the most recent snapshot across drops.
+import { errMsg } from '$lib/errors';
 import { getState, wsURL } from './api';
 import type { Snapshot } from './types';
 
@@ -60,7 +61,7 @@ class LiveState {
 			if (this.#stopped || this.lastSource === 'ws') return;
 			this.#apply(snap, 'rest');
 		} catch (err) {
-			this.lastError = err instanceof Error ? err.message : String(err);
+			this.lastError = errMsg(err, String(err));
 		}
 	}
 

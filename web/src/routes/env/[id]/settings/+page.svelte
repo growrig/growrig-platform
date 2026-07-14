@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -34,7 +35,7 @@
 			[environments, bindings, locations] = await Promise.all([getEnvironments(), getBindings(), getLocations()]);
 			error = null;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to reach Grow Core';
+			error = errMsg(e, 'Failed to reach Grow Core');
 		} finally {
 			loading = false;
 		}
@@ -56,7 +57,7 @@
 			await deleteEnvironment(id!);
 			await goto('/');
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Remove failed';
+			error = errMsg(e, 'Remove failed');
 			removing = false;
 		}
 	}
@@ -68,7 +69,7 @@
 			yamlText = await getEnvironmentYAML(id!);
 			yamlOpen = true;
 		} catch (e) {
-			yamlError = e instanceof Error ? e.message : 'Could not load YAML';
+			yamlError = errMsg(e, 'Could not load YAML');
 		} finally {
 			yamlBusy = false;
 		}
@@ -82,7 +83,7 @@
 			yamlOpen = false;
 			window.location.reload();
 		} catch (e) {
-			yamlError = e instanceof Error ? e.message : 'Could not save YAML';
+			yamlError = errMsg(e, 'Could not save YAML');
 		} finally {
 			yamlBusy = false;
 		}

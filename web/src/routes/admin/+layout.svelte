@@ -6,10 +6,12 @@
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import Library from '@lucide/svelte/icons/library';
+	import Activity from '@lucide/svelte/icons/activity';
 
 	let { children } = $props();
 
 	const tabs = [
+		{ href: '/admin/status', label: 'Status', icon: Activity },
 		{ href: '/admin/preferences', label: 'Preferences', icon: SlidersHorizontal },
 		{ href: '/admin/users', label: 'Users', icon: Users },
 		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },

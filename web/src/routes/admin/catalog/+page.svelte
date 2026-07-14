@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import GitFork from '@lucide/svelte/icons/git-fork';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -31,7 +32,7 @@
 			sources = result.sources;
 			mergedKinds = result.mergedKinds;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load catalog sources';
+			error = errMsg(e, 'Failed to load catalog sources');
 		} finally {
 			loading = false;
 		}
@@ -47,7 +48,7 @@
 			ref = '';
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to add catalog source';
+			error = errMsg(e, 'Failed to add catalog source');
 		} finally {
 			saving = false;
 		}
@@ -60,7 +61,7 @@
 			await refreshCatalogSource(source.id);
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to refresh catalog source';
+			error = errMsg(e, 'Failed to refresh catalog source');
 		} finally {
 			refreshing = null;
 		}
@@ -73,7 +74,7 @@
 			await deleteCatalogSource(source.id);
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to remove catalog source';
+			error = errMsg(e, 'Failed to remove catalog source');
 		}
 	}
 

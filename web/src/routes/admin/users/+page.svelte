@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
 	import {
@@ -53,7 +54,7 @@
 				getSignupSetting().then((s) => s.enabled)
 			]);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load';
+			error = errMsg(e, 'Failed to load');
 		} finally {
 			loading = false;
 		}
@@ -88,7 +89,7 @@
 			await setSignupSetting(next);
 		} catch (e) {
 			signupEnabled = prev;
-			error = e instanceof Error ? e.message : 'Failed to update setting';
+			error = errMsg(e, 'Failed to update setting');
 		}
 	}
 
@@ -114,7 +115,7 @@
 			showNew = false;
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create user';
+			error = errMsg(e, 'Failed to create user');
 		} finally {
 			creating = false;
 		}
@@ -141,7 +142,7 @@
 			await load();
 			if (u.id === auth.user?.id) await auth.refresh();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save user';
+			error = errMsg(e, 'Failed to save user');
 		} finally {
 			savingEdit = false;
 		}
@@ -153,7 +154,7 @@
 			await updateUser(u.id, { disabled });
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to update user';
+			error = errMsg(e, 'Failed to update user');
 		}
 	}
 
@@ -164,7 +165,7 @@
 			await deleteUser(u.id);
 			await load();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to delete user';
+			error = errMsg(e, 'Failed to delete user');
 		}
 	}
 

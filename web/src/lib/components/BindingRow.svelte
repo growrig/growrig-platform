@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { Binding, Role } from '$lib/types';
 	import { updateBinding, deleteBinding } from '$lib/api';
 	import { measurementLabel } from '$lib/format';
@@ -40,7 +41,7 @@
 			flash('ok', 'Role updated');
 			onChanged();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Update failed');
+			flash('err', errMsg(e, 'Update failed'));
 		}
 	}
 
@@ -50,7 +51,7 @@
 			flash('ok', 'Removed');
 			onChanged();
 		} catch (e) {
-			flash('err', e instanceof Error ? e.message : 'Delete failed');
+			flash('err', errMsg(e, 'Delete failed'));
 		}
 	}
 </script>

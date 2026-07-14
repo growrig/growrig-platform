@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import type { InventoryCategory, InventoryItem, InventoryProduct, InventoryStatus } from '$lib/types';
 	import {
 		createInventoryItem,
@@ -176,7 +177,7 @@
 			open = false;
 			onSaved?.(saved);
 		} catch (e) {
-			err = e instanceof Error ? e.message : 'Save failed';
+			err = errMsg(e, 'Save failed');
 		} finally {
 			busy = false;
 		}

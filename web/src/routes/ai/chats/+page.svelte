@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { getAIChats, setAIChatArchived } from '$lib/api';
 	import type { AIChat } from '$lib/api';
@@ -25,7 +26,7 @@
 		try {
 			chats = await getAIChats();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Chats could not be loaded.';
+			error = errMsg(e, 'Chats could not be loaded.');
 		} finally {
 			loading = false;
 		}
@@ -38,7 +39,7 @@
 			const updated = await setAIChatArchived(chat.id, !chat.archived);
 			chats = chats.map((item) => item.id === chat.id ? { ...item, ...updated } : item);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Chat could not be updated.';
+			error = errMsg(e, 'Chat could not be updated.');
 		} finally {
 			updating = '';
 		}
