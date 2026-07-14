@@ -274,8 +274,8 @@
 	{#if loading}
 		<p class="text-sm text-rig-400">Loading…</p>
 	{:else}
-		<div class="overflow-hidden rounded-xl border border-rig-800">
-			<table class="w-full text-sm">
+		<div class="overflow-x-auto rounded-xl border border-rig-800">
+			<table class="w-full min-w-[32rem] text-sm">
 				<thead class="bg-rig-900/60 text-left text-xs uppercase tracking-wide text-rig-500">
 					<tr>
 						<th class="px-4 py-2 font-medium">User</th>

@@ -61,9 +61,11 @@ func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	name := strings.TrimSpace(b.Name)
 	grow := domain.Grow{
-		ID:           id(b.Name, "grow"),
-		Name:         strings.TrimSpace(b.Name),
+		ID:           id(name, "grow"),
+		Name:         name,
+		Slug:         domain.Slugify(name),
 		Species:      species,
 		Stage:        stages[0],
 		Stages:       stages,
@@ -97,6 +99,7 @@ func (s *Server) updateGrow(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(b.Name) != "" {
 		grow.Name = strings.TrimSpace(b.Name)
+		grow.Slug = domain.Slugify(grow.Name)
 	}
 	species, stages, ok := speciesStages(b.Species)
 	if !ok {
@@ -443,6 +446,7 @@ func (s *Server) updatePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	unit.Label = strings.TrimSpace(b.Label)
+	unit.Slug = domain.Slugify(unit.Label)
 	unit.Cultivar = strings.TrimSpace(b.Cultivar)
 	if b.Tracking == domain.TrackIndividual || b.Tracking == domain.TrackGroup {
 		unit.Tracking = b.Tracking

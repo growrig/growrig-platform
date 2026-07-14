@@ -80,6 +80,28 @@ Core** from *Local add-ons*. The add-on reaches Home Assistant through the
 Supervisor proxy (no token needed) and serves the dashboard on host port `8099`.
 See [`addon/growrig/README.md`](addon/growrig/README.md) for details.
 
+## Releasing
+
+GrowRig ships as a single Home Assistant add-on, so there is one version — the
+git tag `vX.Y.Z` is the source of truth. Note changes under `## Unreleased` in
+[`CHANGELOG.md`](CHANGELOG.md) as you go, then from a clean `main`:
+
+```bash
+make release VERSION=0.2.0
+```
+
+This bumps the add-on manifest, dates the CHANGELOG, tags `v0.2.0`, and pushes.
+It first checks the `catalog/` submodule is pinned to the latest
+[catalog release](https://github.com/growrig/growrig-catalog) — release the
+catalog first if it isn't. The tag triggers
+[`release.yml`](.github/workflows/release.yml): run `make test`, verify the
+manifest matches the tag, publish the per-arch add-on images to GHCR, and cut
+the GitHub Release. Every PR runs the same `make test` via
+[`ci.yml`](.github/workflows/ci.yml) so `main` stays releasable.
+
+Finally, bump the version in the public `growrig-ha-addons` repo's `config.yaml`
+so Home Assistant offers users the update.
+
 ## Configuration
 
 Grow Core is configured with YAML; the same binary runs in three modes, selected

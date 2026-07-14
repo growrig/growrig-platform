@@ -1,0 +1,158 @@
+# Release GrowRig: test, publish the add-on images to GHCR, and cut a GitHub
+# Release. Driven by the git tag, which is the single source of truth for the
+# version (see scripts/release.sh / `make release`).
+#
+# The per-arch images are what the public `growrig-ha-addons` repository installs
+# (its config.yaml sets `image: ghcr.io/growrig/growcore-{arch}`), so no one has
+# to compile on their Home Assistant device. The thin Dockerfile in addon/growrig/
+# is reused here — CI runs `make addon` to produce the embedded binaries first,
+# then buildx wraps each onto the matching Home Assistant base image.
+#
+# Trigger: push a tag like `v0.2.0` (image tag becomes `0.2.0` + `latest`, and a
+# GitHub Release is created from the CHANGELOG), or run manually via
+# workflow_dispatch with an explicit version to republish images only.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image tag to publish (e.g. 0.2.0)"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: growrig
+
+jobs:
+  # Gate: the same test suite CI runs on every PR must pass before we publish.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify catalog submodule is at latest release
+        run: scripts/check-catalog.sh
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: growcore/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web deps
+        run: cd web && npm ci
+      - name: Test (Go + web type-check)
+        run: make test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      packages: write # push images to GHCR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
+
+      # On a tag release, the manifest version must match the tag — this is what
+      # guarantees the git tag, the add-on manifest, and the image tag never drift.
+      - name: Verify manifest matches tag
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          manifest="$(sed -n 's/^version: *"\(.*\)"/\1/p' addon/growrig/config.yaml)"
+          if [ "$manifest" != "$VERSION" ]; then
+            echo "::error::addon/growrig/config.yaml version ($manifest) != tag ($VERSION)." \
+                 "Cut releases with 'make release VERSION=$VERSION'." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Cross-compile embedded binaries
+        run: make addon # -> addon/growrig/bin/growcore.{aarch64,amd64,armv7}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push per-arch images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # HA arch -> buildx platform. The base image is arch-specific, so the
+          # platform must match it (QEMU emulates non-native builds).
+          for entry in "aarch64 linux/arm64" "amd64 linux/amd64" "armv7 linux/arm/v7"; do
+            set -- $entry; ha=$1; platform=$2
+            image="${REGISTRY}/${NAMESPACE}/growcore-${ha}"
+            echo "::group::${image}:${VERSION} (${platform})"
+            docker buildx build \
+              --platform "${platform}" \
+              --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ha}-base:latest" \
+              --build-arg "BUILD_ARCH=${ha}" \
+              --label "org.opencontainers.image.source=https://github.com/${NAMESPACE}/growrig" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --tag "${image}:${VERSION}" \
+              --tag "${image}:latest" \
+              --push \
+              addon/growrig
+            echo "::endgroup::"
+          done
+
+      # Cut the GitHub Release from the matching CHANGELOG section. Tag pushes only.
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="$(awk -v ver="$VERSION" '
+            $0 ~ "^## " ver ( " " ) { grab=1; next }
+            grab && /^## / { exit }
+            grab { print }
+          ' CHANGELOG.md)"
+          [ -n "$notes" ] || notes="See CHANGELOG.md."
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$notes" \
+            --verify-tag

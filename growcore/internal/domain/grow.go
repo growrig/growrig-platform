@@ -1,6 +1,20 @@
 package domain
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
+
+var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Slugify turns a display name into a URL-friendly slug: lowercased, with each
+// run of non-alphanumeric characters collapsed to a single hyphen and the
+// leading/trailing hyphens trimmed. It returns "" for names with no
+// alphanumeric content, letting callers supply their own fallback.
+func Slugify(name string) string {
+	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
+}
 
 // The cultivation layer sits beside the physical environment layer. A Grow is a
 // crop-neutral cultivation run (species, cultivar, a configurable stage
@@ -74,6 +88,7 @@ var DefaultStageLightHours = map[string]float64{
 type Grow struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
+	Slug         string     `json:"slug"` // URL-friendly form of Name, derived on save
 	Species      string     `json:"species"`
 	Stage        string     `json:"stage"`  // current stage name (one of Stages)
 	Stages       []string   `json:"stages"` // ordered sequence, derived from Species
@@ -89,6 +104,7 @@ type PlantUnit struct {
 	ID        string       `json:"id"`
 	GrowID    string       `json:"growId"`
 	Label     string       `json:"label"`
+	Slug      string       `json:"slug"` // URL-friendly form of Label, derived on save
 	Cultivar  string       `json:"cultivar"`
 	Tracking  TrackingMode `json:"tracking"`
 	Quantity  int          `json:"quantity"` // >1 for groups; 1 for individuals

@@ -31,6 +31,34 @@ func TestGrowRoundTrip(t *testing.T) {
 	if got.Status != domain.GrowActive {
 		t.Fatalf("status not persisted: %q", got.Status)
 	}
+	// Slug is derived from the name on save.
+	if got.Slug != "basil-batch" {
+		t.Fatalf("slug not derived from name: %q", got.Slug)
+	}
+}
+
+func TestSlugBackfill(t *testing.T) {
+	st := open(t)
+	// Simulate a legacy row written before the slug column was populated.
+	if _, err := st.db.Exec(
+		`INSERT INTO grows (id, name, slug, species, stage, stages, started_at, stage_started, status, notes)
+		 VALUES ('grow-legacy', 'Blue Dream', '', 'cannabis', 'vegetative', '[]', 0, 0, 'active', '')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(
+		`INSERT INTO plant_units (id, grow_id, label, slug, cultivar, tracking, quantity, status, created_at)
+		 VALUES ('plant-legacy', 'grow-legacy', 'Tray One', '', '', 'group', 1, 'active', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.backfillSlugs(); err != nil {
+		t.Fatal(err)
+	}
+	if g, _, _ := st.Grow("grow-legacy"); g.Slug != "blue-dream" {
+		t.Fatalf("grow slug not backfilled: %q", g.Slug)
+	}
+	if u, _, _ := st.PlantUnit("plant-legacy"); u.Slug != "tray-one" {
+		t.Fatalf("plant slug not backfilled: %q", u.Slug)
+	}
 }
 
 func TestBulkCreateAndMovePlant(t *testing.T) {

@@ -136,6 +136,56 @@ func (s *Store) CareEvents(growID string, limit, offset int) ([]domain.CareEvent
 	return events, nil
 }
 
+// AllCareEvents returns care events across every grow whose OccurredAt falls in
+// [from, to], newest first, each with its applications attached. It backs the
+// calendar's cross-grow view. A zero from or to leaves that bound open.
+func (s *Store) AllCareEvents(from, to time.Time, limit int) ([]domain.CareEvent, error) {
+	if limit <= 0 || limit > 2000 {
+		limit = 1000
+	}
+	q := `SELECT ` + careCols + ` FROM care_events WHERE 1=1`
+	var args []any
+	if !from.IsZero() {
+		q += ` AND occurred_at >= ?`
+		args = append(args, from.UnixMilli())
+	}
+	if !to.IsZero() {
+		q += ` AND occurred_at <= ?`
+		args = append(args, to.UnixMilli())
+	}
+	q += ` ORDER BY occurred_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []domain.CareEvent
+	var ids []string
+	for rows.Next() {
+		e, err := scanCareEvent(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+		ids = append(ids, e.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	apps, err := s.applicationsByEvent(ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range events {
+		events[i].Applications = apps[events[i].ID]
+		if events[i].Applications == nil {
+			events[i].Applications = []domain.CareApplication{}
+		}
+	}
+	return events, nil
+}
+
 // CareEvent returns a single care event with its applications.
 func (s *Store) CareEvent(id string) (domain.CareEvent, bool, error) {
 	e, err := scanCareEvent(s.db.QueryRow(`SELECT `+careCols+` FROM care_events WHERE id=?`, id).Scan)

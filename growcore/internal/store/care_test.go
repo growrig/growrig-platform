@@ -176,6 +176,42 @@ func TestGrowCareConfigRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAllCareEvents(t *testing.T) {
+	st := open(t)
+	ids := seedCareGrow(t, st)
+	// A second grow so we can prove the feed spans grows.
+	_ = st.SaveGrow(domain.Grow{ID: "grow-2", Name: "Basil", Species: "basil", Stages: domain.StagePresets["basil"], Status: domain.GrowActive})
+	u2, _ := st.BulkCreatePlants("grow-2", 1, domain.TrackGroup, 4, "Tray", "", "tent-a", time.Now())
+
+	now := time.Now()
+	_ = st.SaveCareEvent(domain.CareEvent{ID: "c-old", GrowID: "grow-1", Type: "water", OccurredAt: now.AddDate(0, 0, -40),
+		Applications: []domain.CareApplication{{ID: "a1", PlantUnitID: ids[0], AmountML: 500}}})
+	_ = st.SaveCareEvent(domain.CareEvent{ID: "c-mid", GrowID: "grow-1", Type: "feed", OccurredAt: now.AddDate(0, 0, -2),
+		Applications: []domain.CareApplication{{ID: "a2", PlantUnitID: ids[0], AmountML: 900}, {ID: "a3", PlantUnitID: ids[1], AmountML: 900}}})
+	_ = st.SaveCareEvent(domain.CareEvent{ID: "c-other", GrowID: "grow-2", Type: "water", OccurredAt: now.AddDate(0, 0, -1),
+		Applications: []domain.CareApplication{{ID: "a4", PlantUnitID: u2[0].ID, AmountML: 1200}}})
+
+	// A 10-day window drops the 40-day-old event but keeps both recent ones,
+	// across the two grows, newest first.
+	got, err := st.AllCareEvents(now.AddDate(0, 0, -10), now.Add(time.Hour), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 events in window, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != "c-other" || got[1].ID != "c-mid" {
+		t.Fatalf("events not newest-first across grows: %s, %s", got[0].ID, got[1].ID)
+	}
+	if len(got[1].Applications) != 2 || got[1].TotalML() != 1800 {
+		t.Fatalf("applications not hydrated: %+v", got[1])
+	}
+	// An open (zero) lower bound reaches the oldest event too.
+	if all, _ := st.AllCareEvents(time.Time{}, now.Add(time.Hour), 0); len(all) != 3 {
+		t.Fatalf("expected 3 events with open lower bound, got %d", len(all))
+	}
+}
+
 func TestDeleteGrowCascadesCare(t *testing.T) {
 	st := open(t)
 	ids := seedCareGrow(t, st)

@@ -139,6 +139,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/grows/{id}/stage", s.requireAdmin(s.changeStage))
 	mux.HandleFunc("POST /api/grows/{id}/complete", s.requireAdmin(s.completeGrow))
 	mux.HandleFunc("POST /api/grows/{id}/plants", s.requireAdmin(s.createPlants))
+	mux.HandleFunc("GET /api/calendar", s.requireAuth(s.getCalendar))
 	mux.HandleFunc("GET /api/grows/{id}/care", s.requireAuth(s.getCare))
 	mux.HandleFunc("POST /api/grows/{id}/care", s.requireAdmin(s.logCare))
 	mux.HandleFunc("GET /api/grows/{id}/care-config", s.requireAuth(s.getCareConfig))

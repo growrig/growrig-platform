@@ -8,6 +8,7 @@ import type {
 	AuthStatus,
 	BindingKind,
 	CameraType,
+	CalendarResponse,
 	CareActionDef,
 	CareEvent,
 	CareHistory,
@@ -368,6 +369,16 @@ export const getEnvironmentPlants = (envID: string) =>
 	json<EnvPlantsGroup[]>(`/api/environments/${encodeURIComponent(envID)}/plants`);
 
 // --- care (the grow's manual-action journal) ---
+
+/** Care events across every grow in a [from, to] window (YYYY-MM-DD), for the
+ *  calendar. Bounds are optional; the server defaults to a window around now. */
+export const getCalendar = (from?: string, to?: string) => {
+	const q = new URLSearchParams();
+	if (from) q.set('from', from);
+	if (to) q.set('to', to);
+	const qs = q.toString();
+	return json<CalendarResponse>(`/api/calendar${qs ? `?${qs}` : ''}`);
+};
 
 /** A grow's care history plus a summary (last action per type, skipped plants). */
 export const getCare = (growID: string) =>

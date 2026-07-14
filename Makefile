@@ -13,6 +13,7 @@
 #   make run          build then run the single binary (simulator)
 #   make addon        cross-compile binaries for the manual HA add-on (addon/growrig)
 #   make test         Go tests + web type-check
+#   make release VERSION=0.2.0   tag & push a release (CI publishes images)
 #   make clean        remove build artifacts and local databases
 
 BIN          ?= bin/growcore
@@ -167,6 +168,15 @@ test: catalog-check
 .PHONY: fmt
 fmt:
 	cd growcore && gofmt -w .
+
+# --- release ---
+
+# Bump the manifest + CHANGELOG, tag vX.Y.Z, and push. The tag triggers
+# .github/workflows/release.yml, which tests, publishes the add-on images, and
+# creates the GitHub Release. See scripts/release.sh for the full checklist.
+.PHONY: release
+release:
+	@VERSION=$(VERSION) scripts/release.sh
 
 # --- housekeeping ---
 

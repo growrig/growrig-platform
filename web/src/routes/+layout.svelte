@@ -15,9 +15,18 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shield from '@lucide/svelte/icons/shield';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import Menu from '@lucide/svelte/icons/menu';
+	import X from '@lucide/svelte/icons/x';
 
 	let { children } = $props();
 	let clockNow = $state(new Date());
+	// Mobile nav drawer: collapsed by default, and closed again on every
+	// navigation so a tapped link doesn't leave the menu hanging open.
+	let menuOpen = $state(false);
+	$effect(() => {
+		page.url.pathname;
+		menuOpen = false;
+	});
 	const instanceTime = $derived(fmtClock(clockNow));
 
 	// Routes that render without the app chrome and without requiring a session.
@@ -73,6 +82,7 @@
 	const nav = $derived([
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/grows', label: 'Grows' },
+		{ href: '/calendar', label: 'Calendar' },
 		{ href: '/inventory', label: 'Inventory' },
 		{ href: '/knowledge', label: 'Knowledge' },
 		{ href: '/activity', label: 'Activity' },
@@ -105,14 +115,14 @@
 {:else}
 	<div class="min-h-screen">
 		<header class="sticky top-0 z-10 border-b border-rig-800 bg-rig-900/60 backdrop-blur">
-			<div class="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
-				<a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+			<div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3 lg:gap-6">
+				<a href="/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
 					<span class="grid h-7 w-7 place-items-center rounded-md bg-rig-500 text-rig-950">
 						<Sprout size={18} />
 					</span>
 					<span>GrowRig</span>
 				</a>
-				<nav class="flex gap-1 text-sm">
+				<nav class="hidden gap-1 text-sm lg:flex">
 					{#each nav as item (item.href)}
 						<a
 							href={item.href}
@@ -124,14 +134,14 @@
 						</a>
 					{/each}
 				</nav>
-				<div class="ml-auto flex items-center gap-4">
+				<div class="ml-auto flex items-center gap-3 lg:gap-4">
 					<div class="hidden text-sm tabular-nums text-rig-400 sm:block" title="{preferences.timezone} · {preferences.locale}">{instanceTime}</div>
 					<div class="flex items-center gap-2 text-sm text-rig-300">
 						<span class="h-2 w-2 rounded-full {statusMeta[live.status].dot}"></span>
-						<span class="tabular-nums">{live.status === 'live' ? (live.latencyMs == null ? '— ms' : `${fmtLatencyMs(live.latencyMs)} ms`) : statusMeta[live.status].label}</span>
+						<span class="hidden tabular-nums sm:inline">{live.status === 'live' ? (live.latencyMs == null ? '— ms' : `${fmtLatencyMs(live.latencyMs)} ms`) : statusMeta[live.status].label}</span>
 					</div>
 					{#if auth.user}
-						<div class="flex items-center gap-2 border-l border-rig-800 pl-4">
+						<div class="hidden items-center gap-2 border-l border-rig-800 pl-4 lg:flex">
 							<a
 								href="/account"
 								class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
@@ -149,8 +159,50 @@
 							</button>
 						</div>
 					{/if}
+					<button
+						onclick={() => (menuOpen = !menuOpen)}
+						class="grid h-9 w-9 place-items-center rounded-md text-rig-300 transition-colors hover:bg-rig-800/50 hover:text-rig-100 lg:hidden"
+						aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+						aria-expanded={menuOpen}
+					>
+						{#if menuOpen}<X size={20} />{:else}<Menu size={20} />{/if}
+					</button>
 				</div>
 			</div>
+
+			<!-- Mobile drawer: the same nav plus the account actions, stacked. -->
+			{#if menuOpen}
+				<nav class="mx-auto max-w-5xl border-t border-rig-800 px-2 py-2 lg:hidden">
+					{#each nav as item (item.href)}
+						<a
+							href={item.href}
+							class="block rounded-md px-3 py-2.5 text-sm transition-colors {page.url.pathname === item.href
+								? 'bg-rig-800 text-rig-50'
+								: 'text-rig-300 hover:bg-rig-800/50 hover:text-rig-100'}"
+						>
+							{item.label}
+						</a>
+					{/each}
+					{#if auth.user}
+						<div class="mt-2 flex items-center justify-between border-t border-rig-800 px-3 pt-3">
+							<a
+								href="/account"
+								class="flex items-center gap-1.5 text-sm text-rig-300 transition-colors hover:text-rig-100"
+								title="Account & passkeys"
+							>
+								{#if auth.isAdmin}<Shield size={14} class="text-leaf" />{/if}
+								{auth.user.username}
+							</a>
+							<button
+								onclick={() => auth.logout()}
+								class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-400 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
+							>
+								<LogOut size={15} /> Log out
+							</button>
+						</div>
+					{/if}
+				</nav>
+			{/if}
 		</header>
 
 		<main class="mx-auto max-w-5xl px-4 py-6">

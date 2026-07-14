@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS light_schedules (
 CREATE TABLE IF NOT EXISTS grows (
     id            TEXT PRIMARY KEY,
     name          TEXT NOT NULL DEFAULT '',
+    slug          TEXT NOT NULL DEFAULT '', -- URL-friendly form of name, derived on save
     species       TEXT NOT NULL DEFAULT '',
     stage         TEXT NOT NULL DEFAULT '',
     stages        TEXT NOT NULL DEFAULT '[]', -- JSON array of stage names
@@ -109,6 +110,7 @@ CREATE TABLE IF NOT EXISTS plant_units (
     id         TEXT PRIMARY KEY,
     grow_id    TEXT NOT NULL,
     label      TEXT NOT NULL DEFAULT '',
+    slug       TEXT NOT NULL DEFAULT '', -- URL-friendly form of label, derived on save
     cultivar   TEXT NOT NULL DEFAULT '',
     tracking   TEXT NOT NULL DEFAULT 'group',
     quantity   INTEGER NOT NULL DEFAULT 1,
@@ -435,10 +437,17 @@ DROP TABLE IF EXISTS devices;
 		{"inventory_items", "image_type", "TEXT NOT NULL DEFAULT ''"},
 		{"grows", "care_config", "TEXT NOT NULL DEFAULT ''"},
 		{"ai_chats", "environment_id", "TEXT NOT NULL DEFAULT ''"},
+		{"grows", "slug", "TEXT NOT NULL DEFAULT ''"},
+		{"plant_units", "slug", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(m.table, m.column, m.def); err != nil {
 			return err
 		}
+	}
+	// Backfill slugs for grows and plant units created before the slug columns
+	// existed (or persisted with an empty slug).
+	if err := s.backfillSlugs(); err != nil {
+		return err
 	}
 	// Index activity by grow; created here (not in the schema DDL) so it runs
 	// after the additive grow_id column exists on pre-existing databases.
@@ -542,6 +551,45 @@ func (s *Store) migrateCyclesToGrows() error {
 			 VALUES (?, ?, ?, ?, NULL, '')`,
 			newID("place"), unit.ID, l.envID, grow.StartedAt.UnixMilli()); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// backfillSlugs derives slugs for grow and plant-unit rows whose slug is still
+// empty — rows written before the slug columns existed. Slugs are computed in Go
+// (SQLite has no equivalent slugify) from the current name/label.
+func (s *Store) backfillSlugs() error {
+	for _, t := range []struct{ table, source string }{
+		{"grows", "name"},
+		{"plant_units", "label"},
+	} {
+		rows, err := s.db.Query("SELECT id, " + t.source + " FROM " + t.table + " WHERE slug=''")
+		if err != nil {
+			return err
+		}
+		type row struct{ id, source string }
+		var pending []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.id, &r.source); err != nil {
+				rows.Close()
+				return err
+			}
+			pending = append(pending, r)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, r := range pending {
+			slug := domain.Slugify(r.source)
+			if slug == "" {
+				continue // nothing alphanumeric to slugify; leave empty
+			}
+			if _, err := s.db.Exec("UPDATE "+t.table+" SET slug=? WHERE id=?", slug, r.id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -699,14 +747,15 @@ func (s *Store) SaveGrow(g domain.Grow) error {
 	if g.Status == "" {
 		g.Status = domain.GrowActive
 	}
+	g.Slug = domain.Slugify(g.Name) // always derived from the current name
 	_, err = s.db.Exec(
-		`INSERT INTO grows (id, name, species, stage, stages, started_at, stage_started, status, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO grows (id, name, slug, species, stage, stages, started_at, stage_started, status, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
-		   name=excluded.name, species=excluded.species,
+		   name=excluded.name, slug=excluded.slug, species=excluded.species,
 		   stage=excluded.stage, stages=excluded.stages, started_at=excluded.started_at,
 		   stage_started=excluded.stage_started, status=excluded.status, notes=excluded.notes`,
-		g.ID, g.Name, g.Species, g.Stage, string(stages),
+		g.ID, g.Name, g.Slug, g.Species, g.Stage, string(stages),
 		g.StartedAt.UnixMilli(), g.StageStarted.UnixMilli(), string(g.Status), g.Notes,
 	)
 	return err
@@ -716,7 +765,7 @@ func scanGrow(scan func(dst ...any) error) (domain.Grow, error) {
 	var g domain.Grow
 	var stagesJSON, status string
 	var started, stageStarted int64
-	if err := scan(&g.ID, &g.Name, &g.Species, &g.Stage, &stagesJSON, &started, &stageStarted, &status, &g.Notes); err != nil {
+	if err := scan(&g.ID, &g.Name, &g.Slug, &g.Species, &g.Stage, &stagesJSON, &started, &stageStarted, &status, &g.Notes); err != nil {
 		return domain.Grow{}, err
 	}
 	if stagesJSON != "" {
@@ -728,7 +777,7 @@ func scanGrow(scan func(dst ...any) error) (domain.Grow, error) {
 	return g, nil
 }
 
-const growCols = `id, name, species, stage, stages, started_at, stage_started, status, notes`
+const growCols = `id, name, slug, species, stage, stages, started_at, stage_started, status, notes`
 
 func (s *Store) Grows() ([]domain.Grow, error) {
 	rows, err := s.db.Query(`SELECT ` + growCols + ` FROM grows ORDER BY started_at DESC`)
@@ -798,14 +847,15 @@ func (s *Store) SavePlantUnit(u domain.PlantUnit) error {
 	if u.Quantity <= 0 {
 		u.Quantity = 1
 	}
+	u.Slug = domain.Slugify(u.Label) // always derived from the current label
 	_, err := s.db.Exec(
-		`INSERT INTO plant_units (id, grow_id, label, cultivar, tracking, quantity, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO plant_units (id, grow_id, label, slug, cultivar, tracking, quantity, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
-		   grow_id=excluded.grow_id, label=excluded.label, cultivar=excluded.cultivar,
+		   grow_id=excluded.grow_id, label=excluded.label, slug=excluded.slug, cultivar=excluded.cultivar,
 		   tracking=excluded.tracking, quantity=excluded.quantity, status=excluded.status,
 		   created_at=excluded.created_at`,
-		u.ID, u.GrowID, u.Label, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli(),
+		u.ID, u.GrowID, u.Label, u.Slug, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli(),
 	)
 	return err
 }
@@ -814,7 +864,7 @@ func scanPlantUnit(scan func(dst ...any) error) (domain.PlantUnit, error) {
 	var u domain.PlantUnit
 	var tracking, status string
 	var created int64
-	if err := scan(&u.ID, &u.GrowID, &u.Label, &u.Cultivar, &tracking, &u.Quantity, &status, &created); err != nil {
+	if err := scan(&u.ID, &u.GrowID, &u.Label, &u.Slug, &u.Cultivar, &tracking, &u.Quantity, &status, &created); err != nil {
 		return domain.PlantUnit{}, err
 	}
 	u.Tracking = domain.TrackingMode(tracking)
@@ -823,7 +873,7 @@ func scanPlantUnit(scan func(dst ...any) error) (domain.PlantUnit, error) {
 	return u, nil
 }
 
-const unitCols = `id, grow_id, label, cultivar, tracking, quantity, status, created_at`
+const unitCols = `id, grow_id, label, slug, cultivar, tracking, quantity, status, created_at`
 
 // PlantUnits returns the units belonging to a grow, oldest first.
 func (s *Store) PlantUnits(growID string) ([]domain.PlantUnit, error) {
@@ -933,7 +983,7 @@ func (s *Store) CurrentPlacements() ([]domain.PlantPlacement, error) {
 // environment (units with an open placement there).
 func (s *Store) PlantsInEnvironment(envID string) ([]domain.PlantUnit, error) {
 	rows, err := s.db.Query(
-		`SELECT u.id, u.grow_id, u.label, u.cultivar, u.tracking, u.quantity, u.status, u.created_at
+		`SELECT u.id, u.grow_id, u.label, u.slug, u.cultivar, u.tracking, u.quantity, u.status, u.created_at
 		 FROM plant_units u
 		 JOIN plant_placements p ON p.plant_unit_id=u.id
 		 WHERE p.environment_id=? AND p.ended_at IS NULL
@@ -976,13 +1026,13 @@ func (s *Store) BulkCreatePlants(growID string, n int, tracking domain.TrackingM
 			label = fmt.Sprintf("%s %d", labelPrefix, i+1)
 		}
 		u := domain.PlantUnit{
-			ID: newID("plant"), GrowID: growID, Label: label, Cultivar: cultivar,
+			ID: newID("plant"), GrowID: growID, Label: label, Slug: domain.Slugify(label), Cultivar: cultivar,
 			Tracking: tracking, Quantity: quantityPer, Status: domain.PlantActive, CreatedAt: at,
 		}
 		if _, err := tx.Exec(
-			`INSERT INTO plant_units (id, grow_id, label, cultivar, tracking, quantity, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			u.ID, u.GrowID, u.Label, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli()); err != nil {
+			`INSERT INTO plant_units (id, grow_id, label, slug, cultivar, tracking, quantity, status, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.ID, u.GrowID, u.Label, u.Slug, u.Cultivar, string(u.Tracking), u.Quantity, string(u.Status), u.CreatedAt.UnixMilli()); err != nil {
 			return nil, err
 		}
 		if envID != "" {

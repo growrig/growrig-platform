@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/growrig/growrig/growcore/internal/domain"
@@ -426,11 +425,9 @@ func orDefault(v, def float64) float64 {
 	return v
 }
 
-var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
-
 // id builds a readable, unique id from a name plus a short random suffix.
 func id(name, prefix string) string {
-	slug := strings.Trim(slugRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	slug := domain.Slugify(name)
 	if slug == "" {
 		slug = prefix
 	}

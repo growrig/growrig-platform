@@ -18,6 +18,8 @@ export type PlantStatus = 'active' | 'harvested' | 'removed' | 'archived';
 export interface Grow {
 	id: string;
 	name: string;
+	/** URL-friendly form of `name`, derived on save. */
+	slug: string;
 	/** A predefined crop family; drives the stage sequence. */
 	species: string;
 	/** Current stage name (one of `stages`). */
@@ -34,6 +36,8 @@ export interface PlantUnit {
 	id: string;
 	growId: string;
 	label: string;
+	/** URL-friendly form of `label`, derived on save. */
+	slug: string;
 	/** Cultivar is per-unit, so one grow can mix cultivars. */
 	cultivar: string;
 	tracking: TrackingMode;
@@ -199,6 +203,28 @@ export interface LogCareInput {
 	amountMl?: number;
 	plantUnitIds?: string[];
 	applications?: CareApplicationInput[];
+}
+
+/** One care action on the calendar (GET /api/calendar): a cross-grow, dated
+ *  projection of a care event carrying just what the calendar renders. */
+export interface CalendarEvent {
+	id: string;
+	growId: string;
+	growName: string;
+	type: string;
+	occurredAt: string;
+	source: CareSource;
+	plantCount: number;
+	totalMl?: number;
+	recipeName?: string;
+	notes?: string;
+}
+
+/** Response for GET /api/calendar: care events across all grows in a window. */
+export interface CalendarResponse {
+	from?: string;
+	to?: string;
+	events: CalendarEvent[];
 }
 
 /** Built-in editable stage sequences per crop family (GET /api/stage-presets). */
