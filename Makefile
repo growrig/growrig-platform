@@ -161,7 +161,7 @@ addon: embed catalog-embed
 # --- quality ---
 
 .PHONY: test
-test: catalog-check
+test: catalog-check schema-embed
 	cd growcore && go test ./...
 	cd web && npm run check
 
