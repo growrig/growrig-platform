@@ -4,7 +4,7 @@
 #
 # The per-arch images are what the public `growrig-ha-addons` repository installs
 # (its config.yaml sets `image: ghcr.io/growrig/growcore-{arch}`), so no one has
-# to compile on their Home Assistant device. The thin Dockerfile in addon/growrig/
+# to compile on their Home Assistant device. The thin Dockerfile in ha-addon/growrig/
 # is reused here — CI runs `make addon` to produce the embedded binaries first,
 # then buildx wraps each onto the matching Home Assistant base image.
 #
@@ -85,9 +85,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          manifest="$(sed -n 's/^version: *"\(.*\)"/\1/p' addon/growrig/config.yaml)"
+          manifest="$(sed -n 's/^version: *"\(.*\)"/\1/p' ha-addon/growrig/config.yaml)"
           if [ "$manifest" != "$VERSION" ]; then
-            echo "::error::addon/growrig/config.yaml version ($manifest) != tag ($VERSION)." \
+            echo "::error::ha-addon/growrig/config.yaml version ($manifest) != tag ($VERSION)." \
                  "Cut releases with 'make release VERSION=$VERSION'." >&2
             exit 1
           fi
@@ -101,7 +101,7 @@ jobs:
           go-version: "1.26"
 
       - name: Cross-compile embedded binaries
-        run: make addon # -> addon/growrig/bin/growcore.{aarch64,amd64,armv7}
+        run: make addon # -> ha-addon/growrig/bin/growcore.{aarch64,amd64,armv7}
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -133,7 +133,7 @@ jobs:
               --tag "${image}:${VERSION}" \
               --tag "${image}:latest" \
               --push \
-              addon/growrig
+              ha-addon/growrig
             echo "::endgroup::"
           done
 

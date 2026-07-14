@@ -33,7 +33,7 @@ See [DOCS.md](DOCS.md) for options and details.
 ## Layout
 
 ```
-addon/growrig/
+ha-addon/growrig/
 ├── config.yaml     # add-on manifest (arch, ports, options, Supervisor API)
 ├── build.yaml      # HA base images per architecture
 ├── Dockerfile      # thin image: copies the arch-matched binary in

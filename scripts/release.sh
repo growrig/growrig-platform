@@ -8,7 +8,7 @@
 # What it does:
 #   1. validates VERSION (X.Y.Z) and that the tag does not already exist
 #   2. requires a clean tree on the default branch, up to date with origin
-#   3. writes VERSION into addon/growrig/config.yaml
+#   3. writes VERSION into ha-addon/growrig/config.yaml
 #   4. moves "## Unreleased" CHANGELOG entries into "## X.Y.Z — <today>"
 #   5. commits "release: vX.Y.Z", creates annotated tag vX.Y.Z, pushes both
 #
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 VERSION="${VERSION:-${1:-}}"
-MANIFEST="addon/growrig/config.yaml"
+MANIFEST="ha-addon/growrig/config.yaml"
 CHANGELOG="CHANGELOG.md"
 DEFAULT_BRANCH="main"
 

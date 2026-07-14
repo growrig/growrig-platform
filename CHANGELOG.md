@@ -2,7 +2,7 @@
 
 All notable changes to GrowRig ship as Home Assistant add-on versions. This file
 follows [Keep a Changelog](https://keepachangelog.com/); the version number is the
-add-on version (`addon/growrig/config.yaml`) and the git tag (`vX.Y.Z`).
+add-on version (`ha-addon/growrig/config.yaml`) and the git tag (`vX.Y.Z`).
 
 Add entries under `## Unreleased` as you work. `make release VERSION=X.Y.Z` moves
 them into a dated section, bumps the manifest, tags, and pushes.

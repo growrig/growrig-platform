@@ -69,16 +69,16 @@ up on the dashboard within a second.
 ## Home Assistant add-on
 
 Grow Core ships as a local Home Assistant OS add-on in
-[`addon/growrig/`](addon/growrig/):
+[`ha-addon/growrig/`](ha-addon/growrig/):
 
 ```bash
 make addon        # cross-compiles the arch-matched binaries
 ```
 
-Copy `addon/growrig/` to the HAOS `addons` share, then install **GrowRig — Grow
+Copy `ha-addon/growrig/` to the HAOS `addons` share, then install **GrowRig — Grow
 Core** from *Local add-ons*. The add-on reaches Home Assistant through the
 Supervisor proxy (no token needed) and serves the dashboard on host port `8099`.
-See [`addon/growrig/README.md`](addon/growrig/README.md) for details.
+See [`ha-addon/growrig/README.md`](ha-addon/growrig/README.md) for details.
 
 ## Releasing
 
