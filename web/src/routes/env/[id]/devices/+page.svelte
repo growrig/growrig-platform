@@ -82,6 +82,7 @@
 		{ label: 'Fans & Airflow', kind: 'fan' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'fan')) },
 		{ label: 'Sensors', kind: 'sensor' as BindingKind, devices: devices.filter((d) => d.bindings.every((b) => b.kind === 'sensor')) },
 		{ label: 'Cameras', kind: 'camera' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'camera')) },
+		{ label: 'Irrigation', kind: 'irrigation' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'irrigation')) },
 		{ label: 'Power & Switching', kind: 'power' as BindingKind, devices: devices.filter((d) => d.bindings.some((b) => b.kind === 'power')) },
 		{ label: 'Climate Control', kind: 'controller' as BindingKind, devices: [] as DeviceGroup[], future: true }
 	]);
@@ -114,6 +115,13 @@
 			return { value: '', online: onlineFromHealth() };
 		}
 		if (b.kind === 'controller') return { value: b.rpmEntity ? 'RPM connected' : 'No RPM', online: onlineFromHealth() };
+		if (b.kind === 'irrigation') {
+			const parts = [];
+			if (b.reservoirL) parts.push(`${b.reservoirL} L`);
+			if (b.valveCount) parts.push(`${b.valveCount} valve${b.valveCount === 1 ? '' : 's'}`);
+			// Passive setups have no live telemetry, so no online state.
+			return { value: parts.join(' · ') || 'Passive', online: b.irrigationMode === 'controlled' ? onlineFromHealth() : null };
+		}
 		return { value: '', online: onlineFromHealth() }; // camera
 	}
 
@@ -128,6 +136,7 @@
 		if (b.kind === 'light') return b.wattage ? `${b.wattage} W` : 'light';
 		if (b.kind === 'power') return 'switch';
 		if (b.kind === 'controller') return b.name;
+		if (b.kind === 'irrigation') return `${b.irrigationType ?? 'irrigation'} · ${b.irrigationMode ?? 'passive'}`;
 		return b.kind;
 	}
 

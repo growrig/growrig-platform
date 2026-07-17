@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -285,7 +286,7 @@ func (e *Engine) step(dt time.Duration) error {
 				connected := channel.Entity != ""
 				e.issue(env.ID+":fan:"+b.ID, !connected, env.ID, b.DeviceID, displayName+" has no controller channel assigned", displayName+" controller channel is connected")
 				if c.hasTemp && connected {
-					speed := ChannelSpeed(b.Role, env, c.tempC)
+					speed := DesiredChannelSpeed(b.Role, env, c.tempC)
 					cs.DesiredSpeed = speed
 					err := e.adapter.SetFan(channel.Entity, speed)
 					if err != nil {
@@ -361,6 +362,10 @@ func (e *Engine) step(dt time.Duration) error {
 				view.Controls = append(view.Controls, cs)
 			case domain.KindCamera:
 				view.Cameras = append(view.Cameras, domain.CameraRef{ID: b.ID, Name: b.Name, Entity: b.Entity, StreamURL: b.StreamURL, CameraType: b.CameraType, CameraCaptureInterval: b.CameraCaptureInterval})
+			case domain.KindIrrigation:
+				// Passive irrigation has no live telemetry; surface its static
+				// description so Equipment and Operating now can render it.
+				view.Irrigation = append(view.Irrigation, domain.IrrigationRef{ID: b.ID, Name: b.Name, Type: b.IrrigationType, Mode: b.IrrigationMode, ReservoirL: b.ReservoirL, ValveCount: b.ValveCount})
 			}
 		}
 
@@ -376,10 +381,14 @@ func (e *Engine) step(dt time.Duration) error {
 			}
 		}
 
-		if sc, ok := scheduleByEnv[env.ID]; ok {
-			sched := sc
-			view.Schedule = &sched
+		sched, hasSched := scheduleByEnv[env.ID]
+		if hasSched {
+			s := sched
+			view.Schedule = &s
 		}
+		// Expose the resolved per-category control policy so clients render the
+		// effective auto/manual modes (lighting derives from the schedule).
+		view.Control = env.Control.Resolve(hasSched && sched.Mode != domain.LightScheduleOff && sched.Mode != "")
 
 		if env.Kind == domain.KindTent && env.AirSourceID != "" {
 			if src := findEnv(envs, env.AirSourceID); src != nil {
@@ -479,6 +488,35 @@ func (e *Engine) issue(key string, active bool, envID, deviceID, warning, resolv
 		e.activity(envID, deviceID, "info", "notice", resolved)
 	}
 	e.issueStates[key] = active
+	// Mirror the in-memory issue state into the persistent alerts table so the
+	// "needs attention" projection survives restarts. activity_log above keeps
+	// the historical record; alerts hold the current open/resolved condition.
+	if e.settling() {
+		return
+	}
+	if active {
+		if err := e.store.OpenAlert(domain.Alert{
+			Key: key, EnvironmentID: envID, DeviceID: deviceID,
+			Severity: domain.AlertWarning, Kind: alertKind(key),
+			Title: warning, Message: warning,
+		}); err != nil {
+			log.Printf("alert open: %v", err)
+		}
+	} else {
+		if err := e.store.ResolveAlert(key); err != nil {
+			log.Printf("alert resolve: %v", err)
+		}
+	}
+}
+
+// alertKind derives a coarse alert kind from an issue key of the form
+// "<envID>:<kind>[:<detail>]" — e.g. "env-1:fan:b-2" → "fan".
+func alertKind(key string) string {
+	parts := strings.SplitN(key, ":", 3)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return "system"
 }
 
 // driveLight reconciles a scheduled light to the desired on/off state. It

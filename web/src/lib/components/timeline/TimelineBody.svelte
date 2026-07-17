@@ -22,15 +22,47 @@
 		values: { color: string; label: string; unit: string; value: number }[];
 		lit: boolean;
 	}
+	/** A shaded "ok band" for a series, drawn on that series' y-scale. */
+	export interface TargetBand {
+		key: string; // series key whose scale the band maps onto
+		min: number;
+		max: number;
+		color?: string;
+	}
+	/** A vertical event marker at a point in time. */
+	export interface Annotation {
+		t: number;
+		label: string;
+		color?: string;
+	}
+	/** A background time-region labelling context (e.g. a grow stage). */
+	export interface StageBand {
+		from: number;
+		to: number;
+		label: string;
+		color?: string;
+	}
 
 	interface Props {
 		series: SeriesDef[]; // enabled series only
 		intervals: Interval[]; // light-ON windows
 		showLight: boolean;
 		now: number;
+		targetBands?: TargetBand[];
+		annotations?: Annotation[];
+		stageBands?: StageBand[];
 		onHover?: (info: HoverInfo | null) => void;
 	}
-	let { series, intervals, showLight, now, onHover }: Props = $props();
+	let {
+		series,
+		intervals,
+		showLight,
+		now,
+		targetBands = [],
+		annotations = [],
+		stageBands = [],
+		onHover
+	}: Props = $props();
 
 	// LayerCake context (Svelte stores) — gives us the time x-scale and pixel size.
 	const { xScale, width, height } = getContext<any>('LayerCake');
@@ -179,6 +211,48 @@
 
 	const nowX = $derived($xScale(now));
 
+	// Target "ok bands": a shaded horizontal strip on the matching series' scale.
+	const drawnBands = $derived.by(() => {
+		const out: { x: number; y: number; w: number; h: number; color: string }[] = [];
+		for (const b of targetBands) {
+			const y = scales.get(b.key);
+			if (!y) continue; // series not active → no scale to map onto
+			const top = y(b.max);
+			const bottom = y(b.min);
+			out.push({
+				x: 0,
+				y: Math.min(top, bottom),
+				w: Math.max(0, $width),
+				h: Math.abs(bottom - top),
+				color: b.color ?? 'var(--color-leaf)'
+			});
+		}
+		return out;
+	});
+
+	// Stage background regions, clipped to the visible domain.
+	const drawnStages = $derived.by(() => {
+		const [lo, hi] = $xScale.domain() as [number, number];
+		const out: { x: number; w: number; label: string; color: string }[] = [];
+		for (const b of stageBands) {
+			const from = Math.max(b.from, lo);
+			const to = Math.min(b.to, hi);
+			if (to <= from) continue;
+			const x = $xScale(from);
+			const w = $xScale(to) - x;
+			if (w > 0.5) out.push({ x, w, label: b.label, color: b.color ?? 'var(--color-rig-700)' });
+		}
+		return out;
+	});
+
+	// Event annotations snapped to x, within the visible domain.
+	const drawnAnnotations = $derived.by(() => {
+		const [lo, hi] = $xScale.domain() as [number, number];
+		return annotations
+			.filter((a) => a.t >= lo && a.t <= hi)
+			.map((a) => ({ x: $xScale(a.t), label: a.label, color: a.color ?? 'var(--color-rig-400)' }));
+	});
+
 	// --- hover ---
 	let hoverX = $state<number | null>(null);
 	// Merged, sorted set of all times across enabled series (for snapping).
@@ -244,6 +318,20 @@
 	const hoverTime = $derived(hoverX == null ? null : nearestTime($xScale.invert(hoverX)));
 </script>
 
+<!-- stage background regions (behind everything), with a top label -->
+{#each drawnStages as st, i (i)}
+	<rect x={st.x} y="0" width={st.w} height={$height} fill={st.color} opacity="0.14" />
+	<line x1={st.x} x2={st.x} y1="0" y2={$height} stroke={st.color} stroke-width="1" opacity="0.5" />
+	{#if st.w > 40}
+		<text x={st.x + 4} y={$height - 4} fill="var(--color-rig-400)" font-size="10" font-weight="600">{st.label}</text>
+	{/if}
+{/each}
+
+<!-- target "ok bands" (behind everything) -->
+{#each drawnBands as b, i (i)}
+	<rect x={b.x} y={b.y} width={b.w} height={b.h} fill={b.color} opacity="0.08" />
+{/each}
+
 <!-- light bands -->
 {#each bands as b (b.x + '-' + b.future)}
 	<rect x={b.x} y="0" width={b.w} height={$height} fill="var(--color-warn)" opacity={b.future ? 0.06 : 0.13} />
@@ -261,6 +349,15 @@
 <!-- now line -->
 <line x1={nowX} x2={nowX} y1="0" y2={$height} stroke="var(--color-leaf)" stroke-width="1" stroke-dasharray="3 3" opacity="0.8" />
 <text x={nowX - 3} y="10" text-anchor="end" fill="var(--color-leaf)" font-size="10" font-weight="600">now</text>
+
+<!-- event annotations (stage changes, care, overrides, warnings) -->
+{#each drawnAnnotations as a, i (i)}
+	<g>
+		<title>{a.label}</title>
+		<line x1={a.x} x2={a.x} y1="0" y2={$height} stroke={a.color} stroke-width="1" stroke-dasharray="2 2" opacity="0.55" />
+		<circle cx={a.x} cy="4" r="3" fill={a.color} />
+	</g>
+{/each}
 
 <!-- series lines (clipped to the plot so weather overlays can't overflow) -->
 <clipPath id="lc-plot-clip">

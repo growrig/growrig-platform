@@ -1,11 +1,16 @@
 # Build output
 /growcore
 /growcore-bin
+
+# Local runtime data (SQLite, env YAML, media, secrets)
+/data/
+
+# Legacy paths (pre-data/ layout) — keep ignoring if anything remains
 environments/
 feedings/
-
-# SQLite databases
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+preferences.yaml
+.integration-secret-key

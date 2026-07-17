@@ -40,19 +40,27 @@ func (s *Server) putEnvironmentConfig(w http.ResponseWriter, r *http.Request) {
 // --- Environments ---
 
 type environmentBody struct {
-	Name            string                 `json:"name"`
-	Kind            domain.EnvironmentKind `json:"kind"`
-	AirSourceID     string                 `json:"airSourceId"`
-	LocationID      string                 `json:"locationId"`
-	Model           string                 `json:"model"`
-	WidthCm         float64                `json:"widthCm"`
-	DepthCm         float64                `json:"depthCm"`
-	HeightCm        float64                `json:"heightCm"`
-	TargetTempC     float64                `json:"targetTempC"`
-	TargetHumidity  float64                `json:"targetHumidity"`
-	TargetCO2       float64                `json:"targetCO2"`
-	EmergencyTempC  float64                `json:"emergencyTempC"`
-	LeafTempOffsetC *float64               `json:"leafTempOffsetC"`
+	Name              string                 `json:"name"`
+	Kind              domain.EnvironmentKind `json:"kind"`
+	AirSourceID       string                 `json:"airSourceId"`
+	LocationID        string                 `json:"locationId"`
+	Model             string                 `json:"model"`
+	WidthCm           float64                `json:"widthCm"`
+	DepthCm           float64                `json:"depthCm"`
+	HeightCm          float64                `json:"heightCm"`
+	TargetTempC       float64                `json:"targetTempC"`
+	TargetHumidity    float64                `json:"targetHumidity"`
+	TargetCO2         float64                `json:"targetCO2"`
+	TargetTempMinC    float64                `json:"targetTempMinC"`
+	TargetTempMaxC    float64                `json:"targetTempMaxC"`
+	TargetHumidityMin float64                `json:"targetHumidityMin"`
+	TargetHumidityMax float64                `json:"targetHumidityMax"`
+	TargetVPDMin      float64                `json:"targetVpdMin"`
+	TargetVPDMax      float64                `json:"targetVpdMax"`
+	TargetCO2Min      float64                `json:"targetCo2Min"`
+	TargetCO2Max      float64                `json:"targetCo2Max"`
+	EmergencyTempC    float64                `json:"emergencyTempC"`
+	LeafTempOffsetC   *float64               `json:"leafTempOffsetC"`
 }
 
 func (s *Server) createEnvironment(w http.ResponseWriter, r *http.Request) {
@@ -116,16 +124,24 @@ func (s *Server) buildEnvironment(envID string, b environmentBody) (domain.Envir
 	}
 	env := domain.Environment{
 		ID: envID, Name: b.Name, Kind: kind, AirSourceID: b.AirSourceID,
-		LocationID:      b.LocationID,
-		Model:           b.Model,
-		WidthCm:         b.WidthCm,
-		DepthCm:         b.DepthCm,
-		HeightCm:        b.HeightCm,
-		TargetTempC:     orDefault(b.TargetTempC, 24),
-		TargetHumidity:  orDefault(b.TargetHumidity, 55),
-		TargetCO2:       b.TargetCO2,
-		EmergencyTempC:  orDefault(b.EmergencyTempC, 35),
-		LeafTempOffsetC: -2,
+		LocationID:        b.LocationID,
+		Model:             b.Model,
+		WidthCm:           b.WidthCm,
+		DepthCm:           b.DepthCm,
+		HeightCm:          b.HeightCm,
+		TargetTempC:       orDefault(b.TargetTempC, 24),
+		TargetHumidity:    orDefault(b.TargetHumidity, 55),
+		TargetCO2:         b.TargetCO2,
+		TargetTempMinC:    b.TargetTempMinC,
+		TargetTempMaxC:    b.TargetTempMaxC,
+		TargetHumidityMin: b.TargetHumidityMin,
+		TargetHumidityMax: b.TargetHumidityMax,
+		TargetVPDMin:      b.TargetVPDMin,
+		TargetVPDMax:      b.TargetVPDMax,
+		TargetCO2Min:      b.TargetCO2Min,
+		TargetCO2Max:      b.TargetCO2Max,
+		EmergencyTempC:    orDefault(b.EmergencyTempC, 35),
+		LeafTempOffsetC:   -2,
 	}
 	if b.LeafTempOffsetC != nil {
 		env.LeafTempOffsetC = *b.LeafTempOffsetC
@@ -171,6 +187,10 @@ type bindingBody struct {
 	CameraCaptureInterval int                `json:"cameraCaptureInterval"`
 	CameraRetentionDays   int                `json:"cameraRetentionDays"`
 	CameraStorageMB       int                `json:"cameraStorageMb"`
+	IrrigationType        string             `json:"irrigationType"`
+	IrrigationMode        string             `json:"irrigationMode"`
+	ReservoirL            float64            `json:"reservoirL"`
+	ValveCount            int                `json:"valveCount"`
 }
 
 func (s *Server) createBinding(w http.ResponseWriter, r *http.Request) {
@@ -276,10 +296,11 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	if strings.TrimSpace(b.Name) == "" {
 		return domain.Binding{}, fmt.Errorf("name is required")
 	}
-	// Entity is required except for fixtures (lights), fans, and cameras that
-	// supply a direct stream URL instead of a Home Assistant entity.
+	// Entity is required except for fixtures (lights), fans, cameras that supply
+	// a direct stream URL instead of a Home Assistant entity, and irrigation
+	// (validated per-mode in its case: passive setups carry no entity).
 	genericCamera := b.Kind == domain.KindCamera && strings.TrimSpace(b.StreamURL) != ""
-	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan && !genericCamera {
+	if strings.TrimSpace(b.Entity) == "" && b.Kind != domain.KindLight && b.Kind != domain.KindFan && b.Kind != domain.KindIrrigation && !genericCamera {
 		return domain.Binding{}, fmt.Errorf("entity is required")
 	}
 	envs, err := s.store.Environments()
@@ -393,6 +414,33 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 		} else if !strings.HasPrefix(strings.TrimSpace(binding.Entity), "camera.") {
 			return domain.Binding{}, fmt.Errorf("camera entity must start with camera.")
 		}
+	case domain.KindIrrigation:
+		switch domain.IrrigationType(b.IrrigationType) {
+		case domain.IrrigationAutoPot, domain.IrrigationDrip, domain.IrrigationWick, domain.IrrigationEbbFlow, domain.IrrigationHand:
+			binding.IrrigationType = domain.IrrigationType(b.IrrigationType)
+		default:
+			return domain.Binding{}, fmt.Errorf("irrigation needs a type (autopot, drip, wick, ebb_flow or hand)")
+		}
+		mode := domain.IrrigationMode(b.IrrigationMode)
+		if mode == "" {
+			mode = domain.IrrigationPassive
+		}
+		if mode != domain.IrrigationPassive && mode != domain.IrrigationControlled {
+			return domain.Binding{}, fmt.Errorf("unknown irrigation mode %q", mode)
+		}
+		binding.IrrigationMode = mode
+		// A passive setup is a physical arrangement with no live control, so it
+		// carries no Home Assistant entity; a controlled setup drives one.
+		if mode == domain.IrrigationPassive {
+			binding.Entity = ""
+		} else if strings.TrimSpace(binding.Entity) == "" {
+			return domain.Binding{}, fmt.Errorf("controlled irrigation needs an entity")
+		}
+		if b.ReservoirL < 0 || b.ReservoirL > 100000 || b.ValveCount < 0 || b.ValveCount > 1000 {
+			return domain.Binding{}, fmt.Errorf("irrigation reservoir and valve count must be within supported ranges")
+		}
+		binding.ReservoirL = b.ReservoirL
+		binding.ValveCount = b.ValveCount
 	default:
 		return domain.Binding{}, fmt.Errorf("unknown binding kind %q", b.Kind)
 	}

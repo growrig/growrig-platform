@@ -7,11 +7,13 @@
 	import { onMount } from 'svelte';
 	import type { Cultivar, EnvironmentView, GrowView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
+	import { attention } from '$lib/attention.svelte';
 	import { Dialog, Select } from '$lib/components/ui';
 	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
 	import EnvironmentDetailsDialog from '$lib/components/EnvironmentDetailsDialog.svelte';
 	import CameraPreview from '$lib/components/CameraPreview.svelte';
 	import GrowCard from '$lib/components/GrowCard.svelte';
+	import AttentionPanel from '$lib/components/AttentionPanel.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Thermometer from '@lucide/svelte/icons/thermometer';
@@ -32,7 +34,6 @@
 	let locations = $state<Location[]>([]);
 	let weatherByLoc = $state<Record<string, Weather>>({});
 	let cultivars = $state<Cultivar[]>([]);
-	let addingLocation = $state(false);
 
 	// "New Lung Room" modal — a room is just a name plus an optional parent site,
 	// prefilled with the location the user launched it from.
@@ -110,7 +111,6 @@
 	// Refresh the location list after one is created or edited, and refresh
 	// weather so the header strip reflects any coordinate change.
 	async function onLocationSaved() {
-		addingLocation = false;
 		editOpen = false;
 		editingLocation = null;
 		try {
@@ -194,6 +194,7 @@
 	let isSimulator = $state(false);
 	let loadingDemo = $state(false);
 	onMount(async () => {
+		attention.load();
 		try {
 			isSimulator = (await getInfo()).adapter === 'simulator';
 		} catch {
@@ -420,6 +421,8 @@
 	</div>
 {:else}
 	<div class="space-y-10">
+		<AttentionPanel />
+
 		{#each groups as group (group.key)}
 			<section>
 				<div class="group/loc mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -487,24 +490,10 @@
 			{/if}
 		</section>
 
-		{#if auth.isAdmin}
-			<div>
-				<button
-					onclick={() => (addingLocation = true)}
-					class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-rig-700 px-3 py-1.5 text-sm text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
-				>
-					<Plus size={15} /> Add new location
-				</button>
-			</div>
-		{/if}
 	</div>
 {/if}
 
 {#if auth.isAdmin}
-	<Dialog bind:open={addingLocation} title="Add new location" size="lg">
-		<NewLocationForm onSaved={onLocationSaved} />
-	</Dialog>
-
 	<Dialog bind:open={editOpen} title="Edit location" size="lg">
 		{#if editingLocation}
 			{#key editingLocation.id}

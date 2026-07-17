@@ -67,6 +67,37 @@ func TestDeleteEnvironmentBlockedByAirSourceRef(t *testing.T) {
 	}
 }
 
+func TestEnvironmentTargetRangesRoundTrip(t *testing.T) {
+	st := open(t)
+	env := domain.Environment{
+		ID: "tent-r", Name: "Ranges", Kind: domain.KindTent,
+		TargetTempC: 24, TargetHumidity: 55,
+		TargetTempMinC: 22, TargetTempMaxC: 26,
+		TargetHumidityMin: 50, TargetHumidityMax: 60,
+		TargetVPDMin: 0.9, TargetVPDMax: 1.2,
+		TargetCO2Min: 400, TargetCO2Max: 900,
+	}
+	if err := st.SaveEnvironment(env); err != nil {
+		t.Fatal(err)
+	}
+	envs, err := st.Environments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got domain.Environment
+	for _, e := range envs {
+		if e.ID == "tent-r" {
+			got = e
+		}
+	}
+	if got.TargetTempMinC != 22 || got.TargetTempMaxC != 26 ||
+		got.TargetHumidityMin != 50 || got.TargetHumidityMax != 60 ||
+		got.TargetVPDMin != 0.9 || got.TargetVPDMax != 1.2 ||
+		got.TargetCO2Min != 400 || got.TargetCO2Max != 900 {
+		t.Fatalf("target ranges not persisted: %+v", got)
+	}
+}
+
 func TestMigrateIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reopen.db")
 	st1, err := Open(path)

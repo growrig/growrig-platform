@@ -45,6 +45,31 @@ const (
 	KindLight      BindingKind = "light"
 	KindPower      BindingKind = "power"
 	KindCamera     BindingKind = "camera"
+	KindIrrigation BindingKind = "irrigation"
+)
+
+// IrrigationType is the kind of irrigation setup a binding represents. AutoPot
+// is the first supported type; the rest name common alternatives so the model
+// doesn't need widening later.
+type IrrigationType string
+
+const (
+	IrrigationAutoPot IrrigationType = "autopot"  // gravity-fed AQUAvalve trays
+	IrrigationDrip    IrrigationType = "drip"     // dripper lines / emitters
+	IrrigationWick    IrrigationType = "wick"     // passive wick from a reservoir
+	IrrigationEbbFlow IrrigationType = "ebb_flow" // flood-and-drain tables
+	IrrigationHand    IrrigationType = "hand"     // hand-watering, tracked as equipment
+)
+
+// IrrigationMode is how an irrigation binding is driven. A passive setup (an
+// AutoPot tray today) is a physical arrangement with no live telemetry or
+// control, so it carries no Home Assistant entity. A controlled setup drives a
+// pump/valve entity — reserved for a future phase.
+type IrrigationMode string
+
+const (
+	IrrigationPassive    IrrigationMode = "passive"    // physical setup, no entity
+	IrrigationControlled IrrigationMode = "controlled" // pump/valve driven via HA
 )
 
 // CameraType is how a generic (non-Home-Assistant) camera stream is rendered.
@@ -118,10 +143,91 @@ type Environment struct {
 	TargetTempC    float64 `json:"targetTempC" yaml:"targetTempC"`
 	TargetHumidity float64 `json:"targetHumidity" yaml:"targetHumidity"`
 	TargetCO2      float64 `json:"targetCO2" yaml:"targetCO2,omitempty"` // ppm; 0 = unset
+
+	// Optional display target ranges (0 = unset). These do not change control
+	// behavior — the single Target* values above remain the engine setpoints —
+	// but drive the "ok band" and status shown on climate cards and the timeline.
+	TargetTempMinC    float64 `json:"targetTempMinC" yaml:"targetTempMinC,omitempty"`
+	TargetTempMaxC    float64 `json:"targetTempMaxC" yaml:"targetTempMaxC,omitempty"`
+	TargetHumidityMin float64 `json:"targetHumidityMin" yaml:"targetHumidityMin,omitempty"`
+	TargetHumidityMax float64 `json:"targetHumidityMax" yaml:"targetHumidityMax,omitempty"`
+	TargetVPDMin      float64 `json:"targetVpdMin" yaml:"targetVpdMin,omitempty"`
+	TargetVPDMax      float64 `json:"targetVpdMax" yaml:"targetVpdMax,omitempty"`
+	TargetCO2Min      float64 `json:"targetCo2Min" yaml:"targetCo2Min,omitempty"`
+	TargetCO2Max      float64 `json:"targetCo2Max" yaml:"targetCo2Max,omitempty"`
+
 	EmergencyTempC float64 `json:"emergencyTempC" yaml:"emergencyTempC"`
 	// LeafTempOffsetC estimates leaf temperature from air temperature for VPD.
 	// For example, -2 means leaves are assumed to be 2°C cooler than the air.
 	LeafTempOffsetC float64 `json:"leafTempOffsetC" yaml:"leafTempOffsetC,omitempty"`
+
+	// Control is the per-category automation configuration (which categories run
+	// automatically vs. by hand, and manual setpoints). It is the environment's
+	// live control policy, persisted in the on-disk config file so it round-trips
+	// with the rest of the environment. Zero values resolve to sensible defaults
+	// via Control.Resolve.
+	Control ControlConfig `json:"control" yaml:"control"`
+}
+
+// ControlMode selects whether a controllable category is driven by automation
+// or by hand.
+type ControlMode string
+
+const (
+	ControlAuto   ControlMode = "auto"
+	ControlManual ControlMode = "manual"
+)
+
+// ControlConfig is an environment's per-category automation policy. Each
+// controllable category carries an auto/manual mode; air exchange also carries
+// the fixed speeds used while it is in manual mode. New categories (CO₂,
+// dehumidify, …) are added here as sibling fields.
+type ControlConfig struct {
+	Lighting    LightingControl    `json:"lighting" yaml:"lighting"`
+	AirExchange AirExchangeControl `json:"airExchange" yaml:"airExchange"`
+	Irrigation  IrrigationControl  `json:"irrigation" yaml:"irrigation"`
+}
+
+// LightingControl gates the photoperiod: auto lets the light schedule drive the
+// primary light, manual leaves it under the grower's switch.
+type LightingControl struct {
+	Mode ControlMode `json:"mode" yaml:"mode"`
+}
+
+// AirExchangeControl gates the fans: auto drives them from the climate targets,
+// manual holds the fixed exhaust/circulation speeds below (an emergency
+// over-temperature still forces every fan to full).
+type AirExchangeControl struct {
+	Mode        ControlMode `json:"mode" yaml:"mode"`
+	Exhaust     int         `json:"exhaust" yaml:"exhaust"`         // manual speed %
+	Circulation int         `json:"circulation" yaml:"circulation"` // manual speed %
+}
+
+// IrrigationControl gates watering: auto means installed irrigation equipment
+// handles it (the grow is auto-watered), manual means the grower hand-waters.
+type IrrigationControl struct {
+	Mode ControlMode `json:"mode" yaml:"mode"`
+}
+
+// Resolve fills any unset per-category mode with its default: lighting follows
+// the schedule (manual when the schedule is not driving), air exchange and
+// irrigation default to automatic. Manual air setpoints are left as stored — a
+// manual 0 % is a legitimate "off", so it is never overridden.
+func (c ControlConfig) Resolve(scheduleActive bool) ControlConfig {
+	if c.Lighting.Mode == "" {
+		if scheduleActive {
+			c.Lighting.Mode = ControlAuto
+		} else {
+			c.Lighting.Mode = ControlManual
+		}
+	}
+	if c.AirExchange.Mode == "" {
+		c.AirExchange.Mode = ControlAuto
+	}
+	if c.Irrigation.Mode == "" {
+		c.Irrigation.Mode = ControlAuto
+	}
+	return c
 }
 
 // VolumeM3 returns the tent's air volume in cubic metres, or 0 if any
@@ -333,6 +439,12 @@ type Binding struct {
 	CameraCaptureInterval int        `json:"cameraCaptureInterval,omitempty"` // seconds
 	CameraRetentionDays   int        `json:"cameraRetentionDays,omitempty"`
 	CameraStorageMB       int        `json:"cameraStorageMb,omitempty"`
+	// Irrigation only: a passive setup (AutoPot today) has no entity; ReservoirL
+	// is the feed reservoir volume and ValveCount the number of trays/valves.
+	IrrigationType IrrigationType `json:"irrigationType,omitempty"`
+	IrrigationMode IrrigationMode `json:"irrigationMode,omitempty"`
+	ReservoirL     float64        `json:"reservoirL,omitempty"`
+	ValveCount     int            `json:"valveCount,omitempty"`
 }
 
 // Reading is a single historical sample persisted for an environment.
@@ -459,6 +571,18 @@ type CameraRef struct {
 	CameraCaptureInterval int        `json:"cameraCaptureInterval,omitempty"`
 }
 
+// IrrigationRef is an irrigation binding for the live view. A passive setup
+// carries no live state, so this is a static description (type, mode, reservoir
+// and valve count) the client renders in Equipment and Operating now.
+type IrrigationRef struct {
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Type       IrrigationType `json:"type"`
+	Mode       IrrigationMode `json:"mode"`
+	ReservoirL float64        `json:"reservoirL,omitempty"`
+	ValveCount int            `json:"valveCount,omitempty"`
+}
+
 // AirSourceView summarises a linked lung room on a tent's dashboard.
 type AirSourceView struct {
 	ID       string  `json:"id"`
@@ -484,6 +608,7 @@ type EnvironmentView struct {
 	Sensors    []SensorReading  `json:"sensors"`
 	Controls   []ControlState   `json:"controls"`
 	Cameras    []CameraRef      `json:"cameras"`
+	Irrigation []IrrigationRef  `json:"irrigation"`
 	AirSource  *AirSourceView   `json:"airSource,omitempty"`
 	Grow       *GrowSummary     `json:"grow,omitempty"`
 	Schedule   *LightSchedule   `json:"schedule,omitempty"`

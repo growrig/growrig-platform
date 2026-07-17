@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { createBinding, getBindings, getCatalog, getDiscovery, updateBinding } from '$lib/api';
-	import type { Binding, BindingTemplate, CameraType, CatalogProduct, DiscoveredEntity, FanType, Role } from '$lib/types';
+	import type { Binding, BindingTemplate, CameraType, CatalogProduct, DiscoveredEntity, FanType, IrrigationType, Role } from '$lib/types';
 	import { Button, Select } from '$lib/components/ui';
 	import CameraPreview from '$lib/components/CameraPreview.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -43,6 +43,9 @@
 	let cameraStorageMb = $state(5120);
 	let cameraSource = $state<'url' | 'homeassistant'>('url');
 	let cameraEntity = $state('');
+	let irrigationType = $state<IrrigationType>('autopot');
+	let reservoirL = $state(0);
+	let valveCount = $state(0);
 	let loading = $state(true);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -112,6 +115,7 @@
 				const light = product.provides?.find((template) => template.kind === 'light');
 				lightWattage = light?.wattage || 100;
 				fanType = product.fanType ?? 'other';
+				irrigationType = product.provides?.find((template) => template.kind === 'irrigation')?.irrigationType ?? 'autopot';
 				if (product.products?.length) selectVariant(product.products[0].id);
 			}
 		} catch (e) {
@@ -137,6 +141,7 @@
 	// A generic camera (a camera product without a Home Assistant integration)
 	// streams from a URL the grower supplies here, instead of an HA entity.
 	const isGenericCamera = $derived(!!product && !product.haIntegration && (product.provides ?? []).some((template) => template.kind === 'camera'));
+	const isIrrigation = $derived(!!product && (product.provides ?? []).some((template) => template.kind === 'irrigation'));
 	const cameraEntities = $derived(discovered.filter((item) => item.kind === 'camera' && !bindings.some((binding) => binding.entity === item.entity)));
 	const cameraUrlValid = $derived(cameraType === 'rtsp' ? /^rtsp:\/\//i.test(cameraStreamUrl.trim()) : /^https?:\/\//.test(cameraStreamUrl.trim()));
 	const cameraSourceValid = $derived(cameraSource === 'url' ? cameraUrlValid : !!cameraEntity);
@@ -166,6 +171,8 @@
 		standaloneName = `${variant.brand ?? product?.brand ?? ''} ${variant.model ?? ''}`.trim() || variant.id;
 		const specs = variant.specs ?? {};
 		lightWattage = specs.wattage ?? lightWattage;
+		reservoirL = specs.reservoirL ?? reservoirL;
+		valveCount = specs.valveCount ?? valveCount;
 		fanSizeMm = specs.sizeMm ?? 0;
 		fanMaxRpm = specs.maxRpm ?? 0;
 		fanAirflowCfm = specs.airflowCfm ?? 0;
@@ -209,6 +216,11 @@
 					,cameraCaptureInterval: template.kind === 'camera' && cameraType === 'rtsp' ? cameraCaptureInterval : undefined
 					,cameraRetentionDays: template.kind === 'camera' && cameraType === 'rtsp' ? cameraRetentionDays : undefined
 					,cameraStorageMb: template.kind === 'camera' && cameraType === 'rtsp' ? cameraStorageMb : undefined
+					,irrigationType: template.kind === 'irrigation' ? irrigationType : undefined
+					// Manual AutoPot today: passive is the only supported mode.
+					,irrigationMode: template.kind === 'irrigation' ? 'passive' : undefined
+					,reservoirL: template.kind === 'irrigation' ? reservoirL || undefined : undefined
+					,valveCount: template.kind === 'irrigation' ? valveCount || undefined : undefined
 				});
 			}
 			if (assignedLightId) {
@@ -360,6 +372,20 @@
 					<p class="mt-2 text-xs text-rig-500">GrowRig stays connected, saves snapshots atomically, and automatically removes the oldest files.</p>
 				{/if}
 				{/if}
+			{/if}
+			{#if isIrrigation}
+				{#if product.products?.length}
+					<label class="mt-4 block"><span class="text-sm text-rig-300">Kit</span><Select value={productVariantId} onValueChange={selectVariant} items={productVariantItems} class="mt-1" /></label>
+				{/if}
+				<label class="mt-4 block">
+					<span class="text-sm text-rig-300">Irrigation type</span>
+					<Select value={irrigationType} onValueChange={(value) => (irrigationType = value as IrrigationType)} items={[{ value: 'autopot', label: 'AutoPot (gravity-fed trays)' }, { value: 'drip', label: 'Drip / emitters' }, { value: 'wick', label: 'Wick' }, { value: 'ebb_flow', label: 'Ebb & flow' }, { value: 'hand', label: 'Hand-watering' }]} class="mt-1" />
+				</label>
+				<div class="mt-4 grid gap-3 sm:grid-cols-2">
+					<label><span class="text-sm text-rig-300">Reservoir <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.5" bind:value={reservoirL} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">L</span></div></label>
+					<label><span class="text-sm text-rig-300">Trays / valves <span class="text-rig-600">(optional)</span></span><input type="number" min="0" step="1" bind:value={valveCount} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-rig-500 focus:outline-none" /></label>
+				</div>
+				<p class="mt-2 text-xs text-rig-500">Passive setup — no pump or Home Assistant entity. Its presence marks the grow as auto-watered; you top up the reservoir and check pH/EC instead of hand-watering.</p>
 			{/if}
 			{#if (product.provides ?? []).some((template) => template.kind === 'light')}
 				{#if product.products?.length}

@@ -4,10 +4,16 @@
 import type {
 	Binding,
 	Activity,
+	Alert,
+	Attention,
 	AuthResult,
 	AuthStatus,
 	BindingKind,
 	CameraType,
+	IrrigationType,
+	IrrigationMode,
+	ControlMode,
+	ControlConfig,
 	CalendarResponse,
 	CareActionDef,
 	CareEvent,
@@ -29,6 +35,9 @@ import type {
 	GeocodeResult,
 	Grow,
 	GrowDetail,
+	GrowPhoto,
+	GrowAnalytics,
+	UploadPhotoInput,
 	InventoryCategory,
 	InventoryItem,
 	InventoryProduct,
@@ -42,6 +51,9 @@ import type {
 	PlantView,
 	Species,
 	StagePresets,
+	Task,
+	TaskStatus,
+	CreateTaskInput,
 	TrackingMode,
 	PotUnit,
 	User,
@@ -189,6 +201,14 @@ export interface EnvironmentInput {
 	targetTempC: number;
 	targetHumidity: number;
 	targetCO2: number;
+	targetTempMinC?: number;
+	targetTempMaxC?: number;
+	targetHumidityMin?: number;
+	targetHumidityMax?: number;
+	targetVpdMin?: number;
+	targetVpdMax?: number;
+	targetCo2Min?: number;
+	targetCo2Max?: number;
 	emergencyTempC: number;
 	leafTempOffsetC: number;
 }
@@ -272,6 +292,10 @@ export interface BindingInput {
 	cameraCaptureInterval?: number;
 	cameraRetentionDays?: number;
 	cameraStorageMb?: number;
+	irrigationType?: IrrigationType;
+	irrigationMode?: IrrigationMode;
+	reservoirL?: number;
+	valveCount?: number;
 }
 
 export const createBinding = (b: BindingInput) =>
@@ -392,6 +416,49 @@ export const getCalendar = (from?: string, to?: string) => {
 /** A grow's care history plus a summary (last action per type, skipped plants). */
 export const getCare = (growID: string) =>
 	json<CareHistory>(`/api/grows/${encodeURIComponent(growID)}/care`);
+
+// --- grow photos & analytics ---
+
+export const getGrowPhotos = (growID: string) =>
+	json<GrowPhoto[]>(`/api/grows/${encodeURIComponent(growID)}/photos`);
+export const uploadGrowPhoto = (growID: string, input: UploadPhotoInput) =>
+	json<GrowPhoto>(`/api/grows/${encodeURIComponent(growID)}/photos`, {
+		method: 'POST',
+		body: JSON.stringify(input)
+	});
+export const deleteGrowPhoto = (growID: string, photoID: string) =>
+	req(`/api/grows/${encodeURIComponent(growID)}/photos/${encodeURIComponent(photoID)}`, {
+		method: 'DELETE'
+	});
+/** Authenticated URL for a grow photo's stored image. */
+export const growPhotoImageURL = (growID: string, photoID: string): string =>
+	authenticatedMediaURL(
+		`/api/grows/${encodeURIComponent(growID)}/photos/${encodeURIComponent(photoID)}/image`
+	);
+
+export const getGrowAnalytics = (growID: string) =>
+	json<GrowAnalytics>(`/api/grows/${encodeURIComponent(growID)}/analytics`);
+
+// --- attention, alerts & tasks ---
+
+/** Live "needs attention" projection: open alerts, due/overdue tasks, low stock
+ *  and unhealthy integrations. Recomputed per request; safe to poll. */
+export const getAttention = () => json<Attention>('/api/attention');
+
+export const getAlerts = () => json<Alert[]>('/api/alerts');
+export const ackAlert = (id: string) =>
+	req(`/api/alerts/${encodeURIComponent(id)}/ack`, { method: 'POST' });
+export const resolveAlert = (id: string) =>
+	req(`/api/alerts/${encodeURIComponent(id)}/resolve`, { method: 'POST' });
+
+export const getTasks = (status?: TaskStatus) =>
+	json<Task[]>(`/api/tasks${status ? `?status=${status}` : ''}`);
+export const createTask = (input: CreateTaskInput) =>
+	json<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) });
+export const completeTask = (id: string) =>
+	json<Task>(`/api/tasks/${encodeURIComponent(id)}/complete`, { method: 'POST' });
+export const skipTask = (id: string) =>
+	req(`/api/tasks/${encodeURIComponent(id)}/skip`, { method: 'POST' });
 
 /** Log one care action against a grow's plants. */
 export const logCare = (growID: string, b: LogCareInput) =>
@@ -570,6 +637,23 @@ export const setControlGrow = (envID: string, growId: string) =>
 	json<Environment>(`/api/environments/${encodeURIComponent(envID)}/control-grow`, {
 		method: 'PUT',
 		body: JSON.stringify({ growId })
+	});
+
+// --- per-category control policy (auto/manual) ---
+
+/** Partial update: any omitted field is left unchanged server-side. */
+export interface ControlInput {
+	lighting?: ControlMode;
+	air?: ControlMode;
+	exhaust?: number;
+	circulation?: number;
+	irrigation?: ControlMode;
+}
+
+export const setControl = (envID: string, c: ControlInput) =>
+	json<ControlConfig>(`/api/environments/${encodeURIComponent(envID)}/control`, {
+		method: 'PUT',
+		body: JSON.stringify(c)
 	});
 
 // --- light schedule (photoperiod automation) ---

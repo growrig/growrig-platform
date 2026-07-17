@@ -16,6 +16,31 @@ const (
 	emergencyPWM = 100 // full airflow in an emergency
 )
 
+// DesiredChannelSpeed picks the PWM speed (0-100) for a fan channel, honoring
+// the environment's air-exchange control mode. In automatic mode it defers to
+// the climate control law (ChannelSpeed). In manual mode it holds the grower's
+// configured fixed exhaust/circulation speeds — except that an emergency
+// over-temperature still forces every fan to full as a safety floor.
+func DesiredChannelSpeed(role domain.Role, env domain.Environment, tempC float64) int {
+	if env.Control.AirExchange.Mode != domain.ControlManual {
+		return ChannelSpeed(role, env, tempC)
+	}
+	if env.EmergencyTempC > 0 && tempC >= env.EmergencyTempC {
+		if role == domain.RoleUnassigned {
+			return 0
+		}
+		return emergencyPWM
+	}
+	switch role {
+	case domain.RoleExhaust, domain.RoleIntake:
+		return clamp(env.Control.AirExchange.Exhaust, 0, 100)
+	case domain.RoleCirculation:
+		return clamp(env.Control.AirExchange.Circulation, 0, 100)
+	default:
+		return 0
+	}
+}
+
 // ChannelSpeed computes the desired PWM speed (0-100) for a channel given its
 // role and the current vs. target climate of its environment.
 func ChannelSpeed(role domain.Role, env domain.Environment, tempC float64) int {

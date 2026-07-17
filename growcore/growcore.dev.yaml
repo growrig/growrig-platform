@@ -6,11 +6,13 @@
 #   export GROWCORE_HA_TOKEN=eyJhbGciOi...
 #   go run ./cmd/growcore -config growcore.dev.yaml
 #
+# Runtime data (SQLite, environment YAML, media, secrets) lives under ./data.
 # Point `url` at your Home Assistant (mDNS name, IP, or Nabu Casa URL). Add and
 # map devices to Home Assistant entities in the web UI (Setup) — not here.
 
 server:
   addr: ":8080"
+  workDir: data
 
 storage:
   path: growcore.dev.db

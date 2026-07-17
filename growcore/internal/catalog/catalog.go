@@ -41,11 +41,12 @@ const (
 	CatSensor     Category = "sensor"
 	CatCamera     Category = "camera"
 	CatPlug       Category = "plug"
+	CatIrrigation Category = "irrigation"
 	CatCombo      Category = "combo" // provides several bindings
 )
 
 // categoryOrder is the display order of categories in the catalog listing.
-var categoryOrder = []Category{CatTent, CatController, CatFan, CatSensor, CatLight, CatPlug, CatCamera, CatCombo}
+var categoryOrder = []Category{CatTent, CatController, CatFan, CatSensor, CatLight, CatPlug, CatCamera, CatIrrigation, CatCombo}
 
 // BindingTemplate describes one binding a product contributes.
 type BindingTemplate struct {
@@ -63,6 +64,9 @@ type BindingTemplate struct {
 	Wattage float64 `json:"wattage,omitempty" yaml:"wattage,omitempty"`
 	// RPMEntityDomain requests a separate tachometer entity for this controller channel.
 	RPMEntityDomain string `json:"rpmEntityDomain,omitempty" yaml:"rpmEntityDomain,omitempty"`
+	// Irrigation defaults the install form pre-fills for an irrigation binding.
+	IrrigationType domain.IrrigationType `json:"irrigationType,omitempty" yaml:"irrigationType,omitempty"`
+	IrrigationMode domain.IrrigationMode `json:"irrigationMode,omitempty" yaml:"irrigationMode,omitempty"`
 }
 
 // Variant is a concrete product supported by a driver (a device.yaml).

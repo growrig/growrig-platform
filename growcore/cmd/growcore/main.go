@@ -47,6 +47,9 @@ func main() {
 	if *addr != "" {
 		cfg.Server.Addr = *addr
 	}
+	if err := cfg.ApplyWorkDir(); err != nil {
+		log.Fatalf("working directory: %v", err)
+	}
 
 	st, err := store.Open(cfg.Storage.Path)
 	if err != nil {
@@ -83,13 +86,18 @@ func main() {
 		log.Print("web UI embedded; serving at /")
 	}
 
-	cameraRecorder := camera.New(st, cfg.Storage.Path)
+	dataDir := cfg.DataDir()
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		log.Fatalf("create data directory: %v", err)
+	}
+
+	cameraRecorder := camera.New(st, cfg.EnvironmentsDir(), cfg.Storage.Path)
 	go cameraRecorder.Run(ctx)
-	integrationManager, err := integrations.NewManager(st, integrations.FindBundleRoot(), filepath.Join(filepath.Dir(cfg.Storage.Path), ".integration-secret-key"))
+	integrationManager, err := integrations.NewManager(st, integrations.FindBundleRoot(), filepath.Join(dataDir, ".integration-secret-key"))
 	if err != nil {
 		log.Fatalf("load integrations: %v", err)
 	}
-	catalogSources, err := catalogsource.New(filepath.Dir(cfg.Storage.Path))
+	catalogSources, err := catalogsource.New(dataDir)
 	if err != nil {
 		log.Fatalf("load catalog sources: %v", err)
 	}
@@ -113,7 +121,7 @@ func main() {
 	catalogSources.Apply = applyCatalogSources
 	applyCatalogSources()
 
-	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder, filepath.Join(filepath.Dir(cfg.Storage.Path), "preferences.yaml"), integrationManager, catalogSources)
+	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder, filepath.Join(dataDir, "preferences.yaml"), cfg.GrowsDir(), integrationManager, catalogSources)
 	go apiServer.PollWeather(ctx)
 
 	srv := &http.Server{

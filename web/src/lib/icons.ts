@@ -21,7 +21,8 @@ export const bindingKindIcon: Record<BindingKind, IconComponent> = {
 	controller: Cpu,
 	light: Lightbulb,
 	power: Zap,
-	camera: Camera
+	camera: Camera,
+	irrigation: Droplets
 };
 
 /** Fallback for kinds without a dedicated icon (e.g. generic devices/plugs). */

@@ -2,12 +2,23 @@
 
 export type Role = 'unassigned' | 'exhaust' | 'intake' | 'circulation';
 export type EnvironmentKind = 'tent' | 'room';
-export type BindingKind = 'sensor' | 'fan' | 'controller' | 'light' | 'power' | 'camera';
+export type BindingKind = 'sensor' | 'fan' | 'controller' | 'light' | 'power' | 'camera' | 'irrigation';
 export type Measurement = 'temperature' | 'humidity' | 'co2' | 'power';
 export type Health = 'online' | 'stale' | 'offline';
-export type Category = 'tent' | 'controller' | 'fan' | 'light' | 'sensor' | 'camera' | 'plug' | 'combo';
+export type Category =
+	| 'tent'
+	| 'controller'
+	| 'fan'
+	| 'light'
+	| 'sensor'
+	| 'camera'
+	| 'plug'
+	| 'irrigation'
+	| 'combo';
 export type FanType = 'pc' | 'inline' | 'other';
 export type CameraType = 'mjpeg' | 'snapshot' | 'rtsp';
+export type IrrigationType = 'autopot' | 'drip' | 'wick' | 'ebb_flow' | 'hand';
+export type IrrigationMode = 'passive' | 'controlled';
 
 // --- Cultivation layer (grows, plant units, placements) ---
 
@@ -230,6 +241,142 @@ export interface CalendarResponse {
 /** Built-in editable stage sequences per crop family (GET /api/stage-presets). */
 export type StagePresets = Record<string, string[]>;
 
+// --- Grow photos, stage history & analytics ---
+
+/** A photo attached to a grow (bytes served separately via growPhotoImageURL). */
+export interface GrowPhoto {
+	id: string;
+	growId: string;
+	plantUnitId?: string;
+	caption?: string;
+	takenAt: string;
+	imageType: string;
+	createdAt: string;
+}
+
+/** One stage transition in a grow's history. */
+export interface StageEvent {
+	id: string;
+	growId: string;
+	stage: string;
+	enteredAt: string;
+}
+
+export interface StageDuration {
+	stage: string;
+	from: string;
+	to?: string;
+	days: number;
+}
+export interface CareWeek {
+	weekStart: string;
+	count: number;
+	feedCount: number;
+	totalMl: number;
+}
+export interface PlacementSpan {
+	environmentId: string;
+	environmentName: string;
+	from: string;
+	to?: string;
+}
+
+/** Interpreted grow data (GET /api/grows/{id}/analytics). */
+export interface GrowAnalytics {
+	stageDurations: StageDuration[];
+	careByWeek: CareWeek[];
+	careFrequency: Record<string, number>;
+	placements: PlacementSpan[];
+	pctInTarget?: number;
+	sampleCount: number;
+}
+
+/** Body for POST /api/grows/{id}/photos. */
+export interface UploadPhotoInput {
+	image: string; // data:<mime>;base64,<payload>
+	caption?: string;
+	plantUnitId?: string;
+	takenAt?: string;
+}
+
+// --- Alerts, tasks & attention ---
+
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
+
+/** A system-detected condition ("something is wrong"), opened/resolved by the
+ *  control engine and deduplicated by `key`. */
+export interface Alert {
+	id: string;
+	key: string;
+	environmentId?: string;
+	growId?: string;
+	deviceId?: string;
+	severity: AlertSeverity;
+	kind: string;
+	title: string;
+	message?: string;
+	status: AlertStatus;
+	firstSeenAt: string;
+	lastSeenAt: string;
+	acknowledgedAt?: string;
+	resolvedAt?: string;
+}
+
+export type TaskStatus = 'open' | 'completed' | 'skipped';
+export type TaskSource = 'manual' | 'recipe' | 'automation';
+
+/** Something the grower should do ("something should be done"). Completing a
+ *  task records a care event and links it via `completedCareEventId`. */
+export interface Task {
+	id: string;
+	growId?: string;
+	environmentId?: string;
+	plantUnitId?: string;
+	actionType: string;
+	title: string;
+	dueAt?: string;
+	status: TaskStatus;
+	source: TaskSource;
+	completedCareEventId?: string;
+	createdAt: string;
+	completedAt?: string;
+}
+
+export interface LowStockItem {
+	id: string;
+	name: string;
+	category: string;
+	quantity: number;
+}
+
+export interface UnhealthyIntegration {
+	id: string;
+	name: string;
+	status: string;
+	message?: string;
+}
+
+/** Live projection of everything needing attention (GET /api/attention). Not
+ *  persisted — recomputed per request from alerts, tasks, inventory, integrations. */
+export interface Attention {
+	alerts: Alert[];
+	tasks: Task[];
+	lowStock: LowStockItem[];
+	integrations: UnhealthyIntegration[];
+}
+
+/** Body for POST /api/tasks. */
+export interface CreateTaskInput {
+	growId?: string;
+	environmentId?: string;
+	plantUnitId?: string;
+	actionType?: string;
+	title: string;
+	dueAt?: string;
+	source?: TaskSource;
+}
+
 // --- Species catalog & cultivars (YAML-defined; GET /api/species) ---
 
 export type AttrType = 'text' | 'number' | 'percent' | 'enum';
@@ -451,6 +598,8 @@ export interface BindingTemplate {
 	deviceClass?: string;
 	wattage?: number;
 	rpmEntityDomain?: string;
+	irrigationType?: IrrigationType;
+	irrigationMode?: IrrigationMode;
 }
 
 /** A concrete product supported by a driver. `specs` is a free-form numeric map
@@ -523,8 +672,28 @@ export interface Environment {
 	targetTempC: number;
 	targetHumidity: number;
 	targetCO2: number;
+	/** Optional display target ranges (0 = unset); do not affect control. */
+	targetTempMinC: number;
+	targetTempMaxC: number;
+	targetHumidityMin: number;
+	targetHumidityMax: number;
+	targetVpdMin: number;
+	targetVpdMax: number;
+	targetCo2Min: number;
+	targetCo2Max: number;
 	emergencyTempC: number;
 	leafTempOffsetC: number;
+	/** Per-category automation policy. On a live EnvironmentView this is resolved
+	 *  (defaults filled); on a raw Environment it may be partially unset. */
+	control: ControlConfig;
+}
+
+export type ControlMode = 'auto' | 'manual';
+
+export interface ControlConfig {
+	lighting: { mode: ControlMode };
+	airExchange: { mode: ControlMode; exhaust: number; circulation: number };
+	irrigation: { mode: ControlMode };
 }
 
 export interface Binding {
@@ -555,6 +724,10 @@ export interface Binding {
 	cameraCaptureInterval?: number;
 	cameraRetentionDays?: number;
 	cameraStorageMb?: number;
+	irrigationType?: IrrigationType;
+	irrigationMode?: IrrigationMode;
+	reservoirL?: number;
+	valveCount?: number;
 }
 
 export interface DiscoveredEntity {
@@ -605,6 +778,15 @@ export interface CameraRef {
 	cameraCaptureInterval?: number;
 }
 
+export interface IrrigationRef {
+	id: string;
+	name: string;
+	type: IrrigationType;
+	mode: IrrigationMode;
+	reservoirL?: number;
+	valveCount?: number;
+}
+
 export interface AirSourceView {
 	id: string;
 	name: string;
@@ -627,6 +809,7 @@ export interface EnvironmentView extends Environment {
 	sensors: SensorReading[];
 	controls: ControlState[];
 	cameras: CameraRef[];
+	irrigation: IrrigationRef[];
 	airSource?: AirSourceView;
 	grow?: GrowSummary;
 	schedule?: LightSchedule;

@@ -19,6 +19,15 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import FlaskConical from '@lucide/svelte/icons/flask-conical';
+	import Leaf from '@lucide/svelte/icons/leaf';
+
+	type Tab = 'recipes' | 'cultivars' | 'species';
+	let tab = $state<Tab>('recipes');
+	const tabs: { id: Tab; label: string }[] = [
+		{ id: 'recipes', label: 'Recipes' },
+		{ id: 'cultivars', label: 'Cultivars' },
+		{ id: 'species', label: 'Species' }
+	];
 
 	let species = $state<Species[]>([]);
 	let cultivars = $state<Cultivar[]>([]);
@@ -111,14 +120,33 @@
 		}
 		return out;
 	}
+
+	const cultivarCountFor = (speciesId: string) =>
+		cultivars.filter((c) => c.species === speciesId).length;
 </script>
 
 <div class="mb-6">
-	<h1 class="text-2xl font-semibold">Knowledge</h1>
-	<p class="text-sm text-rig-400">Feeding schedules, cultivar library, and other reference data for your grows.</p>
+	<h1 class="text-2xl font-semibold">Library</h1>
+	<p class="text-sm text-rig-400">
+		Reusable reference data for your grows — feeding recipes, cultivars and species definitions.
+	</p>
 </div>
 
-<div class="space-y-10">
+<!-- Local tabs so unrelated tables/cards don't stack in one long page. -->
+<div class="mb-6 flex gap-1 border-b border-rig-800">
+	{#each tabs as t (t.id)}
+		<button
+			onclick={() => (tab = t.id)}
+			class="relative -mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors {tab === t.id
+				? 'border-leaf text-rig-50'
+				: 'border-transparent text-rig-400 hover:text-rig-100'}"
+		>
+			{t.label}
+		</button>
+	{/each}
+</div>
+
+{#if tab === 'recipes'}
 	<!-- Feeding recipes: nutrient schedules (built-in + user). -->
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-4">
@@ -211,7 +239,7 @@
 			</div>
 		{/if}
 	</section>
-
+{:else if tab === 'cultivars'}
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-4">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
@@ -242,67 +270,121 @@
 			</div>
 		{:else}
 			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each cultivars as c (c.id)}
-				<!-- Whole card opens the editor for admins (buttons below stop propagation). -->
-				<div
-					class="group relative flex flex-col overflow-hidden rounded-xl border border-rig-800 bg-rig-900/50 transition-colors hover:border-rig-600"
-					class:cursor-pointer={auth.isAdmin}
-					role="button"
-					tabindex={auth.isAdmin ? 0 : -1}
-					onclick={() => auth.isAdmin && editCultivar(c)}
-					onkeydown={(e) => auth.isAdmin && activateOnKey(e, () => editCultivar(c))}
-				>
-					<!-- Image occupies the top half, shown in full (no crop). -->
-					<div class="flex h-48 items-center justify-center overflow-hidden border-b border-rig-800 bg-rig-950">
-						{#if c.imageType}
-							<img src={cultivarImageURL(c.id)} alt={c.name} class="max-h-full max-w-full object-contain" />
-						{:else}
-							<div class="text-rig-700"><Dna size={40} /></div>
-						{/if}
-					</div>
-					<div class="min-w-0 flex-1 p-3">
-						<div class="flex items-center justify-between gap-2">
-							<h3 class="truncate font-semibold">{c.name}</h3>
-							<span class="shrink-0 rounded-full bg-rig-800 px-2 py-0.5 text-[11px] capitalize text-rig-300">
-								{speciesById.get(c.species)?.label ?? c.species}
-							</span>
+				{#each cultivars as c (c.id)}
+					<!-- Whole card opens the editor for admins (buttons below stop propagation). -->
+					<div
+						class="group relative flex flex-col overflow-hidden rounded-xl border border-rig-800 bg-rig-900/50 transition-colors hover:border-rig-600"
+						class:cursor-pointer={auth.isAdmin}
+						role="button"
+						tabindex={auth.isAdmin ? 0 : -1}
+						onclick={() => auth.isAdmin && editCultivar(c)}
+						onkeydown={(e) => auth.isAdmin && activateOnKey(e, () => editCultivar(c))}
+					>
+						<!-- Image occupies the top half, shown in full (no crop). -->
+						<div class="flex h-48 items-center justify-center overflow-hidden border-b border-rig-800 bg-rig-950">
+							{#if c.imageType}
+								<img src={cultivarImageURL(c.id)} alt={c.name} class="max-h-full max-w-full object-contain" />
+							{:else}
+								<div class="text-rig-700"><Dna size={40} /></div>
+							{/if}
 						</div>
-						{#if c.creator}<p class="truncate text-xs text-rig-500">by {c.creator}</p>{/if}
-						{#if attrSummary(c).length}
-							<div class="mt-1.5 flex flex-wrap gap-1">
-								{#each attrSummary(c) as a (a.label)}
-									<span class="rounded bg-rig-800/70 px-1.5 py-0.5 text-[11px] text-rig-300">
-										<span class="text-rig-500">{a.label}:</span> {a.value}
-									</span>
-								{/each}
+						<div class="min-w-0 flex-1 p-3">
+							<div class="flex items-center justify-between gap-2">
+								<h3 class="truncate font-semibold">{c.name}</h3>
+								<span class="shrink-0 rounded-full bg-rig-800 px-2 py-0.5 text-[11px] capitalize text-rig-300">
+									{speciesById.get(c.species)?.label ?? c.species}
+								</span>
+							</div>
+							{#if c.creator}<p class="truncate text-xs text-rig-500">by {c.creator}</p>{/if}
+							{#if attrSummary(c).length}
+								<div class="mt-1.5 flex flex-wrap gap-1">
+									{#each attrSummary(c) as a (a.label)}
+										<span class="rounded bg-rig-800/70 px-1.5 py-0.5 text-[11px] text-rig-300">
+											<span class="text-rig-500">{a.label}:</span> {a.value}
+										</span>
+									{/each}
+								</div>
+							{/if}
+							{#if c.description}<p class="mt-1.5 line-clamp-2 text-xs text-rig-400">{c.description}</p>{/if}
+						</div>
+						{#if auth.isAdmin}
+							<div class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+								<button
+									onclick={(e) => { e.stopPropagation(); editCultivar(c); }}
+									aria-label="Edit cultivar"
+									class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-rig-100"
+								>
+									<Pencil size={13} />
+								</button>
+								<button
+									onclick={(e) => { e.stopPropagation(); removeCultivar(c); }}
+									aria-label="Delete cultivar"
+									class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-danger"
+								>
+									<Trash2 size={13} />
+								</button>
 							</div>
 						{/if}
-						{#if c.description}<p class="mt-1.5 line-clamp-2 text-xs text-rig-400">{c.description}</p>{/if}
 					</div>
-					{#if auth.isAdmin}
-						<div class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-							<button
-								onclick={(e) => { e.stopPropagation(); editCultivar(c); }}
-								aria-label="Edit cultivar"
-								class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-rig-100"
-							>
-								<Pencil size={13} />
-							</button>
-							<button
-								onclick={(e) => { e.stopPropagation(); removeCultivar(c); }}
-								aria-label="Delete cultivar"
-								class="rounded bg-rig-950/80 p-1.5 text-rig-400 hover:text-danger"
-							>
-								<Trash2 size={13} />
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/each}
-		</div>
+				{/each}
+			</div>
 		{/if}
 	</section>
-</div>
+{:else}
+	<!-- Species: read-only reference definitions (stages + cultivar attributes). -->
+	<section>
+		<div class="mb-3 flex items-center gap-2">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+				Species{species.length ? ` · ${species.length}` : ''}
+			</h2>
+		</div>
+		{#if species.length === 0}
+			<div class="rounded-xl border border-dashed border-rig-800 p-10 text-center text-sm text-rig-500">
+				No species definitions available.
+			</div>
+		{:else}
+			<div class="grid gap-4 sm:grid-cols-2">
+				{#each species as sp (sp.id)}
+					<div class="rounded-xl border border-rig-800 bg-rig-900/50 p-4">
+						<div class="mb-3 flex items-center justify-between gap-2">
+							<div class="flex items-center gap-2">
+								<span class="grid h-8 w-8 place-items-center rounded-md bg-rig-800 text-leaf">
+									<Leaf size={16} />
+								</span>
+								<h3 class="font-semibold">{sp.label}</h3>
+							</div>
+							<span class="rounded-full bg-rig-800 px-2 py-0.5 text-[11px] text-rig-400">
+								{cultivarCountFor(sp.id)} cultivar{cultivarCountFor(sp.id) === 1 ? '' : 's'}
+							</span>
+						</div>
+						{#if sp.stages?.length}
+							<div class="mb-2">
+								<p class="mb-1 text-[11px] uppercase tracking-wide text-rig-500">Stages</p>
+								<div class="flex flex-wrap gap-1.5">
+									{#each sp.stages as st (st.name)}
+										<span class="rounded bg-rig-800/70 px-2 py-0.5 text-xs text-rig-300">
+											{st.name}<span class="ml-1 text-rig-500">{st.lightHours}h</span>
+										</span>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if sp.cultivarAttributes?.length}
+							<div>
+								<p class="mb-1 text-[11px] uppercase tracking-wide text-rig-500">Cultivar fields</p>
+								<div class="flex flex-wrap gap-1.5">
+									{#each sp.cultivarAttributes as attr (attr.key)}
+										<span class="rounded bg-rig-800/70 px-2 py-0.5 text-xs text-rig-300">{attr.label}</span>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</section>
+{/if}
 
 {#if auth.isAdmin}
 	<CultivarFormModal

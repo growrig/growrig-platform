@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
-	import type { Binding, CameraType, CatalogProduct, DiscoveredEntity, FanType, Measurement, Role } from '$lib/types';
+	import type { Binding, CameraType, CatalogProduct, DiscoveredEntity, FanType, IrrigationType, Measurement, Role } from '$lib/types';
 	import { createBinding, updateBinding } from '$lib/api';
 	import { Button, Dialog, Select, Switch, type SelectItem } from '$lib/components/ui';
 	import CatalogDevicePicker, { type BindingDraft } from '$lib/components/CatalogDevicePicker.svelte';
@@ -62,6 +62,9 @@
 	let cameraRetentionDays = $state(7);
 	let cameraStorageMb = $state(5120);
 	let cameraSource = $state<'url' | 'homeassistant'>('url');
+	let irrigationType = $state<IrrigationType>('autopot');
+	let reservoirL = $state(0);
+	let valveCount = $state(0);
 	let busy = $state(false);
 
 	// Reseed the form whenever the target binding changes.
@@ -90,8 +93,19 @@
 			primary = binding.primary ?? false;
 			powerControllerId = binding.powerControllerId ?? '';
 			controllerChannelId = binding.controllerChannelId ?? '';
+			irrigationType = binding.irrigationType ?? 'autopot';
+			reservoirL = binding.reservoirL ?? 0;
+			valveCount = binding.valveCount ?? 0;
 		}
 	});
+
+	const irrigationTypeItems: SelectItem[] = [
+		{ value: 'autopot', label: 'AutoPot (gravity-fed trays)' },
+		{ value: 'drip', label: 'Drip / emitters' },
+		{ value: 'wick', label: 'Wick' },
+		{ value: 'ebb_flow', label: 'Ebb & flow' },
+		{ value: 'hand', label: 'Hand-watering' }
+	];
 
 	const cameraTypeItems: SelectItem[] = [
 		{ value: 'snapshot', label: 'Snapshot (refreshing JPEG URL)' },
@@ -140,7 +154,7 @@
 			? false
 			: binding.kind === 'camera'
 				? cameraSource === 'homeassistant' ? !!entity.trim() : !!streamUrl.trim()
-				: binding.kind === 'fan' || binding.kind === 'light' || !!entity.trim()
+				: binding.kind === 'fan' || binding.kind === 'light' || binding.kind === 'irrigation' || !!entity.trim()
 	);
 
 	async function saveEdit() {
@@ -155,7 +169,7 @@
 				environmentId: binding.environmentId,
 				kind: binding.kind,
 				name: binding.name,
-				entity: binding.kind === 'camera' && cameraSource === 'url' ? '' : entity.trim(),
+				entity: binding.kind === 'camera' && cameraSource === 'url' ? '' : binding.kind === 'irrigation' ? '' : entity.trim(),
 				measurement: binding.kind === 'sensor' ? measurement : undefined,
 				role: binding.kind === 'fan' || binding.kind === 'controller' ? role : undefined,
 				rpmEntity: binding.kind === 'controller' ? rpmEntity.trim() : undefined,
@@ -174,6 +188,10 @@
 				,cameraCaptureInterval: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraCaptureInterval : undefined
 				,cameraRetentionDays: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraRetentionDays : undefined
 				,cameraStorageMb: binding.kind === 'camera' && cameraType === 'rtsp' ? cameraStorageMb : undefined
+				,irrigationType: binding.kind === 'irrigation' ? irrigationType : undefined
+				,irrigationMode: binding.kind === 'irrigation' ? (binding.irrigationMode ?? 'passive') : undefined
+				,reservoirL: binding.kind === 'irrigation' ? reservoirL || undefined : undefined
+				,valveCount: binding.kind === 'irrigation' ? valveCount || undefined : undefined
 			});
 			flash?.('ok', 'Device saved');
 			open = false;
@@ -202,7 +220,7 @@
 				<span class="text-sm text-rig-400">Name</span>
 				<input bind:value={name} class="{field} mt-1" />
 			</label>
-			{#if binding.kind !== 'light' && binding.kind !== 'fan' && binding.kind !== 'camera'}
+			{#if binding.kind !== 'light' && binding.kind !== 'fan' && binding.kind !== 'camera' && binding.kind !== 'irrigation'}
 				<label class="block">
 					<span class="text-sm text-rig-400">Entity</span>
 					<input bind:value={entity} class="{field} mt-1 font-mono text-xs" />
@@ -302,6 +320,16 @@
 					</div>
 				{/if}
 				{/if}
+			{:else if binding.kind === 'irrigation'}
+				<label class="block">
+					<span class="text-sm text-rig-400">Irrigation type</span>
+					<Select value={irrigationType} onValueChange={(v) => (irrigationType = v as IrrigationType)} items={irrigationTypeItems} class="mt-1" />
+				</label>
+				<div class="grid grid-cols-2 gap-3">
+					<label><span class="text-sm text-rig-400">Reservoir (L)</span><input type="number" min="0" step="0.5" bind:value={reservoirL} class="{field} mt-1" /></label>
+					<label><span class="text-sm text-rig-400">Trays / valves</span><input type="number" min="0" step="1" bind:value={valveCount} class="{field} mt-1" /></label>
+				</div>
+				<p class="text-xs text-rig-500">Passive setup — no pump or Home Assistant entity.</p>
 			{/if}
 
 			<div class="flex justify-end gap-2 pt-2">

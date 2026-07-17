@@ -78,6 +78,7 @@ func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	_ = s.store.AddStageEvent(grow.ID, grow.Stage, grow.StageStarted)
 	s.growActivity(grow.ID, "", "info", "configuration", "Created grow "+grow.Name)
 	writeJSON(w, http.StatusOK, grow)
 }
@@ -162,6 +163,7 @@ func (s *Server) changeStage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	_ = s.store.AddStageEvent(grow.ID, stage, grow.StageStarted)
 	s.growActivity(grow.ID, "", "info", "configuration", grow.Name+" advanced to "+stage)
 	writeJSON(w, http.StatusOK, grow)
 }

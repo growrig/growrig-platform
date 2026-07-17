@@ -6,16 +6,21 @@
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { theme } from '$lib/theme.svelte';
+	import { attention } from '$lib/attention.svelte';
 	import { preferences, onPreferencesUpdated } from '$lib/preferences.svelte';
 	import { fmtClock } from '$lib/datetime';
 	import { fmtLatencyMs } from '$lib/format';
-	import { Button } from '$lib/components/ui';
+	import { Button, DropdownMenu, type DropdownItem } from '$lib/components/ui';
+	import NavMenu from '$lib/components/NavMenu.svelte';
 	import GrowAIChat from '$lib/components/GrowAIChat.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shield from '@lucide/svelte/icons/shield';
+	import Settings from '@lucide/svelte/icons/settings';
+	import UserIcon from '@lucide/svelte/icons/user';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Menu from '@lucide/svelte/icons/menu';
 	import X from '@lucide/svelte/icons/x';
 
@@ -28,7 +33,6 @@
 		page.url.pathname;
 		menuOpen = false;
 	});
-	const instanceTime = $derived(fmtClock(clockNow));
 
 	// Routes that render without the app chrome and without requiring a session.
 	const authRoutes = ['/login', '/setup'];
@@ -39,16 +43,27 @@
 		auth.init();
 		return () => live.stop();
 	});
+	const instanceTime = $derived(fmtClock(clockNow));
+
 	onMount(() => {
-		const timer = setInterval(() => (clockNow = new Date()), 1000);
+		const clock = setInterval(() => (clockNow = new Date()), 1000);
+		// Refresh the "needs attention" projection periodically; it's cheap to
+		// recompute server-side and keeps Home's panel current.
+		const refresh = setInterval(() => {
+			if (auth.phase === 'authed') void attention.load();
+		}, 60_000);
 		const stop = onPreferencesUpdated((p) => preferences.apply(p));
 		return () => {
-			clearInterval(timer);
+			clearInterval(clock);
+			clearInterval(refresh);
 			stop();
 		};
 	});
 	$effect(() => {
-		if (auth.phase === 'authed') void preferences.load();
+		if (auth.phase === 'authed') {
+			void preferences.load();
+			void attention.load();
+		}
 	});
 
 	// Route guard: keep the URL consistent with the auth phase.
@@ -78,17 +93,28 @@
 		} else if (auth.phase !== 'authed' && feedRunning) {
 			live.stop();
 			feedRunning = false;
+			attention.reset();
 		}
 	});
 
-	const nav = $derived([
-		{ href: '/', label: 'Dashboard' },
-		{ href: '/grows', label: 'Grows' },
-		{ href: '/calendar', label: 'Calendar' },
-		{ href: '/inventory', label: 'Inventory' },
-		{ href: '/knowledge', label: 'Knowledge' },
-		{ href: '/activity', label: 'Activity' },
-		...(auth.isAdmin ? [{ href: '/admin', label: 'Admin' }] : [])
+	// Grouped navigation for the mobile drawer (desktop uses <NavMenu />).
+	const navGroups = $derived([
+		{ label: '', items: [{ href: '/', label: 'Home' }] },
+		{
+			label: 'Growing',
+			items: [
+				{ href: '/grows', label: 'Grows' },
+				{ href: '/calendar', label: 'Calendar' },
+				{ href: '/activity', label: 'Activity' }
+			]
+		},
+		{
+			label: 'Resources',
+			items: [
+				{ href: '/inventory', label: 'Inventory' },
+				{ href: '/library', label: 'Library' }
+			]
+		}
 	]);
 
 	const statusMeta = {
@@ -96,6 +122,13 @@
 		connecting: { label: 'Connecting', dot: 'bg-warn animate-pulse' },
 		offline: { label: 'Offline', dot: 'bg-danger' }
 	} as const;
+
+	// The username's dropdown submenu: account, admin settings, and log out.
+	const userMenu = $derived<DropdownItem[]>([
+		{ label: 'Account & passkeys', href: '/account', icon: UserIcon },
+		...(auth.isAdmin ? [{ label: 'Settings', href: '/admin', icon: Settings }] : []),
+		{ label: 'Log out', onSelect: () => auth.logout(), icon: LogOut }
+	]);
 </script>
 
 {#if isAuthRoute && auth.phase !== 'authed'}
@@ -124,18 +157,7 @@
 					</span>
 					<span>GrowRig</span>
 				</a>
-				<nav class="hidden gap-1 text-sm lg:flex">
-					{#each nav as item (item.href)}
-						<a
-							href={item.href}
-							class="rounded-md px-3 py-1.5 transition-colors {page.url.pathname === item.href
-								? 'bg-rig-800 text-rig-50'
-								: 'text-rig-300 hover:bg-rig-800/50 hover:text-rig-100'}"
-						>
-							{item.label}
-						</a>
-					{/each}
-				</nav>
+				<NavMenu />
 				<div class="ml-auto flex items-center gap-3 lg:gap-4">
 					<div class="hidden text-sm tabular-nums text-rig-400 sm:block" title="{preferences.timezone} · {preferences.locale}">{instanceTime}</div>
 					<div class="flex items-center gap-2 text-sm text-rig-300">
@@ -143,22 +165,18 @@
 						<span class="hidden tabular-nums sm:inline">{live.status === 'live' ? (live.latencyMs == null ? '— ms' : `${fmtLatencyMs(live.latencyMs)} ms`) : statusMeta[live.status].label}</span>
 					</div>
 					{#if auth.user}
-						<div class="hidden items-center gap-2 border-l border-rig-800 pl-4 lg:flex">
-							<a
-								href="/account"
-								class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
-								title="Account & passkeys"
+						<div class="hidden border-l border-rig-800 pl-4 lg:block">
+							<DropdownMenu
+								items={userMenu}
+								align="end"
+								triggerClass="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 outline-none transition-colors hover:bg-rig-800/50 hover:text-rig-100"
 							>
-								{#if auth.isAdmin}<Shield size={14} class="text-leaf" />{/if}
-								{auth.user.username}
-							</a>
-							<button
-								onclick={() => auth.logout()}
-								class="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-rig-400 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
-								title="Log out"
-							>
-								<LogOut size={15} />
-							</button>
+								{#snippet trigger()}
+									{#if auth.isAdmin}<Shield size={14} class="text-leaf" />{/if}
+									{auth.user?.username}
+									<ChevronDown size={14} />
+								{/snippet}
+							</DropdownMenu>
 						</div>
 					{/if}
 					<button
@@ -172,35 +190,52 @@
 				</div>
 			</div>
 
-			<!-- Mobile drawer: the same nav plus the account actions, stacked. -->
+			<!-- Mobile drawer: grouped nav plus the account actions, stacked. -->
 			{#if menuOpen}
 				<nav class="mx-auto max-w-5xl border-t border-rig-800 px-2 py-2 lg:hidden">
-					{#each nav as item (item.href)}
-						<a
-							href={item.href}
-							class="block rounded-md px-3 py-2.5 text-sm transition-colors {page.url.pathname === item.href
-								? 'bg-rig-800 text-rig-50'
-								: 'text-rig-300 hover:bg-rig-800/50 hover:text-rig-100'}"
-						>
-							{item.label}
-						</a>
+					{#each navGroups as group (group.label)}
+						{#if group.label}
+							<div class="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-rig-500">
+								{group.label}
+							</div>
+						{/if}
+						{#each group.items as item (item.href)}
+							<a
+								href={item.href}
+								class="block rounded-md px-3 py-2.5 text-sm transition-colors {page.url.pathname === item.href
+									? 'bg-rig-800 text-rig-50'
+									: 'text-rig-300 hover:bg-rig-800/50 hover:text-rig-100'}"
+							>
+								{item.label}
+							</a>
+						{/each}
 					{/each}
 					{#if auth.user}
-						<div class="mt-2 flex items-center justify-between border-t border-rig-800 px-3 pt-3">
-							<a
-								href="/account"
-								class="flex items-center gap-1.5 text-sm text-rig-300 transition-colors hover:text-rig-100"
-								title="Account & passkeys"
-							>
-								{#if auth.isAdmin}<Shield size={14} class="text-leaf" />{/if}
+						<!-- Account section mirrors the desktop username dropdown. -->
+						<div class="mt-2 border-t border-rig-800 pt-2">
+							<div class="flex items-center gap-1.5 px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-rig-500">
+								{#if auth.isAdmin}<Shield size={12} class="text-leaf" />{/if}
 								{auth.user.username}
-							</a>
-							<button
-								onclick={() => auth.logout()}
-								class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-400 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
-							>
-								<LogOut size={15} /> Log out
-							</button>
+							</div>
+							{#each userMenu as item (item.label)}
+								{#if item.href}
+									<a
+										href={item.href}
+										class="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-rig-300 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
+									>
+										{#if item.icon}<item.icon size={16} class="text-rig-400" />{/if}
+										{item.label}
+									</a>
+								{:else}
+									<button
+										onclick={item.onSelect}
+										class="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-rig-300 transition-colors hover:bg-rig-800/50 hover:text-rig-100"
+									>
+										{#if item.icon}<item.icon size={16} class="text-rig-400" />{/if}
+										{item.label}
+									</button>
+								{/if}
+							{/each}
 						</div>
 					{/if}
 				</nav>

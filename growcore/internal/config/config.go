@@ -20,6 +20,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -43,11 +44,35 @@ type Config struct {
 
 type Server struct {
 	Addr string `yaml:"addr"`
+	// WorkDir is the process working directory. Relative paths in this config
+	// (storage.path, storage.dataDir, …) and runtime lookups that walk from the
+	// working directory resolve from here. Empty keeps the process cwd.
+	WorkDir string `yaml:"workDir"`
 }
 
 type Storage struct {
 	Path string `yaml:"path"`
+	// DataDir is the root for on-disk data written alongside the database:
+	// camera archives (environments/), grow media (grows/), integration secrets,
+	// catalog sources and preferences. Empty means "the directory containing the
+	// database file", so existing installs keep their current paths.
+	DataDir string `yaml:"dataDir"`
 }
+
+// DataDir is the resolved root directory for on-disk data. It is the configured
+// storage.dataDir, or the directory containing the database when unset.
+func (c *Config) DataDir() string {
+	if c.Storage.DataDir != "" {
+		return c.Storage.DataDir
+	}
+	return filepath.Dir(c.Storage.Path)
+}
+
+// EnvironmentsDir holds per-environment media (camera archives).
+func (c *Config) EnvironmentsDir() string { return filepath.Join(c.DataDir(), "environments") }
+
+// GrowsDir holds per-grow media (photos).
+func (c *Config) GrowsDir() string { return filepath.Join(c.DataDir(), "grows") }
 
 type Control struct {
 	Interval Duration `yaml:"interval"`
@@ -109,6 +134,19 @@ func (c *Config) Validate() error {
 		}
 	default:
 		return fmt.Errorf("unknown adapter.type %q", c.Adapter.Type)
+	}
+	return nil
+}
+
+// ApplyWorkDir changes the process working directory to server.workDir when set.
+// Relative config paths (storage, data) and Getwd-based lookups then resolve
+// from that directory. No-op when workDir is empty.
+func (c *Config) ApplyWorkDir() error {
+	if c.Server.WorkDir == "" {
+		return nil
+	}
+	if err := os.Chdir(c.Server.WorkDir); err != nil {
+		return fmt.Errorf("server.workDir %q: %w", c.Server.WorkDir, err)
 	}
 	return nil
 }

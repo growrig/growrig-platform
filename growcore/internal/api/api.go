@@ -35,6 +35,7 @@ type Server struct {
 	passkeys        *ceremonyStore
 	cameras         *camera.Recorder
 	preferencesPath string
+	growMediaDir    string
 	integrations    *integrations.Manager
 	catalogSources  *catalogsource.Manager
 }
@@ -49,8 +50,8 @@ func (s *Server) growActivity(growID, envID, level, eventType, message string) {
 	_ = s.store.AddActivity(domain.Activity{GrowID: growID, EnvironmentID: envID, Level: level, Type: eventType, Message: message})
 }
 
-func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder, preferencesPath string, integrationManager *integrations.Manager, catalogSources *catalogsource.Manager) *Server {
-	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore(), cameras: cameras, preferencesPath: preferencesPath, integrations: integrationManager, catalogSources: catalogSources}
+func NewServer(st *store.Store, eng *control.Engine, adapter control.Adapter, hub *Hub, adapterType string, static http.Handler, cameras *camera.Recorder, preferencesPath, growMediaDir string, integrationManager *integrations.Manager, catalogSources *catalogsource.Manager) *Server {
+	return &Server{store: st, engine: eng, adapter: adapter, hub: hub, adapterType: adapterType, static: static, passkeys: newCeremonyStore(), cameras: cameras, preferencesPath: preferencesPath, growMediaDir: growMediaDir, integrations: integrationManager, catalogSources: catalogSources}
 }
 
 // Handler builds the HTTP router.
@@ -84,6 +85,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/roles", s.requireAuth(s.getRoles))
 	mux.HandleFunc("GET /api/stage-presets", s.requireAuth(s.getStagePresets))
 	mux.HandleFunc("GET /api/activity", s.requireAuth(s.getActivity))
+	mux.HandleFunc("GET /api/attention", s.requireAuth(s.getAttention))
+	mux.HandleFunc("GET /api/alerts", s.requireAuth(s.getAlerts))
+	mux.HandleFunc("POST /api/alerts/{id}/ack", s.requireAuth(s.ackAlert))
+	mux.HandleFunc("POST /api/alerts/{id}/resolve", s.requireAuth(s.resolveAlert))
+	mux.HandleFunc("GET /api/tasks", s.requireAuth(s.getTasks))
+	mux.HandleFunc("POST /api/tasks", s.requireAuth(s.createTask))
+	mux.HandleFunc("POST /api/tasks/{id}/complete", s.requireAuth(s.completeTask))
+	mux.HandleFunc("POST /api/tasks/{id}/skip", s.requireAuth(s.skipTask))
 	mux.HandleFunc("GET /api/environments", s.requireAuth(s.getEnvironments))
 	mux.HandleFunc("GET /api/bindings", s.requireAuth(s.getBindings))
 	mux.HandleFunc("GET /api/bindings/{id}/camera", s.requireEnvReadForBinding(s.getCameraImage))
@@ -129,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Per-environment write (operate the grow).
 	mux.HandleFunc("PUT /api/environments/{id}/targets", s.requireEnvWrite(s.putTargets))
+	mux.HandleFunc("PUT /api/environments/{id}/control", s.requireEnvWrite(s.putControl))
 	mux.HandleFunc("PUT /api/environments/{id}/schedule", s.requireEnvWrite(s.putSchedule))
 	mux.HandleFunc("PUT /api/environments/{id}/control-grow", s.requireEnvWrite(s.putControlGrow))
 	mux.HandleFunc("PUT /api/bindings/{id}/switch", s.requireEnvWriteForBinding(s.putSwitch))
@@ -143,6 +153,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/calendar", s.requireAuth(s.getCalendar))
 	mux.HandleFunc("GET /api/grows/{id}/care", s.requireAuth(s.getCare))
 	mux.HandleFunc("POST /api/grows/{id}/care", s.requireAdmin(s.logCare))
+	mux.HandleFunc("GET /api/grows/{id}/photos", s.requireAuth(s.getGrowPhotos))
+	mux.HandleFunc("POST /api/grows/{id}/photos", s.requireAdmin(s.uploadGrowPhoto))
+	mux.HandleFunc("GET /api/grows/{id}/photos/{photoId}/image", s.requireAuth(s.getGrowPhotoImage))
+	mux.HandleFunc("DELETE /api/grows/{id}/photos/{photoId}", s.requireAdmin(s.deleteGrowPhoto))
+	mux.HandleFunc("GET /api/grows/{id}/analytics", s.requireAuth(s.getGrowAnalytics))
 	mux.HandleFunc("GET /api/grows/{id}/care-config", s.requireAuth(s.getCareConfig))
 	mux.HandleFunc("PUT /api/grows/{id}/care-config", s.requireAdmin(s.putCareConfig))
 	mux.HandleFunc("DELETE /api/care/{id}", s.requireAdmin(s.deleteCare))

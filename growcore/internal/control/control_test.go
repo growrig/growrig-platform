@@ -50,3 +50,41 @@ func TestCirculationHasBaseline(t *testing.T) {
 		t.Fatalf("circulation baseline = %d, want %d", got, baseCirc)
 	}
 }
+
+func manualEnv() domain.Environment {
+	e := env()
+	e.Control.AirExchange = domain.AirExchangeControl{Mode: domain.ControlManual, Exhaust: 70, Circulation: 40}
+	return e
+}
+
+func TestDesiredChannelSpeedAutoDefersToClimate(t *testing.T) {
+	// With no manual mode set, DesiredChannelSpeed matches the climate law.
+	if got, want := DesiredChannelSpeed(domain.RoleExhaust, env(), 24), ChannelSpeed(domain.RoleExhaust, env(), 24); got != want {
+		t.Fatalf("auto exhaust = %d, want %d", got, want)
+	}
+}
+
+func TestDesiredChannelSpeedManualHoldsSetpoints(t *testing.T) {
+	if got := DesiredChannelSpeed(domain.RoleExhaust, manualEnv(), 24); got != 70 {
+		t.Fatalf("manual exhaust = %d, want 70", got)
+	}
+	if got := DesiredChannelSpeed(domain.RoleIntake, manualEnv(), 24); got != 70 {
+		t.Fatalf("manual intake = %d, want 70", got)
+	}
+	if got := DesiredChannelSpeed(domain.RoleCirculation, manualEnv(), 24); got != 40 {
+		t.Fatalf("manual circulation = %d, want 40", got)
+	}
+	if got := DesiredChannelSpeed(domain.RoleUnassigned, manualEnv(), 24); got != 0 {
+		t.Fatalf("manual unassigned = %d, want 0", got)
+	}
+}
+
+func TestDesiredChannelSpeedManualStillRespectsEmergency(t *testing.T) {
+	// The emergency over-temperature floor overrides the manual setpoints.
+	if got := DesiredChannelSpeed(domain.RoleExhaust, manualEnv(), 36); got != emergencyPWM {
+		t.Fatalf("manual exhaust at emergency = %d, want %d", got, emergencyPWM)
+	}
+	if got := DesiredChannelSpeed(domain.RoleCirculation, manualEnv(), 36); got != emergencyPWM {
+		t.Fatalf("manual circulation at emergency = %d, want %d", got, emergencyPWM)
+	}
+}

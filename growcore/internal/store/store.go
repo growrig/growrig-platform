@@ -366,6 +366,59 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
     created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_chat ON ai_chat_messages (chat_id, created, id);
+CREATE TABLE IF NOT EXISTS alerts (
+    id              TEXT PRIMARY KEY,
+    key             TEXT NOT NULL,             -- stable deduplication identity
+    environment_id  TEXT NOT NULL DEFAULT '',
+    grow_id         TEXT NOT NULL DEFAULT '',
+    device_id       TEXT NOT NULL DEFAULT '',
+    severity        TEXT NOT NULL DEFAULT 'warning', -- info, warning, critical
+    kind            TEXT NOT NULL DEFAULT '',
+    title           TEXT NOT NULL DEFAULT '',
+    message         TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'open',    -- open, acknowledged, resolved
+    first_seen_at   INTEGER NOT NULL DEFAULT 0,
+    last_seen_at    INTEGER NOT NULL DEFAULT 0,
+    acknowledged_at INTEGER,                   -- NULL until acknowledged
+    resolved_at     INTEGER                    -- NULL until resolved
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts (status);
+-- At most one non-resolved alert per key (open/acknowledged collapse to one row).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_open_key ON alerts (key) WHERE status != 'resolved';
+CREATE TABLE IF NOT EXISTS tasks (
+    id                      TEXT PRIMARY KEY,
+    grow_id                 TEXT NOT NULL DEFAULT '',
+    environment_id          TEXT NOT NULL DEFAULT '',
+    plant_unit_id           TEXT NOT NULL DEFAULT '',
+    action_type             TEXT NOT NULL DEFAULT '',
+    title                   TEXT NOT NULL DEFAULT '',
+    due_at                  INTEGER,           -- NULL = no due date
+    status                  TEXT NOT NULL DEFAULT 'open', -- open, completed, skipped
+    source                  TEXT NOT NULL DEFAULT 'manual',
+    completed_care_event_id TEXT NOT NULL DEFAULT '',
+    created_at              INTEGER NOT NULL DEFAULT 0,
+    completed_at            INTEGER            -- NULL until completed
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks (status, due_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_grow ON tasks (grow_id);
+CREATE TABLE IF NOT EXISTS grow_photos (
+    id            TEXT PRIMARY KEY,
+    grow_id       TEXT NOT NULL,
+    plant_unit_id TEXT NOT NULL DEFAULT '',
+    caption       TEXT NOT NULL DEFAULT '',
+    taken_at      INTEGER NOT NULL DEFAULT 0,
+    file          TEXT NOT NULL,              -- content-addressed basename on disk
+    image_type    TEXT NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_grow_photos_grow ON grow_photos (grow_id, taken_at DESC);
+CREATE TABLE IF NOT EXISTS stage_events (
+    id         TEXT PRIMARY KEY,
+    grow_id    TEXT NOT NULL,
+    stage      TEXT NOT NULL,
+    entered_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_stage_events_grow ON stage_events (grow_id, entered_at);
 -- Superseded by the bindings model.
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS devices;
@@ -438,13 +491,26 @@ DROP TABLE IF EXISTS devices;
 		{"bindings", "fan_type", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "location_id", "TEXT NOT NULL DEFAULT ''"},
 		{"environments", "leaf_temp_offset", "REAL NOT NULL DEFAULT -2"},
+		{"environments", "target_temp_min", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_temp_max", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_humidity_min", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_humidity_max", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_vpd_min", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_vpd_max", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_co2_min", "REAL NOT NULL DEFAULT 0"},
+		{"environments", "target_co2_max", "REAL NOT NULL DEFAULT 0"},
 		{"environments", "control_grow_id", "TEXT NOT NULL DEFAULT ''"},
+		{"environments", "control", "TEXT NOT NULL DEFAULT ''"},
 		{"plant_units", "cultivar", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "stream_url", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "camera_type", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "camera_capture_interval", "INTEGER NOT NULL DEFAULT 60"},
 		{"bindings", "camera_retention_days", "INTEGER NOT NULL DEFAULT 7"},
 		{"bindings", "camera_storage_mb", "INTEGER NOT NULL DEFAULT 5120"},
+		{"bindings", "irrigation_type", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "irrigation_mode", "TEXT NOT NULL DEFAULT ''"},
+		{"bindings", "reservoir_l", "REAL NOT NULL DEFAULT 0"},
+		{"bindings", "valve_count", "INTEGER NOT NULL DEFAULT 0"},
 		{"activity_log", "grow_id", "TEXT NOT NULL DEFAULT ''"},
 		{"inventory_items", "variants", "TEXT NOT NULL DEFAULT '[]'"},
 		{"inventory_items", "product_id", "TEXT NOT NULL DEFAULT ''"},
@@ -638,20 +704,32 @@ func (s *Store) SaveEnvironment(e domain.Environment) error {
 	if e.Kind == "" {
 		e.Kind = domain.KindTent
 	}
-	_, err := s.db.Exec(
+	control, err := json.Marshal(e.Control)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
 		`INSERT INTO environments
-		   (id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset,
+		    target_temp_min, target_temp_max, target_humidity_min, target_humidity_max, target_vpd_min, target_vpd_max, target_co2_min, target_co2_max, control)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, kind=excluded.kind, air_source=excluded.air_source,
 		   location_id=excluded.location_id, control_grow_id=excluded.control_grow_id, model=excluded.model,
 		   width_cm=excluded.width_cm, depth_cm=excluded.depth_cm, height_cm=excluded.height_cm,
 		   target_temp=excluded.target_temp, target_humidity=excluded.target_humidity,
 		   target_co2=excluded.target_co2, emergency_temp=excluded.emergency_temp,
-		   leaf_temp_offset=excluded.leaf_temp_offset`,
+		   leaf_temp_offset=excluded.leaf_temp_offset,
+		   target_temp_min=excluded.target_temp_min, target_temp_max=excluded.target_temp_max,
+		   target_humidity_min=excluded.target_humidity_min, target_humidity_max=excluded.target_humidity_max,
+		   target_vpd_min=excluded.target_vpd_min, target_vpd_max=excluded.target_vpd_max,
+		   target_co2_min=excluded.target_co2_min, target_co2_max=excluded.target_co2_max,
+		   control=excluded.control`,
 		e.ID, e.Name, string(e.Kind), e.AirSourceID, e.LocationID, e.ControlGrowID, e.Model,
 		e.WidthCm, e.DepthCm, e.HeightCm,
 		e.TargetTempC, e.TargetHumidity, e.TargetCO2, e.EmergencyTempC, e.LeafTempOffsetC,
+		e.TargetTempMinC, e.TargetTempMaxC, e.TargetHumidityMin, e.TargetHumidityMax,
+		e.TargetVPDMin, e.TargetVPDMax, e.TargetCO2Min, e.TargetCO2Max, string(control),
 	)
 	if err != nil {
 		return err
@@ -674,7 +752,8 @@ func (s *Store) UpdateTargets(id string, targetTemp, targetHumidity float64) err
 
 func (s *Store) Environments() ([]domain.Environment, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset
+		`SELECT id, name, kind, air_source, location_id, control_grow_id, model, width_cm, depth_cm, height_cm, target_temp, target_humidity, target_co2, emergency_temp, leaf_temp_offset,
+		        target_temp_min, target_temp_max, target_humidity_min, target_humidity_max, target_vpd_min, target_vpd_max, target_co2_min, target_co2_max, control
 		 FROM environments ORDER BY kind DESC, name`) // tents before rooms
 	if err != nil {
 		return nil, err
@@ -683,12 +762,19 @@ func (s *Store) Environments() ([]domain.Environment, error) {
 	var out []domain.Environment
 	for rows.Next() {
 		var e domain.Environment
-		var kind string
+		var kind, control string
 		if err := rows.Scan(&e.ID, &e.Name, &kind, &e.AirSourceID, &e.LocationID, &e.ControlGrowID, &e.Model, &e.WidthCm, &e.DepthCm, &e.HeightCm,
-			&e.TargetTempC, &e.TargetHumidity, &e.TargetCO2, &e.EmergencyTempC, &e.LeafTempOffsetC); err != nil {
+			&e.TargetTempC, &e.TargetHumidity, &e.TargetCO2, &e.EmergencyTempC, &e.LeafTempOffsetC,
+			&e.TargetTempMinC, &e.TargetTempMaxC, &e.TargetHumidityMin, &e.TargetHumidityMax,
+			&e.TargetVPDMin, &e.TargetVPDMax, &e.TargetCO2Min, &e.TargetCO2Max, &control); err != nil {
 			return nil, err
 		}
 		e.Kind = domain.EnvironmentKind(kind)
+		if control != "" {
+			if err := json.Unmarshal([]byte(control), &e.Control); err != nil {
+				return nil, fmt.Errorf("environment %s: parse control: %w", e.ID, err)
+			}
+		}
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -1308,8 +1394,8 @@ func (s *Store) DeleteEnvironment(id string) error {
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   device_id=excluded.device_id, device_name=excluded.device_name,
 		   power_controller_id=excluded.power_controller_id,
@@ -1322,9 +1408,11 @@ func (s *Store) SaveBinding(b domain.Binding) error {
 		   duct_size_inches=excluded.duct_size_inches, noise_dba=excluded.noise_dba,
 		   stream_url=excluded.stream_url, camera_type=excluded.camera_type,
 		   camera_capture_interval=excluded.camera_capture_interval, camera_retention_days=excluded.camera_retention_days,
-		   camera_storage_mb=excluded.camera_storage_mb`,
+		   camera_storage_mb=excluded.camera_storage_mb,
+		   irrigation_type=excluded.irrigation_type, irrigation_mode=excluded.irrigation_mode,
+		   reservoir_l=excluded.reservoir_l, valve_count=excluded.valve_count`,
 		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
-		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), b.CameraCaptureInterval, b.CameraRetentionDays, b.CameraStorageMB, time.Now().UnixNano(),
+		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), b.CameraCaptureInterval, b.CameraRetentionDays, b.CameraStorageMB, string(b.IrrigationType), string(b.IrrigationMode), b.ReservoirL, b.ValveCount, time.Now().UnixNano(),
 	)
 	if err != nil {
 		return err
@@ -1405,7 +1493,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb
+		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -1414,15 +1502,17 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 	var out []domain.Binding
 	for rows.Next() {
 		var b domain.Binding
-		var kind, measurement, role, cameraType string
+		var kind, measurement, role, cameraType, irrigationType, irrigationMode string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType, &b.CameraCaptureInterval, &b.CameraRetentionDays, &b.CameraStorageMB); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType, &b.CameraCaptureInterval, &b.CameraRetentionDays, &b.CameraStorageMB, &irrigationType, &irrigationMode, &b.ReservoirL, &b.ValveCount); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)
 		b.Measurement = domain.Measurement(measurement)
 		b.Role = domain.Role(role)
 		b.CameraType = domain.CameraType(cameraType)
+		b.IrrigationType = domain.IrrigationType(irrigationType)
+		b.IrrigationMode = domain.IrrigationMode(irrigationMode)
 		b.Primary = isPrimary != 0
 		out = append(out, b)
 	}

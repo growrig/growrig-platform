@@ -32,7 +32,8 @@
 		{ key: 'fan', label: 'Fans' },
 		{ key: 'light', label: 'Lights' },
 		{ key: 'power', label: 'Power & Switching' },
-		{ key: 'camera', label: 'Cameras' }
+		{ key: 'camera', label: 'Cameras' },
+		{ key: 'irrigation', label: 'Irrigation' }
 	];
 	// Catalog categories that yield each binding kind.
 	const catCategoriesFor: Record<BindingKind, string[]> = {
@@ -41,7 +42,8 @@
 		controller: ['controller'],
 		light: ['light'],
 		power: ['plug'],
-		camera: ['camera']
+		camera: ['camera'],
+		irrigation: ['irrigation']
 	};
 
 	let category = $state<BindingKind>('sensor');

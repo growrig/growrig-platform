@@ -84,10 +84,18 @@
 				widthCm,
 				depthCm,
 				heightCm,
-				// Climate targets are managed separately; preserve them.
+				// Climate targets and ranges are managed separately; preserve them.
 				targetTempC: env.targetTempC,
 				targetHumidity: env.targetHumidity,
 				targetCO2: env.targetCO2,
+				targetTempMinC: env.targetTempMinC,
+				targetTempMaxC: env.targetTempMaxC,
+				targetHumidityMin: env.targetHumidityMin,
+				targetHumidityMax: env.targetHumidityMax,
+				targetVpdMin: env.targetVpdMin,
+				targetVpdMax: env.targetVpdMax,
+				targetCo2Min: env.targetCo2Min,
+				targetCo2Max: env.targetCo2Max,
 				emergencyTempC: env.emergencyTempC,
 				leafTempOffsetC: env.leafTempOffsetC ?? -2
 			});

@@ -4,11 +4,13 @@
 #
 #   go run ./cmd/growcore -config growcore.sim.yaml
 #
-# On first run Grow Core auto-provisions a virtual controller. Running with no
-# config file at all uses these same simulator defaults.
+# Runtime data lives under ./data. On first run Grow Core auto-provisions a
+# virtual controller. Running with no config file at all uses simulator defaults
+# (db in the process cwd).
 
 server:
   addr: ":8080"
+  workDir: data
 
 storage:
   path: growcore.sim.db

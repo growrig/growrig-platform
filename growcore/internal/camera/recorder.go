@@ -70,8 +70,11 @@ type Snapshot struct {
 	Time time.Time `json:"time"`
 }
 
-func New(st *store.Store, databasePath string) *Recorder {
-	return &Recorder{store: st, root: filepath.Join(filepath.Dir(databasePath), "environments"), legacyRoot: databasePath + ".cameras", workers: map[string]workerState{}, subscribers: map[string]map[chan []byte]struct{}{}, observed: map[string]string{}, stats: map[string]*streamStats{}}
+// New builds a recorder that archives under environmentsDir. legacyDBPath is the
+// database file path, used only to locate and migrate pre-unified-data-dir
+// archives (which lived at "<db>.cameras").
+func New(st *store.Store, environmentsDir, legacyDBPath string) *Recorder {
+	return &Recorder{store: st, root: environmentsDir, legacyRoot: legacyDBPath + ".cameras", workers: map[string]workerState{}, subscribers: map[string]map[chan []byte]struct{}{}, observed: map[string]string{}, stats: map[string]*streamStats{}}
 }
 
 func (r *Recorder) StreamStats(id string) Stats {

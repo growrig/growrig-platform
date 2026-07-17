@@ -136,6 +136,116 @@ func (s *Server) putSchedule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sched)
 }
 
+// putControl updates an environment's per-category automation policy: the
+// auto/manual mode for lighting, air exchange and irrigation, plus the manual
+// fan setpoints. Every field is optional so the "Full automatic" master toggle
+// can set them all at once, or a single panel can flip one category. Lighting is
+// kept in lockstep with the light schedule (manual ⇔ the schedule is off) so the
+// two never drift.
+func (s *Server) putControl(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Lighting    *string `json:"lighting"`
+		Air         *string `json:"air"`
+		Exhaust     *int    `json:"exhaust"`
+		Circulation *int    `json:"circulation"`
+		Irrigation  *string `json:"irrigation"`
+	}
+	if err := decode(r, &b); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	parseMode := func(v string) (domain.ControlMode, bool) {
+		switch domain.ControlMode(v) {
+		case domain.ControlAuto, domain.ControlManual:
+			return domain.ControlMode(v), true
+		default:
+			return "", false
+		}
+	}
+	id := r.PathValue("id")
+	envs, err := s.store.Environments()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	var env *domain.Environment
+	for i := range envs {
+		if envs[i].ID == id {
+			env = &envs[i]
+			break
+		}
+	}
+	if env == nil {
+		writeJSON(w, http.StatusNotFound, errBody("environment not found"))
+		return
+	}
+	ctrl := env.Control
+
+	if b.Air != nil {
+		mode, ok := parseMode(*b.Air)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, errBody("air mode must be auto or manual"))
+			return
+		}
+		ctrl.AirExchange.Mode = mode
+	}
+	if b.Exhaust != nil {
+		if *b.Exhaust < 0 || *b.Exhaust > 100 {
+			writeJSON(w, http.StatusBadRequest, errBody("exhaust must be between 0 and 100"))
+			return
+		}
+		ctrl.AirExchange.Exhaust = *b.Exhaust
+	}
+	if b.Circulation != nil {
+		if *b.Circulation < 0 || *b.Circulation > 100 {
+			writeJSON(w, http.StatusBadRequest, errBody("circulation must be between 0 and 100"))
+			return
+		}
+		ctrl.AirExchange.Circulation = *b.Circulation
+	}
+	if b.Irrigation != nil {
+		mode, ok := parseMode(*b.Irrigation)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, errBody("irrigation mode must be auto or manual"))
+			return
+		}
+		ctrl.Irrigation.Mode = mode
+	}
+	if b.Lighting != nil {
+		mode, ok := parseMode(*b.Lighting)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, errBody("lighting mode must be auto or manual"))
+			return
+		}
+		ctrl.Lighting.Mode = mode
+		// Keep the photoperiod schedule consistent: manual turns it off; auto
+		// resumes a stage-following schedule if none is currently active.
+		sched, _, err := s.store.LightSchedule(id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		sched.EnvironmentID = id
+		if mode == domain.ControlManual {
+			sched.Mode = domain.LightScheduleOff
+		} else if sched.Mode == domain.LightScheduleOff || sched.Mode == "" {
+			sched.Mode = domain.LightSchedulePhase
+		}
+		if err := s.store.SaveLightSchedule(sched); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
+	env.Control = ctrl
+	if err := s.store.SaveEnvironment(*env); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.activity(id, "", "info", "configuration", "Updated control settings")
+	writeJSON(w, http.StatusOK, ctrl)
+}
+
 // getLightingDefaults returns the recommended photoperiod (hours of light) for
 // known growth stages, used to seed the schedule editor.
 func (s *Server) getLightingDefaults(w http.ResponseWriter, r *http.Request) {

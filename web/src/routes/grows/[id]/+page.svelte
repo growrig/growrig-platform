@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/auth.svelte';
+	import { live } from '$lib/live.svelte';
 	import {
 		getGrow,
 		getEnvironments,
@@ -18,26 +19,54 @@
 		harvestPlant,
 		removePlant,
 		getCultivars,
-		cultivarImageURL,
 		getRecipes,
 		getCare,
-		getCareConfig
+		getCareConfig,
+		getLocations,
+		getLightingDefaults,
+		getGrowPhotos,
+		getGrowAnalytics,
+		getActivity,
+		getAlerts,
+		getTasks,
+		historyRange,
+		deviceHistory,
+		weather
 	} from '$lib/api';
-	import type { Environment, GrowDetail, PlantDetail, StagePresets, TrackingMode, PotUnit, Cultivar, CareActionDef, CareHistory, FeedingRecipe } from '$lib/types';
-	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
-	import { fmtDate } from '$lib/datetime';
+	import type {
+		Activity,
+		Alert,
+		Cultivar,
+		CareActionDef,
+		CareHistory,
+		DeviceSeries,
+		Environment,
+		FeedingRecipe,
+		GrowAnalytics,
+		GrowDetail,
+		GrowPhoto,
+		Location,
+		PlantDetail,
+		PotUnit,
+		Reading,
+		StagePresets,
+		Task,
+		TrackingMode,
+		Weather
+	} from '$lib/types';
+	import { defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
+	import { resolveLocationId } from '$lib/location';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
-	import ActivityLog from '$lib/components/ActivityLog.svelte';
 	import LogCareModal from '$lib/components/LogCareModal.svelte';
-	import CareSummary from '$lib/components/CareSummary.svelte';
 	import CareSettingsModal from '$lib/components/CareSettingsModal.svelte';
 	import { Button, Dialog, Select } from '$lib/components/ui';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import GrowHeader from '$lib/components/grow/GrowHeader.svelte';
+	import OverviewTab from '$lib/components/grow/OverviewTab.svelte';
+	import PlantsTab from '$lib/components/grow/PlantsTab.svelte';
+	import PlanTab from '$lib/components/grow/PlanTab.svelte';
+	import AnalyticsTab from '$lib/components/grow/AnalyticsTab.svelte';
+	import TimelineTab from '$lib/components/grow/TimelineTab.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Pencil from '@lucide/svelte/icons/pencil';
-	import Droplet from '@lucide/svelte/icons/droplet';
-	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
 
 	const id = $derived(page.params.id);
@@ -50,19 +79,8 @@
 	let err = $state('');
 	let loading = $state(true);
 
-	// Cultivars defined for this grow's species, offered as suggestions when
-	// binding a cultivar to plants (freeform entry is still allowed).
-	const speciesCultivars = $derived(
-		grow ? cultivars.filter((c) => c.species === grow!.species) : []
-	);
-	// Resolve a plant's cultivar name to its record for the row thumbnail.
-	const cultivarByName = $derived(new Map(cultivars.map((c) => [c.name, c])));
-
-	// --- care ---
+	// care
 	let care = $state<CareHistory | null>(null);
-	// Effective care actions for this grow (species defaults overlaid with the
-	// grow's customization). The log dialog uses only the enabled ones; the
-	// settings editor works on the full list.
 	let careDefs = $state<CareActionDef[]>([]);
 	const careActions = $derived(careDefs.filter((d) => d.enabled));
 	let recipes = $state<FeedingRecipe[]>([]);
@@ -71,19 +89,58 @@
 	let carePreselect = $state<string[]>([]);
 	let careSettingsOpen = $state(false);
 
+	// profile data
+	let photos = $state<GrowPhoto[]>([]);
+	let analytics = $state<GrowAnalytics | null>(null);
+	let activity = $state<Activity[]>([]);
+	let alerts = $state<Alert[]>([]);
+	let tasks = $state<Task[]>([]);
+
+	// timeline (grow's primary environment)
+	let rangeReadings = $state<Reading[]>([]);
+	let deviceSeries = $state<DeviceSeries[]>([]);
+	let weatherData = $state<Weather | undefined>();
+	let locations = $state<Location[]>([]);
+	let lightingDefaults = $state<Record<string, number>>({});
+	let timelineHours = $state(168);
+
+	let editing = $state(false);
+
+	const canLogCare = $derived(careActions.length > 0 && (grow?.plantCount ?? 0) > 0);
+	const growTasks = $derived(tasks.filter((t) => t.growId === id));
+	const growAlerts = $derived(alerts.filter((a) => a.growId === id));
+
+	// --- tabs ---
+	type Tab = 'overview' | 'plants' | 'plan' | 'analytics' | 'timeline';
+	const tabs: { id: Tab; label: string }[] = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'plants', label: 'Plants' },
+		{ id: 'plan', label: 'Plan' },
+		{ id: 'analytics', label: 'Analytics' },
+		{ id: 'timeline', label: 'Timeline' }
+	];
+	const activeTab = $derived.by<Tab>(() => {
+		const t = page.url.searchParams.get('tab') as Tab | null;
+		return t && tabs.some((x) => x.id === t) ? t : 'overview';
+	});
+	function setTab(t: Tab) {
+		const url = new URL(page.url);
+		if (t === 'overview') url.searchParams.delete('tab');
+		else url.searchParams.set('tab', t);
+		goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+	}
+
+	const primaryEnvId = $derived(grow?.plants.find((p) => p.status === 'active')?.currentEnvironmentId ?? '');
+
 	async function reloadCare() {
 		if (!id) return;
 		try {
 			care = await getCare(id);
 		} catch {
-			/* care history is non-critical; leave the last value */
+			/* non-critical */
 		}
 	}
-	// Load the grow's effective care actions and the feeding recipes offered when
-	// feeding. Runs once the grow (hence species) is known. Feeding uses only the
-	// user's own recipes — built-in brand charts stay in the Knowledge library as
-	// templates for creating recipes, not as things to log directly.
-	async function loadCareActions(_species: string) {
+	async function loadCareActions() {
 		try {
 			if (id) careDefs = (await getCareConfig(id)).actions;
 			recipes = await getRecipes();
@@ -91,14 +148,18 @@
 			/* non-critical */
 		}
 	}
-
-	function openLogCare(actionKey?: string, plantIds: string[] = []) {
-		careInitialAction = actionKey;
-		carePreselect = plantIds;
-		careOpen = true;
+	function reloadPhotos() {
+		if (id) getGrowPhotos(id).then((p) => (photos = p)).catch(() => {});
 	}
-	async function onCareLogged() {
-		await Promise.all([reload(), reloadCare()]);
+	function reloadAnalytics() {
+		if (id) getGrowAnalytics(id).then((a) => (analytics = a)).catch(() => {});
+	}
+	function reloadActivity() {
+		if (id) getActivity({ growId: id, limit: 100 }).then((p) => (activity = p.items)).catch(() => {});
+	}
+	function reloadAttention() {
+		getAlerts().then((a) => (alerts = a)).catch(() => {});
+		getTasks('open').then((t) => (tasks = t)).catch(() => {});
 	}
 
 	async function reload() {
@@ -106,25 +167,110 @@
 		try {
 			grow = await getGrow(id);
 			err = '';
-			if (grow.species && careDefs.length === 0) loadCareActions(grow.species);
+			if (grow.species && careDefs.length === 0) loadCareActions();
 		} catch (e) {
 			err = errMsg(e, 'Failed to load grow');
 		} finally {
 			loading = false;
 		}
 	}
+
+	async function refreshHistory() {
+		if (!primaryEnvId) {
+			rangeReadings = [];
+			deviceSeries = [];
+			return;
+		}
+		try {
+			[rangeReadings, deviceSeries] = await Promise.all([
+				historyRange(primaryEnvId, timelineHours, 500),
+				deviceHistory(primaryEnvId, timelineHours, 500)
+			]);
+		} catch {
+			/* keep last */
+		}
+	}
+	function onRangeChange(h: number) {
+		timelineHours = h;
+		refreshHistory();
+	}
+	// Refetch history when the primary environment resolves/changes.
+	$effect(() => {
+		primaryEnvId;
+		refreshHistory();
+	});
+	// Weather for the primary environment's location.
+	$effect(() => {
+		const env = live.snapshot?.environments?.find((e) => e.id === primaryEnvId);
+		const locId = resolveLocationId(env, live.snapshot?.environments ?? []);
+		const loc = locations.find((l) => l.id === locId);
+		if (!loc) {
+			weatherData = undefined;
+			return;
+		}
+		weather(loc.lat, loc.lon).then((w) => (weatherData = w)).catch(() => {});
+	});
+
 	onMount(() => {
 		reload();
 		reloadCare();
+		reloadPhotos();
+		reloadAnalytics();
+		reloadActivity();
+		reloadAttention();
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
+		getLocations().then((l) => (locations = l)).catch(() => {});
+		getLightingDefaults().then((d) => (lightingDefaults = d)).catch(() => {});
 	});
 
-	const envItems = $derived(environments.map((e) => ({ value: e.id, label: e.name })));
+	// --- care logging ---
+	function openLogCare(actionKey?: string, plantIds: string[] = []) {
+		careInitialAction = actionKey;
+		carePreselect = plantIds;
+		careOpen = true;
+	}
+	async function onCareLogged() {
+		await Promise.all([reload(), reloadCare(), reloadActivity(), reloadAnalytics()]);
+	}
+	function onPhotoUploaded() {
+		reloadPhotos();
+		reloadActivity();
+	}
 
-	// Cultivar dropdown items for this grow's species. `current` is included even
-	// if it's a legacy freeform value not in the library, so editing never loses it.
+	// --- stage / lifecycle ---
+	async function advanceStage(stage: string) {
+		if (!grow || stage === grow.stage) return;
+		try {
+			await changeStage(grow.id, stage);
+			await Promise.all([reload(), reloadAnalytics(), reloadActivity()]);
+		} catch (e) {
+			err = errMsg(e, 'Failed');
+		}
+	}
+	async function complete() {
+		if (!grow || !confirm('Mark this grow as completed?')) return;
+		try {
+			await completeGrow(grow.id);
+			await reload();
+		} catch (e) {
+			err = errMsg(e, 'Failed');
+		}
+	}
+	async function destroy() {
+		if (!grow || !confirm('Delete this grow and all its plants? This cannot be undone.')) return;
+		try {
+			await deleteGrow(grow.id);
+			goto('/grows');
+		} catch (e) {
+			err = errMsg(e, 'Failed');
+		}
+	}
+
+	const envItems = $derived(environments.map((e) => ({ value: e.id, label: e.name })));
+	const speciesCultivars = $derived(grow ? cultivars.filter((c) => c.species === grow!.species) : []);
+	const plantNumbers = $derived(plantNumbersById(grow?.plants ?? []));
 	function cultivarItems(current: string) {
 		const items = [{ value: '', label: '— None —' }];
 		const names = new Set<string>();
@@ -135,23 +281,8 @@
 		if (current && !names.has(current)) items.push({ value: current, label: `${current} (custom)` });
 		return items;
 	}
-	const stageItems = $derived((grow?.stages ?? []).map((s) => ({ value: s, label: titleCase(s) })));
-	const plantNumbers = $derived(plantNumbersById(grow?.plants ?? []));
 
-	let editing = $state(false);
-	let addingPlants = $state(false);
-
-	async function advanceStage(stage: string) {
-		if (!grow || stage === grow.stage) return;
-		try {
-			await changeStage(grow.id, stage);
-			await reload();
-		} catch (e) {
-			err = errMsg(e, 'Failed');
-		}
-	}
-
-	// --- move plant to another environment ---
+	// --- move plant ---
 	let moveOpen = $state(false);
 	let movingPlant = $state<PlantDetail | null>(null);
 	let mpEnv = $state('');
@@ -178,7 +309,7 @@
 		}
 	}
 
-	// --- edit a single plant unit (label / cultivar / group size) ---
+	// --- edit plant ---
 	let editOpen = $state(false);
 	let editingPlant = $state<PlantDetail | null>(null);
 	let epLabel = $state('');
@@ -200,12 +331,7 @@
 		epPotType = plant.currentPot?.type ?? '';
 		editOpen = true;
 	}
-	function potChanged(
-		current: PlantDetail['currentPot'],
-		size: number | null,
-		unit: PotUnit,
-		type: string
-	): boolean {
+	function potChanged(current: PlantDetail['currentPot'], size: number | null, unit: PotUnit, type: string): boolean {
 		if (!size || size <= 0) return false;
 		if (!current) return true;
 		return current.size !== size || current.unit !== unit || (current.type ?? '') !== type;
@@ -221,11 +347,7 @@
 				quantity: epTracking === 'group' ? epQuantity : 1
 			});
 			if (potChanged(editingPlant.currentPot, epPotSize, epPotUnit, epPotType)) {
-				await repotPlant(editingPlant.id, {
-					size: epPotSize!,
-					unit: epPotUnit,
-					type: epPotType
-				});
+				await repotPlant(editingPlant.id, { size: epPotSize!, unit: epPotUnit, type: epPotType });
 			}
 			editOpen = false;
 			await reload();
@@ -255,26 +377,8 @@
 		}
 	}
 
-	async function complete() {
-		if (!grow || !confirm('Mark this grow as completed?')) return;
-		try {
-			await completeGrow(grow.id);
-			await reload();
-		} catch (e) {
-			err = errMsg(e, 'Failed');
-		}
-	}
-	async function destroy() {
-		if (!grow || !confirm('Delete this grow and all its plants? This cannot be undone.')) return;
-		try {
-			await deleteGrow(grow.id);
-			goto('/grows');
-		} catch (e) {
-			err = errMsg(e, 'Failed');
-		}
-	}
-
-	// --- add plant form (one plant per submit: an individual, or a group) ---
+	// --- add plant ---
+	let addingPlants = $state(false);
 	let apTracking = $state<TrackingMode>('individual');
 	let apQuantity = $state(1);
 	let apLabel = $state('');
@@ -313,9 +417,7 @@
 				label: apLabel.trim() || undefined,
 				cultivar: apCultivar,
 				environmentId: apEnv,
-				...(apPotSize && apPotSize > 0
-					? { potSize: apPotSize, potUnit: apPotUnit, potType: apPotType }
-					: {})
+				...(apPotSize && apPotSize > 0 ? { potSize: apPotSize, potUnit: apPotUnit, potType: apPotType } : {})
 			});
 			addingPlants = false;
 			apLabel = '';
@@ -331,15 +433,8 @@
 		}
 	}
 
-	const statusTone = (s: string) =>
-		s === 'active' ? 'text-leaf' : s === 'harvested' ? 'text-warn' : 'text-rig-500';
-	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
 </script>
-
-<a href="/grows" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
-	<ArrowLeft size={15} /> All grows
-</a>
 
 {#if loading}
 	<p class="text-rig-400">Loading…</p>
@@ -349,199 +444,75 @@
 	<div class="space-y-6">
 		{#if err}<p class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{err}</p>{/if}
 
-		<div class="flex flex-wrap items-start justify-between gap-3">
-			<div>
-				<div class="flex items-center gap-3">
-					<h1 class="text-2xl font-semibold">{grow.name}</h1>
-					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(grow.status)}">{grow.status}</span>
-				</div>
-				<p class="mt-1 text-sm text-rig-400">
-					{titleCase(grow.species) || 'No species set'}
-					· started {fmtDate(grow.startedAt)} (day {grow.totalDays})
-				</p>
-			</div>
-			{#if isAdmin}
-				<div class="flex flex-wrap items-center gap-2">
-					<Button variant="ghost" onclick={() => (editing = true)}>Edit</Button>
-					{#if grow.status === 'active'}
-						<Button variant="secondary" onclick={complete}>Complete</Button>
-					{/if}
-					<Button variant="ghost" onclick={destroy}>Delete</Button>
-				</div>
-			{/if}
+		<GrowHeader
+			{grow}
+			{isAdmin}
+			{canLogCare}
+			dueCount={growTasks.length + growAlerts.length}
+			onLogCare={() => openLogCare()}
+			{onPhotoUploaded}
+			onEdit={() => (editing = true)}
+			onComplete={complete}
+			onDelete={destroy}
+			onCareSettings={() => (careSettingsOpen = true)}
+		/>
+
+		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
+			{#each tabs as t (t.id)}
+				<button
+					onclick={() => setTab(t.id)}
+					class="-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors {activeTab === t.id ? 'border-leaf text-rig-50' : 'border-transparent text-rig-400 hover:text-rig-100'}"
+				>
+					{t.label}
+				</button>
+			{/each}
 		</div>
 
-		<!-- Stage & timeline -->
-		<section class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<div class="text-xs uppercase tracking-wide text-rig-500">Current stage</div>
-					<div class="mt-0.5 text-lg font-semibold capitalize">{grow.stage || '—'} <span class="text-sm font-normal text-rig-400">· {grow.stageDays}d</span></div>
-				</div>
-				{#if isAdmin && grow.status === 'active'}
-					<label class="flex items-center gap-2 text-sm">
-						<span class="text-rig-400">Advance to</span>
-						<Select value={grow.stage} onValueChange={advanceStage} items={stageItems} />
-					</label>
-				{/if}
-			</div>
-			<!-- Stage sequence -->
-			<div class="mt-4 flex flex-wrap gap-1.5">
-				{#each grow.stages as st, i (st)}
-					{@const current = st === grow.stage}
-					<span
-						class="rounded-full px-2.5 py-0.5 text-xs capitalize {current
-							? 'bg-leaf/20 text-leaf'
-							: 'bg-rig-800 text-rig-400'}"
-					>
-						{i + 1}. {st}
-					</span>
-				{/each}
-			</div>
-		</section>
-
-		<!-- Plants -->
-		<section>
-			<div class="mb-3 flex items-center justify-between">
-				<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Plants · {grow.plantCount} active</h2>
-				{#if isAdmin}
-					<div class="flex items-center gap-2">
-						{#if careActions.length > 0 && grow.plantCount > 0}
-							<button
-								onclick={() => openLogCare()}
-								class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
-							>
-								<Droplet size={14} /> Log care
-							</button>
-						{/if}
-						{#if careDefs.length > 0}
-							<button
-								onclick={() => (careSettingsOpen = true)}
-								title="Care actions"
-								aria-label="Care actions"
-								class="inline-flex items-center rounded-md border border-rig-700 p-1.5 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-200"
-							>
-								<Settings2 size={15} />
-							</button>
-						{/if}
-						<button
-							onclick={() => (addingPlants = true)}
-							class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"
-						>
-							<Plus size={14} /> Add plant
-						</button>
-					</div>
-				{/if}
-			</div>
-			{#if grow.plants.length === 0}
-				<div class="rounded-xl border border-dashed border-rig-800 p-6 text-center text-sm text-rig-500">
-					No plants yet.{#if isAdmin} Add some to start tracking placements.{/if}
-				</div>
-			{:else}
-				<div class="overflow-x-auto rounded-xl border border-rig-800">
-					<table class="w-full min-w-[36rem] text-sm">
-						<thead class="border-b border-rig-800 text-left text-xs uppercase tracking-wide text-rig-500">
-							<tr>
-								<th class="px-4 py-2 font-medium">Plant</th>
-								<th class="px-4 py-2 font-medium">Status</th>
-								<th class="px-4 py-2 font-medium">Location</th>
-								<th class="px-4 py-2 font-medium">Pot</th>
-								<th class="px-4 py-2 font-medium">Age</th>
-								{#if isAdmin}<th class="px-4 py-2 font-medium">Actions</th>{/if}
-							</tr>
-						</thead>
-						<tbody>
-							{#each grow.plants as p (p.id)}
-								{@const cv = cultivarByName.get(p.cultivar)}
-								<tr class="border-b border-rig-800/60 last:border-0">
-									<td class="px-4 py-2">
-										<div class="flex items-center gap-3">
-											<div class="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-rig-700 bg-rig-950">
-												{#if cv?.imageType}
-													<img src={cultivarImageURL(cv.id)} alt={p.cultivar} class="h-full w-full object-cover" />
-												{:else}
-													<div class="flex h-full w-full items-center justify-center text-rig-600"><Sprout size={15} /></div>
-												{/if}
-											</div>
-											<div class="min-w-0 truncate">
-												<a href="/plants/{p.id}" class="font-medium hover:text-leaf">{plantDisplayName(p, plantNumbers.get(p.id))}</a>
-												{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}
-											</div>
-										</div>
-									</td>
-									<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
-									<td class="px-4 py-2 text-rig-300">
-										<div class="flex items-center gap-1.5">
-											{#if p.currentEnvironmentId}
-												<a href="/env/{p.currentEnvironmentId}" class="truncate hover:text-leaf hover:underline">
-													{p.currentEnvironmentName || p.currentEnvironmentId}
-												</a>
-											{:else}
-												<span>—</span>
-											{/if}
-											{#if isAdmin && p.status === 'active'}
-												<button
-													onclick={() => openMove(p)}
-													title="Change location"
-													aria-label="Change location"
-													class="shrink-0 rounded-md border border-rig-700 p-1 text-rig-400 hover:border-rig-500 hover:text-rig-200"
-												>
-													<ArrowRightLeft size={13} />
-												</button>
-											{/if}
-										</div>
-									</td>
-									<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}` : '—'}</td>
-									<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
-									{#if isAdmin}
-										<td class="px-4 py-2">
-											<div class="flex items-center gap-1.5">
-												{#if p.status === 'active' && careActions.length > 0}
-													<button onclick={() => openLogCare(undefined, [p.id])} title="Log care" aria-label="Log care" class="rounded-md border border-rig-700 p-1.5 text-rig-400 hover:border-sky-500/60 hover:text-sky-300"><Droplet size={14} /></button>
-												{/if}
-												<button onclick={() => openEdit(p)} title="Edit plant" aria-label="Edit plant" class="rounded-md border border-rig-700 p-1.5 text-rig-400 hover:border-rig-500 hover:text-rig-200"><Pencil size={14} /></button>
-												{#if p.status === 'active'}
-													<button onclick={() => harvest(p)} class="rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-300 hover:border-rig-500">Harvest</button>
-													<button onclick={() => discard(p)} class="rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-400 hover:border-danger/60 hover:text-danger">Remove</button>
-												{/if}
-											</div>
-										</td>
-									{/if}
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-			{/if}
-		</section>
-
-		{#if grow.notes}
-			<section>
-				<h2 class="mb-2 text-sm font-semibold uppercase tracking-wide text-rig-400">Notes</h2>
-				<p class="whitespace-pre-wrap rounded-xl border border-rig-800 bg-rig-950/40 p-4 text-sm text-rig-300">{grow.notes}</p>
-			</section>
-		{/if}
-
-		<!-- Care summary -->
-		{#if care && careActions.length > 0 && grow.plantCount > 0}
-			<CareSummary
+		{#if activeTab === 'overview'}
+			<OverviewTab
+				{grow}
+				{isAdmin}
+				{photos}
 				{care}
-				actions={careActions}
-				canWrite={isAdmin}
-				onQuick={(key) => openLogCare(key)}
-				onLog={() => openLogCare()}
+				{careActions}
+				{analytics}
+				{rangeReadings}
+				{deviceSeries}
+				{weatherData}
+				defaults={lightingDefaults}
+				{timelineHours}
+				alerts={growAlerts}
+				tasks={growTasks}
+				{onRangeChange}
+				onMoveStage={advanceStage}
+				{onPhotoUploaded}
+				onLogCare={() => openLogCare()}
+				onQuickCare={(key) => openLogCare(key)}
 			/>
+		{:else if activeTab === 'plants'}
+			<PlantsTab
+				{grow}
+				{isAdmin}
+				{cultivars}
+				{canLogCare}
+				onAddPlant={() => (addingPlants = true)}
+				onEdit={openEdit}
+				onMove={openMove}
+				onHarvest={harvest}
+				onDiscard={discard}
+				onLogCare={(pid) => openLogCare(undefined, [pid])}
+			/>
+		{:else if activeTab === 'plan'}
+			<PlanTab {grow} {isAdmin} {analytics} {careDefs} onAdvance={advanceStage} onCareSettings={() => (careSettingsOpen = true)} />
+		{:else if activeTab === 'analytics'}
+			<AnalyticsTab {grow} {analytics} {photos} />
+		{:else if activeTab === 'timeline'}
+			<TimelineTab {grow} {care} {photos} {activity} {analytics} />
 		{/if}
-
-		<!-- Activity log -->
-		<section>
-			<ActivityLog growId={grow.id} limit={30} title="Activity Log" />
-		</section>
 	</div>
 
 	{#if isAdmin}
-		<GrowFormModal bind:open={editing} grow={grow} {presets} onSaved={reload} />
-
+		<GrowFormModal bind:open={editing} {grow} {presets} onSaved={reload} />
 		<LogCareModal
 			bind:open={careOpen}
 			{grow}
@@ -551,13 +522,7 @@
 			initialActionKey={careInitialAction}
 			onLogged={onCareLogged}
 		/>
-
-		<CareSettingsModal
-			bind:open={careSettingsOpen}
-			growId={grow.id}
-			actions={careDefs}
-			onSaved={(a) => (careDefs = a)}
-		/>
+		<CareSettingsModal bind:open={careSettingsOpen} growId={grow.id} actions={careDefs} onSaved={(a) => (careDefs = a)} />
 
 		<Dialog bind:open={moveOpen} title="Change location" description="Move this plant to another environment. Its placement history is kept.">
 			<div class="space-y-4">
@@ -567,9 +532,7 @@
 				</label>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 					<Button variant="ghost" onclick={() => (moveOpen = false)}>Cancel</Button>
-					<Button onclick={saveMove} disabled={mpBusy || !mpEnv || mpEnv === movingPlant?.currentEnvironmentId}>
-						<ArrowRightLeft size={15} /> Move
-					</Button>
+					<Button onclick={saveMove} disabled={mpBusy || !mpEnv || mpEnv === movingPlant?.currentEnvironmentId}><ArrowRightLeft size={15} /> Move</Button>
 				</div>
 			</div>
 		</Dialog>
@@ -577,40 +540,17 @@
 		<Dialog bind:open={editOpen} title="Edit plant" description="Change this plant's type, label, cultivar and pot. Each plant keeps its own id and history.">
 			<div class="space-y-4">
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block">
-						<span class="text-xs text-rig-400">Type</span>
-						<Select value={epTracking} onValueChange={(v) => (epTracking = v as TrackingMode)} items={trackingItems} class="mt-1" />
-					</label>
-					{#if epTracking === 'group'}
-						<label class="block">
-							<span class="text-xs text-rig-400">Plants in group</span>
-							<input type="number" min="1" bind:value={epQuantity} class="{field} mt-1" />
-						</label>
-					{/if}
+					<label class="block"><span class="text-xs text-rig-400">Type</span><Select value={epTracking} onValueChange={(v) => (epTracking = v as TrackingMode)} items={trackingItems} class="mt-1" /></label>
+					{#if epTracking === 'group'}<label class="block"><span class="text-xs text-rig-400">Plants in group</span><input type="number" min="1" bind:value={epQuantity} class="{field} mt-1" /></label>{/if}
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block">
-						<span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span>
-						<input bind:value={epLabel} placeholder="Plant" class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
-						<Select value={epCultivar} onValueChange={(v) => (epCultivar = v)} items={cultivarItems(epCultivar)} class="mt-1" />
-					</label>
+					<label class="block"><span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span><input bind:value={epLabel} placeholder="Plant" class="{field} mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span><Select value={epCultivar} onValueChange={(v) => (epCultivar = v)} items={cultivarItems(epCultivar)} class="mt-1" /></label>
 				</div>
 				<div class="grid gap-3 sm:grid-cols-3">
-					<label class="block">
-						<span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span>
-						<input type="number" min="0" step="any" bind:value={epPotSize} placeholder="e.g. 11" class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Unit</span>
-						<Select value={epPotUnit} onValueChange={(v) => (epPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Pot type</span>
-						<Select value={epPotType} onValueChange={(v) => (epPotType = v)} items={potTypeItems} class="mt-1" />
-					</label>
+					<label class="block"><span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span><input type="number" min="0" step="any" bind:value={epPotSize} placeholder="e.g. 11" class="{field} mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Unit</span><Select value={epPotUnit} onValueChange={(v) => (epPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Pot type</span><Select value={epPotType} onValueChange={(v) => (epPotType = v)} items={potTypeItems} class="mt-1" /></label>
 				</div>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 					<Button variant="ghost" onclick={() => (editOpen = false)}>Cancel</Button>
@@ -622,44 +562,18 @@
 		<Dialog bind:open={addingPlants} title="Add a plant" description="Add one plant — an individual, or a group (tray / bed / batch). Each gets its own id and history.">
 			<div class="space-y-4">
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block">
-						<span class="text-xs text-rig-400">Type</span>
-						<Select value={apTracking} onValueChange={(v) => (apTracking = v as TrackingMode)} items={trackingItems} class="mt-1" />
-					</label>
-					{#if apTracking === 'group'}
-						<label class="block">
-							<span class="text-xs text-rig-400">Plants in group</span>
-							<input type="number" min="1" bind:value={apQuantity} class="{field} mt-1" />
-						</label>
-					{/if}
+					<label class="block"><span class="text-xs text-rig-400">Type</span><Select value={apTracking} onValueChange={(v) => (apTracking = v as TrackingMode)} items={trackingItems} class="mt-1" /></label>
+					{#if apTracking === 'group'}<label class="block"><span class="text-xs text-rig-400">Plants in group</span><input type="number" min="1" bind:value={apQuantity} class="{field} mt-1" /></label>{/if}
 				</div>
 				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block">
-						<span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span>
-						<input bind:value={apLabel} placeholder={apTracking === 'group' ? 'Group' : 'Plant'} class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span>
-						<Select value={apCultivar} onValueChange={(v) => (apCultivar = v)} items={cultivarItems(apCultivar)} class="mt-1" />
-					</label>
+					<label class="block"><span class="text-xs text-rig-400">Label <span class="text-rig-600">(optional)</span></span><input bind:value={apLabel} placeholder={apTracking === 'group' ? 'Group' : 'Plant'} class="{field} mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Cultivar <span class="text-rig-600">(optional)</span></span><Select value={apCultivar} onValueChange={(v) => (apCultivar = v)} items={cultivarItems(apCultivar)} class="mt-1" /></label>
 				</div>
-				<label class="block">
-					<span class="text-xs text-rig-400">Place in</span>
-					<Select value={apEnv} onValueChange={(v) => (apEnv = v)} items={envItems} class="mt-1" />
-				</label>
+				<label class="block"><span class="text-xs text-rig-400">Place in</span><Select value={apEnv} onValueChange={(v) => (apEnv = v)} items={envItems} class="mt-1" /></label>
 				<div class="grid gap-3 sm:grid-cols-3">
-					<label class="block">
-						<span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span>
-						<input type="number" min="0" step="any" bind:value={apPotSize} placeholder="e.g. 11" class="{field} mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Unit</span>
-						<Select value={apPotUnit} onValueChange={(v) => (apPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" />
-					</label>
-					<label class="block">
-						<span class="text-xs text-rig-400">Pot type</span>
-						<Select value={apPotType} onValueChange={(v) => (apPotType = v)} items={potTypeItems} class="mt-1" />
-					</label>
+					<label class="block"><span class="text-xs text-rig-400">Pot size <span class="text-rig-600">(optional)</span></span><input type="number" min="0" step="any" bind:value={apPotSize} placeholder="e.g. 11" class="{field} mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Unit</span><Select value={apPotUnit} onValueChange={(v) => (apPotUnit = v as PotUnit)} items={potUnitItems} class="mt-1" /></label>
+					<label class="block"><span class="text-xs text-rig-400">Pot type</span><Select value={apPotType} onValueChange={(v) => (apPotType = v)} items={potTypeItems} class="mt-1" /></label>
 				</div>
 				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
 					<Button variant="ghost" onclick={() => (addingPlants = false)}>Cancel</Button>

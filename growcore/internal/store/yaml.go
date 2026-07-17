@@ -211,7 +211,12 @@ func (s *Store) writeEnvironmentConfig(envID string) error {
 		devices = append(devices, *dev)
 	}
 	sort.Slice(devices, func(i, j int) bool { return devices[i].Name < devices[j].Name })
-	raw, err := yaml.Marshal(environmentDocument{Version: 1, Environment: *env, Devices: devices})
+	// Write the resolved control policy so the on-disk file always shows the
+	// effective per-category modes, even before the grower has touched them.
+	doc := *env
+	sched, _, _ := s.LightSchedule(envID)
+	doc.Control = doc.Control.Resolve(sched.Mode != domain.LightScheduleOff && sched.Mode != "")
+	raw, err := yaml.Marshal(environmentDocument{Version: 1, Environment: doc, Devices: devices})
 	if err != nil {
 		return err
 	}
