@@ -4,11 +4,22 @@
 	import { auth } from '$lib/auth.svelte';
 	import { getPasskeys, deletePasskey, type Passkey } from '$lib/api';
 	import { passkeysSupported, registerPasskey } from '$lib/webauthn';
+	import { theme, type Theme } from '$lib/theme.svelte';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Shield from '@lucide/svelte/icons/shield';
+	import Palette from '@lucide/svelte/icons/palette';
+	import Monitor from '@lucide/svelte/icons/monitor';
+	import Sun from '@lucide/svelte/icons/sun';
+	import Moon from '@lucide/svelte/icons/moon';
 	import { fmtDate } from '$lib/datetime';
+
+	const themeOptions: { value: Theme; label: string; icon: typeof Monitor }[] = [
+		{ value: 'system', label: 'System', icon: Monitor },
+		{ value: 'light', label: 'Light', icon: Sun },
+		{ value: 'dark', label: 'Dark', icon: Moon }
+	];
 
 	let passkeys = $state<Passkey[]>([]);
 	let loading = $state(true);
@@ -75,6 +86,29 @@
 	{#if error}
 		<div class="rounded-lg bg-danger/15 px-4 py-2 text-sm text-danger">{error}</div>
 	{/if}
+
+	<section class="rounded-xl border border-rig-800 bg-rig-900/40 p-5">
+		<h2 class="mb-1 flex items-center gap-2 font-medium"><Palette size={17} /> Appearance</h2>
+		<p class="mb-4 text-sm text-rig-400">
+			Choose a theme. <span class="font-medium text-rig-200">System</span> follows your device's light or dark setting.
+		</p>
+		<div class="grid grid-cols-3 gap-2 sm:max-w-md" role="radiogroup" aria-label="Theme">
+			{#each themeOptions as opt (opt.value)}
+				{@const selected = theme.preference === opt.value}
+				<button
+					role="radio"
+					aria-checked={selected}
+					onclick={() => theme.set(opt.value)}
+					class="flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-sm transition-colors {selected
+						? 'border-rig-500 bg-rig-500/10 text-rig-100'
+						: 'border-rig-700 text-rig-300 hover:border-rig-500 hover:text-rig-100'}"
+				>
+					<opt.icon size={18} />
+					{opt.label}
+				</button>
+			{/each}
+		</div>
+	</section>
 
 	<section class="rounded-xl border border-rig-800 bg-rig-900/40 p-5">
 		<div class="mb-1 flex items-center justify-between">

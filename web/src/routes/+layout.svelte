@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
+	import { theme } from '$lib/theme.svelte';
 	import { preferences, onPreferencesUpdated } from '$lib/preferences.svelte';
 	import { fmtClock } from '$lib/datetime';
 	import { fmtLatencyMs } from '$lib/format';
@@ -33,6 +34,7 @@
 	const authRoutes = ['/login', '/setup'];
 	const isAuthRoute = $derived(authRoutes.includes(page.url.pathname));
 
+	onMount(() => theme.init());
 	onMount(() => {
 		auth.init();
 		return () => live.stop();

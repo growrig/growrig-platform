@@ -1,22 +1,89 @@
 @import 'tailwindcss';
 
-/* GrowRig design tokens — a calm, grow-oriented dark palette. */
-@theme {
-	--color-rig-50: #f2f8f2;
-	--color-rig-100: #dce9dd;
-	--color-rig-200: #b6cdb8;
-	--color-rig-300: #86ab8a;
-	--color-rig-400: #56855c;
-	--color-rig-500: #38a169; /* grow green accent */
-	--color-rig-600: #2f8659;
-	--color-rig-700: #285c3f;
-	--color-rig-800: #17281d;
-	--color-rig-900: #101a13;
-	--color-rig-950: #0b0f0c;
+/* GrowRig design tokens — a calm, grow-oriented palette.
+   ------------------------------------------------------
+   The whole app styles off this one `rig-*` ramp, by convention: high shades
+   (800/900/950) are surfaces, low-to-mid shades (100–500) are text, and 500 is
+   the grow-green accent. That convention is what makes theming cheap — rather
+   than retagging ~1500 utility classes with semantic names, each theme just
+   redefines what the ramp *means*, and every `bg-rig-900` follows along.
 
-	--color-leaf: #4ade80;
-	--color-warn: #f59e0b;
-	--color-danger: #ef4444;
+   So the ramp reads "dimmest → boldest surface" in dark and inverts in light;
+   `rig-950` is always the page background and `rig-100` is always body text.
+   `rig-500` is the pivot: it stays green in both themes.
+
+   `@theme inline` matters here. Without it Tailwind emits an indirection
+   (`--color-rig-900: var(--rig-900)`) that resolves once at `:root` and would
+   not re-resolve when `html.light` overrides the ramp. Inline makes utilities
+   emit `var(--rig-900)` directly, so the cascade does the theming for us. */
+@theme inline {
+	--color-rig-50: var(--rig-50);
+	--color-rig-100: var(--rig-100);
+	--color-rig-200: var(--rig-200);
+	--color-rig-300: var(--rig-300);
+	--color-rig-400: var(--rig-400);
+	--color-rig-500: var(--rig-500);
+	--color-rig-600: var(--rig-600);
+	--color-rig-700: var(--rig-700);
+	--color-rig-800: var(--rig-800);
+	--color-rig-900: var(--rig-900);
+	--color-rig-950: var(--rig-950);
+
+	--color-leaf: var(--leaf);
+	--color-warn: var(--warn);
+	--color-danger: var(--danger);
+}
+
+/* Dark — the original palette, unchanged. Also the `:root` default so that any
+   render before the theme script runs is dark rather than a white flash. */
+:root,
+html.dark {
+	color-scheme: dark;
+
+	--rig-50: #f2f8f2;
+	--rig-100: #dce9dd;
+	--rig-200: #b6cdb8;
+	--rig-300: #86ab8a;
+	--rig-400: #56855c;
+	--rig-500: #38a169; /* grow green accent */
+	--rig-600: #2f8659;
+	--rig-700: #285c3f;
+	--rig-800: #17281d;
+	--rig-900: #101a13;
+	--rig-950: #0b0f0c;
+
+	--leaf: #4ade80;
+	--warn: #f59e0b;
+	--danger: #ef4444;
+}
+
+/* Light — the ramp inverted, then hand-tuned rather than mirrored outright.
+   A straight mirror puts the mid greens (400/500/600 — the app's three most
+   common text colors) at 3:1 or worse against a near-white page, so the text
+   tiers are darkened to clear ~4.5:1 while keeping the ramp monotonic: each
+   step must still read dimmer than the one before it, or the visual hierarchy
+   the dark theme encodes would inv‌ert.
+
+   `leaf`/`warn`/`danger` are also darkened — the dark theme's neon-ish status
+   colors are tuned for a black backdrop and wash out on white. */
+html.light {
+	color-scheme: light;
+
+	--rig-50: #0b0f0c; /* boldest text */
+	--rig-100: #14211a; /* body text */
+	--rig-200: #1c3326;
+	--rig-300: #244634;
+	--rig-400: #2a6b47; /* muted text — the most used text tier */
+	--rig-500: #1f7a4d; /* grow green accent — darkened to hold up as text */
+	--rig-600: #5d8f74; /* dimmest text — hints, timestamps */
+	--rig-700: #a8c4b0; /* accent-ish borders, scrollbar thumb */
+	--rig-800: #d5e3d8; /* default border */
+	--rig-900: #e9f2ea; /* header + card surfaces */
+	--rig-950: #f7fbf7; /* page background */
+
+	--leaf: #15803d;
+	--warn: #b45309;
+	--danger: #dc2626;
 }
 
 html,
@@ -25,13 +92,17 @@ body {
 }
 
 /* Themed scrollbars everywhere — modals, overflow tables, and the page — so the
-   default light OS scrollbar doesn't clash with the dark palette. Firefox uses
-   the standard properties; Chromium/WebKit use the ::-webkit-scrollbar pseudos.
-   The transparent border + padding-box clip gives the thumb a slim, rounded
-   look with a little breathing room. */
+   OS scrollbar doesn't clash with the palette. Firefox uses the standard
+   properties; Chromium/WebKit use the ::-webkit-scrollbar pseudos. The
+   transparent border + padding-box clip gives the thumb a slim, rounded look
+   with a little breathing room.
+
+   These read `--rig-*`, not `--color-rig-*`: under `@theme inline` Tailwind
+   inlines the ramp into utilities and never emits the `--color-*` properties,
+   so only the raw ramp vars exist at runtime. They re-resolve per theme. */
 * {
 	scrollbar-width: thin;
-	scrollbar-color: var(--color-rig-700) transparent;
+	scrollbar-color: var(--rig-700) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -44,14 +115,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-	background-color: var(--color-rig-700);
+	background-color: var(--rig-700);
 	background-clip: padding-box;
 	border: 2px solid transparent;
 	border-radius: 9999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-	background-color: var(--color-rig-600);
+	background-color: var(--rig-600);
 }
 
 *::-webkit-scrollbar-corner {
