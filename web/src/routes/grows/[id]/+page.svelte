@@ -66,6 +66,7 @@
 	import PlanTab from '$lib/components/grow/PlanTab.svelte';
 	import AnalyticsTab from '$lib/components/grow/AnalyticsTab.svelte';
 	import TimelineTab from '$lib/components/grow/TimelineTab.svelte';
+	import GrowSettingsTab from '$lib/components/grow/SettingsTab.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
 
@@ -111,13 +112,14 @@
 	const growAlerts = $derived(alerts.filter((a) => a.growId === id));
 
 	// --- tabs ---
-	type Tab = 'overview' | 'plants' | 'plan' | 'analytics' | 'timeline';
+	type Tab = 'overview' | 'plants' | 'plan' | 'analytics' | 'timeline' | 'settings';
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'plants', label: 'Plants' },
 		{ id: 'plan', label: 'Plan' },
 		{ id: 'analytics', label: 'Analytics' },
-		{ id: 'timeline', label: 'Timeline' }
+		{ id: 'timeline', label: 'Timeline' },
+		{ id: 'settings', label: 'Settings' }
 	];
 	const activeTab = $derived.by<Tab>(() => {
 		const t = page.url.searchParams.get('tab') as Tab | null;
@@ -451,10 +453,6 @@
 			dueCount={growTasks.length + growAlerts.length}
 			onLogCare={() => openLogCare()}
 			{onPhotoUploaded}
-			onEdit={() => (editing = true)}
-			onComplete={complete}
-			onDelete={destroy}
-			onCareSettings={() => (careSettingsOpen = true)}
 		/>
 
 		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
@@ -508,6 +506,15 @@
 			<AnalyticsTab {grow} {analytics} {photos} />
 		{:else if activeTab === 'timeline'}
 			<TimelineTab {grow} {care} {photos} {activity} {analytics} />
+		{:else if activeTab === 'settings'}
+			<GrowSettingsTab
+				{grow}
+				{isAdmin}
+				onEdit={() => (editing = true)}
+				onCareSettings={() => (careSettingsOpen = true)}
+				onComplete={complete}
+				onDelete={destroy}
+			/>
 		{/if}
 	</div>
 

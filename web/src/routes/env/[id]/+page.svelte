@@ -35,6 +35,7 @@
 	import ControlTab from '$lib/components/env/ControlTab.svelte';
 	import EquipmentTab from '$lib/components/env/EquipmentTab.svelte';
 	import ActivityTab from '$lib/components/env/ActivityTab.svelte';
+	import SettingsTab from '$lib/components/env/SettingsTab.svelte';
 
 	const id = $derived(page.params.id);
 	const env = $derived(live.snapshot?.environments?.find((e) => e.id === id));
@@ -42,13 +43,14 @@
 	const isAdmin = $derived(auth.isAdmin);
 
 	// --- tabs (URL-addressable via ?tab=) ---
-	type Tab = 'overview' | 'climate' | 'control' | 'equipment' | 'activity';
+	type Tab = 'overview' | 'climate' | 'control' | 'equipment' | 'activity' | 'settings';
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'climate', label: 'Climate' },
 		{ id: 'control', label: 'Control' },
 		{ id: 'equipment', label: 'Equipment' },
-		{ id: 'activity', label: 'Activity' }
+		{ id: 'activity', label: 'Activity' },
+		{ id: 'settings', label: 'Settings' }
 	];
 	const activeTab = $derived.by<Tab>(() => {
 		let t = page.url.searchParams.get('tab');
@@ -178,7 +180,7 @@
 	<p class="text-rig-400">Environment not found. <a href="/" class="text-leaf hover:underline">Go back</a></p>
 {:else}
 	<div class="space-y-6">
-		<EnvHeader {env} {locations} alertCount={envAlerts.length} {isAdmin} />
+		<EnvHeader {env} {locations} alertCount={envAlerts.length} />
 
 		<!-- tabs -->
 		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
@@ -226,6 +228,8 @@
 			<EquipmentTab {env} {canWrite} {isAdmin} />
 		{:else if activeTab === 'activity'}
 			<ActivityTab environmentId={env.id} />
+		{:else if activeTab === 'settings'}
+			<SettingsTab id={env.id} />
 		{/if}
 	</div>
 

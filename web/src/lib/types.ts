@@ -41,6 +41,24 @@ export interface Grow {
 	stageStarted: string;
 	status: GrowStatus;
 	notes: string;
+	/** How the crop is grown: medium, nutrients and default container. */
+	setup: GrowingSetup;
+}
+
+/** Per-grow cultivation setup. Medium is species-curated but grower-chosen; the
+ *  container seeds each new plant's pot. Irrigation is not here — it lives on the
+ *  environment (see `Environment`/bindings), which the grow references. */
+export interface GrowingSetup {
+	/** soil | coco | soilless | hydroponic | aeroponic */
+	medium?: string;
+	/** Free text: commercial product or composition. */
+	mediumDetails?: string;
+	/** organic | mineral | living-soil */
+	nutrientMethod?: string;
+	/** Default container that seeds new plants' pots. */
+	potSize?: number;
+	potUnit?: string;
+	potType?: string;
 }
 
 export interface PlantUnit {
@@ -441,6 +459,10 @@ export interface Species {
 	stages: SpeciesStage[];
 	cultivarAttributes?: SpeciesAttribute[];
 	careActions?: CareAction[];
+	/** Curated growing-media options for this crop (grower picks one per grow). */
+	media?: { default?: string; options: string[] };
+	/** Curated nutrient-method options for this crop. */
+	nutrientMethods?: string[];
 }
 
 /** A user-defined strain/variety within a species. */

@@ -100,6 +100,26 @@ var DefaultCareActions = []CareAction{
 	{Key: "custom", Label: "Custom", Icon: "list-plus", Fields: []CareField{FieldNote, FieldPhotos}},
 }
 
+// MediaSpec curates the growing media a species is commonly grown in: the
+// selectable Options and an optional Default. Growing medium is a cultivation
+// choice, not a fixed property of the species, so the species only curates the
+// list — the grower picks one per grow (see domain.GrowingSetup).
+type MediaSpec struct {
+	Default string   `json:"default,omitempty" yaml:"default,omitempty"`
+	Options []string `json:"options" yaml:"options"`
+}
+
+// DefaultMedia is the crop-neutral media list used when a species declares none,
+// so every species offers a usable set. Species may override via `media:` YAML.
+var DefaultMedia = MediaSpec{
+	Default: "soil",
+	Options: []string{"soil", "coco", "soilless", "hydroponic", "aeroponic"},
+}
+
+// DefaultNutrientMethods is the crop-neutral nutrient-method list used when a
+// species declares none. Species may override via `nutrientMethods:` YAML.
+var DefaultNutrientMethods = []string{"organic", "mineral", "living-soil"}
+
 // Species is a crop family: an ordered stage sequence plus the cultivar
 // attribute schema. ID is the directory name; Label is the display name.
 type Species struct {
@@ -108,6 +128,11 @@ type Species struct {
 	Stages             []Stage      `json:"stages" yaml:"stages"`
 	CultivarAttributes []Attribute  `json:"cultivarAttributes,omitempty" yaml:"cultivarAttributes"`
 	CareActions        []CareAction `json:"careActions,omitempty" yaml:"careActions,omitempty"`
+	// Media curates the growing media offered for this crop; NutrientMethods the
+	// nutrient regimes. Both fall back to the crop-neutral defaults when unset,
+	// so the grow form always has options to show.
+	Media           MediaSpec `json:"media" yaml:"media"`
+	NutrientMethods []string  `json:"nutrientMethods" yaml:"nutrientMethods"`
 }
 
 // StageNames returns the ordered stage names.
@@ -210,6 +235,14 @@ func set(sp []Species) {
 		// defaults, so every species carries a usable action set to the client.
 		if len(sp[i].CareActions) == 0 {
 			sp[i].CareActions = DefaultCareActions
+		}
+		// Likewise for growing media and nutrient methods: fall back to the
+		// crop-neutral lists so the grow form always has options to offer.
+		if len(sp[i].Media.Options) == 0 {
+			sp[i].Media = DefaultMedia
+		}
+		if len(sp[i].NutrientMethods) == 0 {
+			sp[i].NutrientMethods = DefaultNutrientMethods
 		}
 	}
 	loaded = sp

@@ -32,6 +32,9 @@ type growBody struct {
 	Species   string `json:"species"`
 	StartedAt string `json:"startedAt"` // RFC3339 or YYYY-MM-DD; empty = now
 	Notes     string `json:"notes"`
+	// Growing setup: how the crop is grown (medium, nutrients, default pot). A
+	// nil pointer leaves an existing setup untouched on update.
+	Setup *domain.GrowingSetup `json:"setup"`
 }
 
 // speciesStages validates a species against the predefined presets and returns
@@ -74,6 +77,9 @@ func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
 		Status:       domain.GrowActive,
 		Notes:        b.Notes,
 	}
+	if b.Setup != nil {
+		grow.Setup = normalizeSetup(*b.Setup)
+	}
 	if err := s.store.SaveGrow(grow); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -113,6 +119,9 @@ func (s *Server) updateGrow(w http.ResponseWriter, r *http.Request) {
 		grow.StartedAt = parseDate(b.StartedAt)
 	}
 	grow.Notes = b.Notes
+	if b.Setup != nil {
+		grow.Setup = normalizeSetup(*b.Setup)
+	}
 	// Species (hence the stage sequence) may have changed; keep the current stage
 	// valid against the derived sequence.
 	if !contains(grow.Stages, grow.Stage) {
@@ -364,6 +373,22 @@ type plantBody struct {
 	PotType string  `json:"potType"`
 }
 
+// normalizeSetup trims free-text setup fields and normalizes the container's
+// pot unit, so stored GrowingSetup values are clean and consistent.
+func normalizeSetup(g domain.GrowingSetup) domain.GrowingSetup {
+	g.Medium = strings.TrimSpace(g.Medium)
+	g.MediumDetails = strings.TrimSpace(g.MediumDetails)
+	g.NutrientMethod = strings.TrimSpace(g.NutrientMethod)
+	g.PotType = strings.TrimSpace(g.PotType)
+	if g.PotSize > 0 {
+		g.PotUnit = potUnit(g.PotUnit)
+	} else {
+		g.PotSize = 0
+		g.PotUnit = ""
+	}
+	return g
+}
+
 // potUnit normalizes a pot volume unit to "L" or "gal" (default "L").
 func potUnit(u string) string {
 	if strings.EqualFold(strings.TrimSpace(u), "gal") {
@@ -426,9 +451,14 @@ func (s *Server) createPlants(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// Optional starting pot, opening the plant's repot history.
-	if b.PotSize > 0 {
-		if err := s.store.Repot(units[0].ID, b.PotSize, potUnit(b.PotUnit), strings.TrimSpace(b.PotType), now); err != nil {
+	// Starting pot: use the plant's own values when given, otherwise fall back to
+	// the grow's default container (GrowingSetup) so plants inherit the setup.
+	potSize, pUnit, pType := b.PotSize, b.PotUnit, b.PotType
+	if potSize <= 0 && grow.Setup.PotSize > 0 {
+		potSize, pUnit, pType = grow.Setup.PotSize, grow.Setup.PotUnit, grow.Setup.PotType
+	}
+	if potSize > 0 {
+		if err := s.store.Repot(units[0].ID, potSize, potUnit(pUnit), strings.TrimSpace(pType), now); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}

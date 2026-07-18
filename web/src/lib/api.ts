@@ -35,6 +35,7 @@ import type {
 	GeocodeResult,
 	Grow,
 	GrowDetail,
+	GrowingSetup,
 	GrowPhoto,
 	GrowAnalytics,
 	UploadPhotoInput,
@@ -329,6 +330,9 @@ export interface GrowInput {
 	species: string;
 	startedAt: string; // YYYY-MM-DD or RFC3339
 	notes: string;
+	/** Growing setup (medium, nutrients, default container). Omit to leave an
+	 *  existing grow's setup unchanged on update. */
+	setup?: GrowingSetup;
 }
 
 export const createGrow = (g: GrowInput) =>

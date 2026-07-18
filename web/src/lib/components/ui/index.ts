@@ -8,7 +8,9 @@ export { default as Slider } from './Slider.svelte';
 export { default as DropdownMenu } from './DropdownMenu.svelte';
 export { default as Dialog } from './Dialog.svelte';
 export { default as Pagination } from './Pagination.svelte';
+export { default as Breadcrumb } from './Breadcrumb.svelte';
 
+export type { Crumb } from './Breadcrumb.svelte';
 export type { SelectItem, SelectGroup } from './Select.svelte';
 export type { DropdownItem } from './DropdownMenu.svelte';
 export {

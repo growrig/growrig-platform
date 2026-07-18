@@ -41,8 +41,11 @@
 		'rounded px-0.5 tabular-nums focus:bg-rig-700 focus:text-rig-50 focus:outline-none data-[placeholder]:text-rig-500';
 </script>
 
+<!-- One-way `value` (not `bind:`): an empty field is `undefined`, and Svelte
+     forbids `bind:value={undefined}` on a prop that has a fallback. bits-ui stays
+     in sync through `onValueChange` below, which drives our ISO-string prop. -->
 <DatePicker.Root
-	bind:value={dateValue}
+	value={dateValue}
 	weekdayFormat="short"
 	fixedWeeks
 	{disabled}
@@ -59,7 +62,7 @@
 		)}
 	>
 		{#snippet children({ segments })}
-			{#each segments as { part, value: segValue } (part)}
+			{#each segments as { part, value: segValue }, i (i)}
 				<DatePicker.Segment {part} class={segClass}>{segValue}</DatePicker.Segment>
 			{/each}
 			<DatePicker.Trigger

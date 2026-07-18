@@ -2,13 +2,13 @@
 	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { auth } from '$lib/auth.svelte';
 	import { getPlant, getGrow, getEnvironments, movePlant, repotPlant, updatePlant, harvestPlant, removePlant, getCultivars, cultivarImageURL } from '$lib/api';
 	import type { Environment, PlantView, PlantDetail, PlantPot, Cultivar, TrackingMode, PotUnit } from '$lib/types';
 	import { titleCase, daysSince, defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
 	import { fmtDate } from '$lib/datetime';
-	import { Button, Dialog, Select } from '$lib/components/ui';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import { Button, Dialog, Select, Breadcrumb } from '$lib/components/ui';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Sprout from '@lucide/svelte/icons/sprout';
@@ -21,6 +21,24 @@
 
 	const id = $derived(page.params.id);
 	const isAdmin = $derived(auth.isAdmin);
+
+	// --- tabs (URL-addressable via ?tab=) ---
+	type Tab = 'overview' | 'history' | 'settings';
+	const tabs: { id: Tab; label: string }[] = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'history', label: 'History' },
+		{ id: 'settings', label: 'Settings' }
+	];
+	const activeTab = $derived.by<Tab>(() => {
+		const t = page.url.searchParams.get('tab') as Tab | null;
+		return t && tabs.some((x) => x.id === t) ? t : 'overview';
+	});
+	function setTab(t: Tab) {
+		const url = new URL(page.url);
+		if (t === 'overview') url.searchParams.delete('tab');
+		else url.searchParams.set('tab', t);
+		goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+	}
 
 	let plant = $state<PlantView | null>(null);
 	let growPlants = $state<PlantDetail[]>([]);
@@ -192,25 +210,18 @@
 		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
-{#if plant}
-	<a href="/grows/{plant.growId}" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
-		<ArrowLeft size={15} /> {plant.growName || 'Grow'}
-	</a>
-{:else}
-	<a href="/grows" class="mb-4 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100">
-		<ArrowLeft size={15} /> Grows
-	</a>
-{/if}
-
 {#if loading}
 	<p class="text-rig-400">Loading…</p>
 {:else if !plant}
-	<p class="text-rig-400">Plant not found.</p>
+	<Breadcrumb items={[{ label: 'All grows', href: '/grows' }]} />
+	<p class="mt-4 text-rig-400">Plant not found.</p>
 {:else}
 	<div class="space-y-6">
 		{#if err}<p class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{err}</p>{/if}
 
-		<div class="flex flex-wrap items-start justify-between gap-3">
+		<!-- Header -->
+		<header class="space-y-1.5">
+			<Breadcrumb items={[{ label: 'All grows', href: '/grows' }, { label: plant.growName || 'Grow', href: `/grows/${plant.growId}` }]} />
 			<div class="flex items-center gap-4">
 				<div class="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-rig-700 bg-rig-950">
 					{#if cultivar?.imageType}
@@ -219,106 +230,164 @@
 						<div class="flex h-full w-full items-center justify-center text-rig-600"><Sprout size={24} /></div>
 					{/if}
 				</div>
-				<div>
-				<div class="flex items-center gap-3">
-					<h1 class="text-2xl font-semibold">
-						{plantDisplayName(plant, plantNumber)}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
-					</h1>
-					<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(plant.status)}">{plant.status}</span>
-				</div>
-				<p class="mt-1 text-sm text-rig-400">
-					{plant.tracking === 'group' && plant.quantity > 1 ? `Group of ${plant.quantity}` : 'Individually tracked'}
-					· in <a href="/grows/{plant.growId}" class="text-leaf hover:underline">{plant.growName}</a>
-					· {daysSince(plant.createdAt)}d old
-				</p>
+				<div class="min-w-0">
+					<div class="flex items-center gap-3">
+						<h1 class="text-2xl font-semibold">
+							{plantDisplayName(plant, plantNumber)}{#if plant.tracking === 'group' && plant.quantity > 1}<span class="text-rig-500">&nbsp;×{plant.quantity}</span>{/if}
+						</h1>
+						<span class="rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize {statusTone(plant.status)}">{plant.status}</span>
+					</div>
+					<p class="mt-1 text-sm text-rig-400">
+						{plant.tracking === 'group' && plant.quantity > 1 ? `Group of ${plant.quantity}` : 'Individually tracked'}
+						{#if plant.cultivar} · {plant.cultivar}{/if}
+						· {daysSince(plant.createdAt)}d old
+					</p>
 				</div>
 			</div>
-			{#if isAdmin}
-				<div class="flex flex-wrap items-center gap-2">
-					<Button variant="ghost" onclick={openEdit}><Pencil size={15} /> Edit</Button>
+		</header>
+
+		<!-- Tabs -->
+		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
+			{#each tabs as t (t.id)}
+				<button
+					onclick={() => setTab(t.id)}
+					class="-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors {activeTab === t.id ? 'border-rig-50 text-rig-50' : 'border-transparent text-rig-400 hover:text-rig-100'}"
+				>
+					{t.label}
+				</button>
+			{/each}
+		</div>
+
+		{#if activeTab === 'overview'}
+			<section class="grid gap-3 sm:grid-cols-2">
+				<div class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+					<div class="flex items-center gap-2 text-sm">
+						<MapPin size={15} class="text-rig-500" />
+						<span class="text-rig-400">Currently in</span>
+						{#if plant.currentEnvironmentId}
+							<a href="/env/{plant.currentEnvironmentId}" class="font-medium hover:text-rig-50 hover:underline">
+								{plant.currentEnvironmentName || plant.currentEnvironmentId}
+							</a>
+						{:else}
+							<span class="font-medium">nowhere</span>
+						{/if}
+					</div>
+				</div>
+				<div class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+					<div class="flex items-center gap-2 text-sm">
+						<FlaskConical size={15} class="text-rig-500" />
+						<span class="text-rig-400">Pot</span>
+						<span class="font-medium">{plant.currentPot ? potLabel(plant.currentPot) : 'none'}</span>
+					</div>
+				</div>
+			</section>
+		{:else if activeTab === 'history'}
+			<div class="grid gap-6 sm:grid-cols-2">
+				<section>
+					<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Placement history</h2>
+					{#if plant.placements.length === 0}
+						<p class="text-sm text-rig-500">No placements recorded.</p>
+					{:else}
+						<ol class="space-y-2">
+							{#each plant.placements as p (p.id)}
+								<li class="flex items-center justify-between rounded-lg border border-rig-800 bg-rig-950/40 px-4 py-2 text-sm">
+									{#if p.environmentId}
+										<a href="/env/{p.environmentId}" class="font-medium hover:text-rig-50 hover:underline">
+											{p.environmentName || p.environmentId}
+										</a>
+									{:else}
+										<span class="font-medium">{p.environmentName || '—'}</span>
+									{/if}
+									<span class="text-rig-400">
+										{fmtDate(p.startedAt)} →
+										{#if p.endedAt}{fmtDate(p.endedAt)}{:else}<span class="text-rig-200">current</span>{/if}
+									</span>
+								</li>
+							{/each}
+						</ol>
+					{/if}
+				</section>
+
+				<section>
+					<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Pot history</h2>
+					{#if plant.pots.length === 0}
+						<p class="text-sm text-rig-500">No pots recorded.</p>
+					{:else}
+						<ol class="space-y-2">
+							{#each plant.pots as p (p.id)}
+								<li class="flex items-center justify-between rounded-lg border border-rig-800 bg-rig-950/40 px-4 py-2 text-sm">
+									<span class="font-medium">{potLabel(p)}</span>
+									<span class="text-rig-400">
+										{fmtDate(p.startedAt)} →
+										{#if p.endedAt}{fmtDate(p.endedAt)}{:else}<span class="text-rig-200">current</span>{/if}
+									</span>
+								</li>
+							{/each}
+						</ol>
+					{/if}
+				</section>
+			</div>
+		{:else if activeTab === 'settings'}
+			{#if !isAdmin}
+				<p class="text-rig-400">You don't have permission to change this plant.</p>
+			{:else}
+				<div class="space-y-8">
+					<!-- Plant details -->
+					<section class="space-y-3">
+						<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Plant details</h2>
+						<div class="flex items-center justify-between gap-4 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+							<div>
+								<div class="text-sm font-medium">{plantDisplayName(plant, plantNumber)}</div>
+								<div class="text-xs text-rig-500">
+									{plant.tracking === 'group' && plant.quantity > 1 ? `Group of ${plant.quantity}` : 'Individually tracked'}{#if plant.cultivar} · {plant.cultivar}{/if}
+								</div>
+							</div>
+							<Button variant="secondary" onclick={openEdit}><Pencil size={15} /> Edit plant</Button>
+						</div>
+					</section>
+
 					{#if plant.status === 'active'}
-						<label class="flex items-center gap-2 text-sm">
-							<span class="text-rig-400">Move to</span>
-							<Select value={plant.currentEnvironmentId} onValueChange={move} items={envItems} />
-						</label>
-						<Button variant="secondary" onclick={harvest}>Harvest</Button>
-						<Button variant="ghost" onclick={discard}>Remove</Button>
+						<!-- Location & pot -->
+						<section class="space-y-3">
+							<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Location &amp; pot</h2>
+							<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+								<div>
+									<div class="text-sm font-medium">Move to another environment</div>
+									<div class="text-xs text-rig-500">Its placement history is kept.</div>
+								</div>
+								<Select value={plant.currentEnvironmentId} onValueChange={move} items={envItems} />
+							</div>
+							<div class="flex items-center justify-between gap-3 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+								<div>
+									<div class="text-sm font-medium">Repot</div>
+									<div class="text-xs text-rig-500">Current: {plant.currentPot ? potLabel(plant.currentPot) : 'none'}. Repotting keeps a pot history.</div>
+								</div>
+								<Button variant="secondary" onclick={openRepot}><FlaskConical size={15} /> Repot</Button>
+							</div>
+						</section>
+
+						<!-- Danger zone -->
+						<section class="space-y-3">
+							<h2 class="text-sm font-semibold uppercase tracking-wide text-danger/80">Danger zone</h2>
+							<div class="flex items-center justify-between gap-3 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+								<div>
+									<div class="text-sm font-medium">Harvest this plant</div>
+									<div class="text-xs text-rig-500">Marks it harvested; it stays in the grow's history.</div>
+								</div>
+								<Button variant="secondary" onclick={harvest}>Harvest</Button>
+							</div>
+							<div class="flex items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 p-4">
+								<div>
+									<div class="text-sm font-medium">Remove this plant</div>
+									<div class="text-xs text-rig-500">Removes the plant from the grow.</div>
+								</div>
+								<button onclick={discard} class="rounded-md bg-danger/90 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-danger">Remove</button>
+							</div>
+						</section>
 					{/if}
 				</div>
 			{/if}
-		</div>
-
-		<section class="grid gap-3 sm:grid-cols-2">
-			<div class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
-				<div class="flex items-center gap-2 text-sm">
-					<MapPin size={15} class="text-rig-500" />
-					<span class="text-rig-400">Currently in</span>
-					{#if plant.currentEnvironmentId}
-						<a href="/env/{plant.currentEnvironmentId}" class="font-medium hover:text-leaf hover:underline">
-							{plant.currentEnvironmentName || plant.currentEnvironmentId}
-						</a>
-					{:else}
-						<span class="font-medium">nowhere</span>
-					{/if}
-				</div>
-			</div>
-			<div class="flex items-center justify-between gap-2 rounded-xl border border-rig-800 bg-rig-900/40 p-4">
-				<div class="flex items-center gap-2 text-sm">
-					<FlaskConical size={15} class="text-rig-500" />
-					<span class="text-rig-400">Pot</span>
-					<span class="font-medium">{plant.currentPot ? potLabel(plant.currentPot) : 'none'}</span>
-				</div>
-				{#if isAdmin && plant.status === 'active'}
-					<Button variant="ghost" size="sm" onclick={openRepot}>Repot</Button>
-				{/if}
-			</div>
-		</section>
-
-		<div class="grid gap-6 sm:grid-cols-2">
-			<section>
-				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Placement history</h2>
-				{#if plant.placements.length === 0}
-					<p class="text-sm text-rig-500">No placements recorded.</p>
-				{:else}
-					<ol class="space-y-2">
-						{#each plant.placements as p (p.id)}
-							<li class="flex items-center justify-between rounded-lg border border-rig-800 bg-rig-950/40 px-4 py-2 text-sm">
-								{#if p.environmentId}
-									<a href="/env/{p.environmentId}" class="font-medium hover:text-leaf hover:underline">
-										{p.environmentName || p.environmentId}
-									</a>
-								{:else}
-									<span class="font-medium">{p.environmentName || '—'}</span>
-								{/if}
-								<span class="text-rig-400">
-									{fmtDate(p.startedAt)} →
-									{#if p.endedAt}{fmtDate(p.endedAt)}{:else}<span class="text-leaf">current</span>{/if}
-								</span>
-							</li>
-						{/each}
-					</ol>
-				{/if}
-			</section>
-
-			<section>
-				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Pot history</h2>
-				{#if plant.pots.length === 0}
-					<p class="text-sm text-rig-500">No pots recorded.</p>
-				{:else}
-					<ol class="space-y-2">
-						{#each plant.pots as p (p.id)}
-							<li class="flex items-center justify-between rounded-lg border border-rig-800 bg-rig-950/40 px-4 py-2 text-sm">
-								<span class="font-medium">{potLabel(p)}</span>
-								<span class="text-rig-400">
-									{fmtDate(p.startedAt)} →
-									{#if p.endedAt}{fmtDate(p.endedAt)}{:else}<span class="text-leaf">current</span>{/if}
-								</span>
-							</li>
-						{/each}
-					</ol>
-				{/if}
-			</section>
-		</div>
+		{/if}
 	</div>
 
 	{#if isAdmin}

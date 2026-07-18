@@ -1,15 +1,10 @@
 <script lang="ts">
 	import type { GrowDetail } from '$lib/types';
 	import { titleCase } from '$lib/format';
-	import { DropdownMenu, type DropdownItem } from '$lib/components/ui';
+	import { Breadcrumb } from '$lib/components/ui';
 	import PhotoUpload from './PhotoUpload.svelte';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Droplet from '@lucide/svelte/icons/droplet';
-	import MoreHorizontal from '@lucide/svelte/icons/more-horizontal';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import CheckCircle from '@lucide/svelte/icons/circle-check';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Settings2 from '@lucide/svelte/icons/settings-2';
 
 	interface Props {
 		grow: GrowDetail;
@@ -18,23 +13,8 @@
 		dueCount: number;
 		onLogCare: () => void;
 		onPhotoUploaded: () => void;
-		onEdit: () => void;
-		onComplete: () => void;
-		onDelete: () => void;
-		onCareSettings: () => void;
 	}
-	let {
-		grow,
-		isAdmin,
-		canLogCare,
-		dueCount,
-		onLogCare,
-		onPhotoUploaded,
-		onEdit,
-		onComplete,
-		onDelete,
-		onCareSettings
-	}: Props = $props();
+	let { grow, isAdmin, canLogCare, dueCount, onLogCare, onPhotoUploaded }: Props = $props();
 
 	const statusTone = (s: string) =>
 		s === 'active' ? 'text-leaf' : s === 'harvested' ? 'text-warn' : 'text-rig-500';
@@ -48,19 +28,10 @@
 		)
 	]);
 	const envLabel = $derived(envNames.length === 1 ? envNames[0] : envNames.length > 1 ? `${envNames.length} environments` : '');
-
-	const menu = $derived<DropdownItem[]>([
-		{ label: 'Edit grow', onSelect: onEdit, icon: Pencil },
-		{ label: 'Care actions', onSelect: onCareSettings, icon: Settings2 },
-		...(grow.status === 'active' ? [{ label: 'Complete grow', onSelect: onComplete, icon: CheckCircle }] : []),
-		{ label: 'Delete grow', onSelect: onDelete, icon: Trash2 }
-	]);
 </script>
 
 <header class="space-y-1.5">
-	<a href="/grows" class="inline-flex items-center gap-1 text-xs text-rig-500 hover:text-rig-300">
-		<ArrowLeft size={13} /> All grows
-	</a>
+	<Breadcrumb items={[{ label: 'All grows', href: '/grows' }]} />
 
 	<div class="flex flex-wrap items-start justify-between gap-3">
 		<div class="min-w-0">
@@ -89,15 +60,6 @@
 						<Droplet size={15} /> Log care
 					</button>
 				{/if}
-				<DropdownMenu
-					items={menu}
-					align="end"
-					triggerClass="grid h-9 w-9 place-items-center rounded-md border border-rig-700 text-rig-300 outline-none transition-colors hover:border-leaf hover:text-rig-100"
-				>
-					{#snippet trigger()}
-						<MoreHorizontal size={18} />
-					{/snippet}
-				</DropdownMenu>
 			{/if}
 		</div>
 	</div>

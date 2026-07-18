@@ -81,21 +81,37 @@ var DefaultStageLightHours = map[string]float64{
 	"cure":       0,
 }
 
+// GrowingSetup captures how a grow is cultivated: the growing medium and its
+// composition, the nutrient method, and a default container that seeds each new
+// plant's pot. It is stored per-grow (a whole grow usually shares one setup); a
+// per-plant override lives on PlantPot. Irrigation is deliberately absent — it
+// is a property of the physical environment (see Binding.IrrigationType), which
+// the grow references rather than duplicates.
+type GrowingSetup struct {
+	Medium         string  `json:"medium,omitempty"`         // soil | coco | soilless | hydroponic | aeroponic
+	MediumDetails  string  `json:"mediumDetails,omitempty"`  // free text: product / composition
+	NutrientMethod string  `json:"nutrientMethod,omitempty"` // organic | mineral | living-soil
+	PotSize        float64 `json:"potSize,omitempty"`        // default container volume
+	PotUnit        string  `json:"potUnit,omitempty"`        // "L" or "gal"
+	PotType        string  `json:"potType,omitempty"`        // fabric | plastic | terracotta | air-pot | other
+}
+
 // Grow is a cultivation run: a named crop with a species (a predefined crop
 // family) and a stage sequence derived from that species. It is not bound to a
 // single environment; its plants' whereabouts live in placements. Cultivar is
 // tracked per PlantUnit, since one grow can mix cultivars.
 type Grow struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	Slug         string     `json:"slug"` // URL-friendly form of Name, derived on save
-	Species      string     `json:"species"`
-	Stage        string     `json:"stage"`  // current stage name (one of Stages)
-	Stages       []string   `json:"stages"` // ordered sequence, derived from Species
-	StartedAt    time.Time  `json:"startedAt"`
-	StageStarted time.Time  `json:"stageStarted"`
-	Status       GrowStatus `json:"status"`
-	Notes        string     `json:"notes"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Slug         string       `json:"slug"` // URL-friendly form of Name, derived on save
+	Species      string       `json:"species"`
+	Stage        string       `json:"stage"`  // current stage name (one of Stages)
+	Stages       []string     `json:"stages"` // ordered sequence, derived from Species
+	StartedAt    time.Time    `json:"startedAt"`
+	StageStarted time.Time    `json:"stageStarted"`
+	Status       GrowStatus   `json:"status"`
+	Notes        string       `json:"notes"`
+	Setup        GrowingSetup `json:"setup"`
 }
 
 // PlantUnit is one tracked plant or a group (tray/bed/batch) within a grow. Its

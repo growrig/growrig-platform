@@ -16,7 +16,7 @@
 	import type { StageBand, Annotation } from '$lib/components/timeline/TimelineBody.svelte';
 	import { growPhotoImageURL } from '$lib/api';
 	import { careVisual } from '$lib/care';
-	import { titleCase, vpdZone, toneClass } from '$lib/format';
+	import { titleCase, vpdZone, toneClass, plantDisplayName, plantNumbersById, daysSince } from '$lib/format';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import CareSummary from '$lib/components/CareSummary.svelte';
 	import GrowJourney from './GrowJourney.svelte';
@@ -101,6 +101,10 @@
 	);
 
 	const hasToday = $derived(alerts.length > 0 || tasks.length > 0);
+
+	const plantNumbers = $derived(plantNumbersById(grow.plants));
+	const statusTone = (s: string) =>
+		s === 'active' ? 'text-leaf' : s === 'harvested' ? 'text-warn' : 'text-rig-500';
 </script>
 
 <div class="space-y-6">
@@ -154,6 +158,42 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- Plants -->
+	{#if grow.plants.length}
+		<section>
+			<div class="mb-3 flex items-center justify-between">
+				<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Plants · {grow.plantCount} active</h2>
+				<a href="/grows/{grow.id}?tab=plants" class="text-xs text-rig-400 hover:text-rig-100">Manage plants →</a>
+			</div>
+			<div class="overflow-x-auto rounded-xl border border-rig-800">
+				<table class="w-full min-w-[36rem] text-sm">
+					<thead class="border-b border-rig-800 text-left text-xs uppercase tracking-wide text-rig-500">
+						<tr>
+							<th class="px-4 py-2 font-medium">Plant</th>
+							<th class="px-4 py-2 font-medium">Cultivar</th>
+							<th class="px-4 py-2 font-medium">Status</th>
+							<th class="px-4 py-2 font-medium">Location</th>
+							<th class="px-4 py-2 font-medium">Pot</th>
+							<th class="px-4 py-2 font-medium">Age</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each grow.plants as p (p.id)}
+							<tr class="border-b border-rig-800/60 last:border-0">
+								<td class="px-4 py-2"><a href="/plants/{p.id}" class="font-medium hover:text-rig-50">{plantDisplayName(p, plantNumbers.get(p.id))}</a>{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}</td>
+								<td class="px-4 py-2 text-rig-300">{p.cultivar || '—'}</td>
+								<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
+								<td class="px-4 py-2 text-rig-300">{#if p.currentEnvironmentId}<a href="/env/{p.currentEnvironmentId}" class="hover:text-rig-100 hover:underline">{p.currentEnvironmentName || p.currentEnvironmentId}</a>{:else}—{/if}</td>
+								<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}${p.currentPot.type ? ` ${p.currentPot.type}` : ''}` : '—'}</td>
+								<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</section>
+	{/if}
 
 	<!-- Grow data: graph + summaries -->
 	<div class="grid gap-6 lg:grid-cols-12">

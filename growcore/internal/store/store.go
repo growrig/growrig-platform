@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS grows (
     stage_started INTEGER NOT NULL DEFAULT 0,
     status        TEXT NOT NULL DEFAULT 'active',
     notes         TEXT NOT NULL DEFAULT '',
-    care_config   TEXT NOT NULL DEFAULT '' -- JSON GrowCareConfig; '' = species defaults
+    care_config   TEXT NOT NULL DEFAULT '', -- JSON GrowCareConfig; '' = species defaults
+    growing_setup TEXT NOT NULL DEFAULT '' -- JSON GrowingSetup (medium, container, …); '' = none
 );
 CREATE TABLE IF NOT EXISTS plant_units (
     id         TEXT PRIMARY KEY,
@@ -519,6 +520,7 @@ DROP TABLE IF EXISTS devices;
 		{"inventory_items", "image_data", "BLOB"},
 		{"inventory_items", "image_type", "TEXT NOT NULL DEFAULT ''"},
 		{"grows", "care_config", "TEXT NOT NULL DEFAULT ''"},
+		{"grows", "growing_setup", "TEXT NOT NULL DEFAULT ''"},
 		{"ai_chats", "environment_id", "TEXT NOT NULL DEFAULT ''"},
 		{"grows", "slug", "TEXT NOT NULL DEFAULT ''"},
 		{"plant_units", "slug", "TEXT NOT NULL DEFAULT ''"},
@@ -847,32 +849,40 @@ func (s *Store) SaveGrow(g domain.Grow) error {
 	if err != nil {
 		return err
 	}
+	setup, err := json.Marshal(g.Setup)
+	if err != nil {
+		return err
+	}
 	if g.Status == "" {
 		g.Status = domain.GrowActive
 	}
 	g.Slug = domain.Slugify(g.Name) // always derived from the current name
 	_, err = s.db.Exec(
-		`INSERT INTO grows (id, name, slug, species, stage, stages, started_at, stage_started, status, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO grows (id, name, slug, species, stage, stages, started_at, stage_started, status, notes, growing_setup)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   name=excluded.name, slug=excluded.slug, species=excluded.species,
 		   stage=excluded.stage, stages=excluded.stages, started_at=excluded.started_at,
-		   stage_started=excluded.stage_started, status=excluded.status, notes=excluded.notes`,
+		   stage_started=excluded.stage_started, status=excluded.status, notes=excluded.notes,
+		   growing_setup=excluded.growing_setup`,
 		g.ID, g.Name, g.Slug, g.Species, g.Stage, string(stages),
-		g.StartedAt.UnixMilli(), g.StageStarted.UnixMilli(), string(g.Status), g.Notes,
+		g.StartedAt.UnixMilli(), g.StageStarted.UnixMilli(), string(g.Status), g.Notes, string(setup),
 	)
 	return err
 }
 
 func scanGrow(scan func(dst ...any) error) (domain.Grow, error) {
 	var g domain.Grow
-	var stagesJSON, status string
+	var stagesJSON, status, setupJSON string
 	var started, stageStarted int64
-	if err := scan(&g.ID, &g.Name, &g.Slug, &g.Species, &g.Stage, &stagesJSON, &started, &stageStarted, &status, &g.Notes); err != nil {
+	if err := scan(&g.ID, &g.Name, &g.Slug, &g.Species, &g.Stage, &stagesJSON, &started, &stageStarted, &status, &g.Notes, &setupJSON); err != nil {
 		return domain.Grow{}, err
 	}
 	if stagesJSON != "" {
 		_ = json.Unmarshal([]byte(stagesJSON), &g.Stages)
+	}
+	if setupJSON != "" {
+		_ = json.Unmarshal([]byte(setupJSON), &g.Setup)
 	}
 	g.StartedAt = time.UnixMilli(started)
 	g.StageStarted = time.UnixMilli(stageStarted)
@@ -880,7 +890,7 @@ func scanGrow(scan func(dst ...any) error) (domain.Grow, error) {
 	return g, nil
 }
 
-const growCols = `id, name, slug, species, stage, stages, started_at, stage_started, status, notes`
+const growCols = `id, name, slug, species, stage, stages, started_at, stage_started, status, notes, growing_setup`
 
 func (s *Store) Grows() ([]domain.Grow, error) {
 	rows, err := s.db.Query(`SELECT ` + growCols + ` FROM grows ORDER BY started_at DESC`)
