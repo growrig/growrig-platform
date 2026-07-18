@@ -268,6 +268,7 @@ export const getBindings = () => json<Binding[]>('/api/bindings');
 export interface BindingInput {
 	deviceId: string;
 	deviceName: string;
+	productId?: string;
 	powerControllerId?: string;
 	controllerChannelId?: string;
 	environmentId: string;

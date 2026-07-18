@@ -139,7 +139,7 @@
 		{#if irrigationOpen}
 			<div transition:slide={{ duration: 200 }} class="border-t border-rig-800 p-5 pt-4 text-sm text-rig-400">
 				{#if irrigation.length === 0}
-					No irrigation equipment installed. Add AutoPot under <a href="/env/{env.id}/settings#devices" class="text-leaf hover:underline">Settings → Devices</a>. Watering is manual — log each watering in the grow journal.
+					No irrigation equipment installed. Add AutoPot under <a href="/env/{env.id}?tab=equipment" class="text-leaf hover:underline">Equipment</a>. Watering is manual — log each watering in the grow journal.
 				{:else if modeOf.irrigation === 'auto'}
 					{@const unit = irrigation[0]}
 					<p>

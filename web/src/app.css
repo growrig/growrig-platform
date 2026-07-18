@@ -1,16 +1,24 @@
 @import 'tailwindcss';
 
-/* GrowRig design tokens — a calm, grow-oriented palette.
+/* GrowRig design tokens — a calm, mostly-neutral palette.
    ------------------------------------------------------
    The whole app styles off this one `rig-*` ramp, by convention: high shades
-   (800/900/950) are surfaces, low-to-mid shades (100–500) are text, and 500 is
-   the grow-green accent. That convention is what makes theming cheap — rather
-   than retagging ~1500 utility classes with semantic names, each theme just
-   redefines what the ramp *means*, and every `bg-rig-900` follows along.
+   (800/900/950) are surfaces, low-to-mid shades (100–500) are text. That
+   convention is what makes theming cheap — rather than retagging ~1500 utility
+   classes with semantic names, each theme just redefines what the ramp *means*,
+   and every `bg-rig-900` follows along.
+
+   The ramp is deliberately near-neutral: the text and surface tiers are cool
+   greys carrying only a whisper of green in the darkest surfaces, so that green
+   reads as *meaning* (live data, status, primary actions) instead of as
+   ambient chrome. Data-series hues (temp/humidity/CO₂/VPD) and `leaf`/`warn`/
+   `danger` therefore stand out against the chrome instead of blending into it.
 
    So the ramp reads "dimmest → boldest surface" in dark and inverts in light;
    `rig-950` is always the page background and `rig-100` is always body text.
-   `rig-500` is the pivot: it stays green in both themes.
+   The whole ramp — `rig-500` included — is neutral now; the grow-green brand
+   accent lives on `--leaf` (primary buttons, badges, active/focus borders,
+   toggles), so green appears only where it carries meaning.
 
    `@theme inline` matters here. Without it Tailwind emits an indirection
    (`--color-rig-900: var(--rig-900)`) that resolves once at `:root` and would
@@ -40,17 +48,17 @@
 html.dark {
 	color-scheme: dark;
 
-	--rig-50: #f2f8f2;
-	--rig-100: #dce9dd;
-	--rig-200: #b6cdb8;
-	--rig-300: #86ab8a;
-	--rig-400: #56855c;
-	--rig-500: #38a169; /* grow green accent */
-	--rig-600: #2f8659;
-	--rig-700: #285c3f;
-	--rig-800: #17281d;
-	--rig-900: #101a13;
-	--rig-950: #0b0f0c;
+	--rig-50: #f5f7f6; /* boldest text */
+	--rig-100: #e0e3e1; /* body text */
+	--rig-200: #bec3c0;
+	--rig-300: #929894;
+	--rig-400: #7b817d; /* muted text — the most used text tier, now neutral */
+	--rig-500: #737974; /* secondary text — neutral (green accents live on `leaf`) */
+	--rig-600: #5b615d; /* dim text — hints, timestamps */
+	--rig-700: #333a36; /* borders, scrollbar thumb (faint green) */
+	--rig-800: #1d2320; /* card surfaces (faint green) */
+	--rig-900: #141816; /* header + card surfaces */
+	--rig-950: #0c0f0d; /* page background */
 
 	--leaf: #4ade80;
 	--warn: #f59e0b;
@@ -58,28 +66,27 @@ html.dark {
 }
 
 /* Light — the ramp inverted, then hand-tuned rather than mirrored outright.
-   A straight mirror puts the mid greens (400/500/600 — the app's three most
-   common text colors) at 3:1 or worse against a near-white page, so the text
-   tiers are darkened to clear ~4.5:1 while keeping the ramp monotonic: each
-   step must still read dimmer than the one before it, or the visual hierarchy
-   the dark theme encodes would inv‌ert.
+   The text tiers are neutral greys darkened to clear ~4.5:1 on a near-white
+   page while keeping the ramp monotonic: each step must still read dimmer than
+   the one before it, or the visual hierarchy the dark theme encodes would
+   inv‌ert. Only `rig-500` stays green — the single brand accent tier.
 
    `leaf`/`warn`/`danger` are also darkened — the dark theme's neon-ish status
    colors are tuned for a black backdrop and wash out on white. */
 html.light {
 	color-scheme: light;
 
-	--rig-50: #0b0f0c; /* boldest text */
-	--rig-100: #14211a; /* body text */
-	--rig-200: #1c3326;
-	--rig-300: #244634;
-	--rig-400: #2a6b47; /* muted text — the most used text tier */
-	--rig-500: #1f7a4d; /* grow green accent — darkened to hold up as text */
-	--rig-600: #5d8f74; /* dimmest text — hints, timestamps */
-	--rig-700: #a8c4b0; /* accent-ish borders, scrollbar thumb */
-	--rig-800: #d5e3d8; /* default border */
-	--rig-900: #e9f2ea; /* header + card surfaces */
-	--rig-950: #f7fbf7; /* page background */
+	--rig-50: #0d100e; /* boldest text */
+	--rig-100: #1a1f1c; /* body text */
+	--rig-200: #262c29;
+	--rig-300: #333a36;
+	--rig-400: #545b57; /* muted text — the most used text tier, now neutral */
+	--rig-500: #5a615d; /* secondary text — neutral (green accents live on `leaf`) */
+	--rig-600: #6b726e; /* dimmest text — hints, timestamps */
+	--rig-700: #b9bfbc; /* accent-ish borders, scrollbar thumb */
+	--rig-800: #dde1df; /* default border */
+	--rig-900: #eef1ef; /* header + card surfaces */
+	--rig-950: #f8faf9; /* page background */
 
 	--leaf: #15803d;
 	--warn: #b45309;

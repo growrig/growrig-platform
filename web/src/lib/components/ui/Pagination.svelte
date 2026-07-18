@@ -31,7 +31,7 @@
 			{:else}
 				<Pagination.Page
 					page={p}
-					class={cn(cell, currentPage === p.value && 'border-rig-500 bg-rig-800 text-rig-100')}
+					class={cn(cell, currentPage === p.value && 'border-rig-50 bg-rig-800 text-rig-100')}
 				>
 					{p.value}
 				</Pagination.Page>

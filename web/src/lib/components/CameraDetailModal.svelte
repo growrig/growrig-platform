@@ -97,7 +97,7 @@
 					<div use:scrollNode role="region" aria-label="Snapshot timeline" class="snapshot-scroll w-full touch-pan-x overflow-x-auto pb-3 {dragging ? 'cursor-grabbing select-none' : 'cursor-grab'}" onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp} onwheel={wheel}>
 						<div class="flex w-max gap-2">
 							{#each snapshots as snapshot (snapshot.id)}
-								<button type="button" onclick={() => { if (!suppressClick) selected = snapshot; }} class="w-32 shrink-0 overflow-hidden rounded-lg border text-left transition-colors {selected?.id === snapshot.id ? 'border-leaf ring-1 ring-leaf/40' : 'border-rig-800 hover:border-rig-500'}">
+								<button type="button" onclick={() => { if (!suppressClick) selected = snapshot; }} class="w-32 shrink-0 overflow-hidden rounded-lg border text-left transition-colors {selected?.id === snapshot.id ? 'border-leaf ring-1 ring-leaf/40' : 'border-rig-800 hover:border-leaf'}">
 									<img src={cameraArchiveURL(camera.id, snapshot.id)} alt="Snapshot at {formatTime(snapshot.time)}" loading="lazy" draggable="false" class="aspect-video w-full select-none object-cover" />
 									<span class="block truncate px-2 py-1.5 text-[10px] text-rig-400">{formatTime(snapshot.time)}</span>
 								</button>
@@ -106,7 +106,7 @@
 					</div>
 					{#if maxScroll > 0}
 						<button type="button" aria-label="Snapshot timeline scrollbar" onclick={trackClick} class="relative block h-2 w-full rounded-full bg-rig-800/70 p-0.5">
-							<span class="pointer-events-none absolute left-0 top-0.5 h-1 rounded-full bg-rig-500 transition-colors" style="width:{thumbWidth}px;transform:translateX({thumbLeft}px)"></span>
+							<span class="pointer-events-none absolute left-0 top-0.5 h-1 rounded-full bg-leaf transition-colors" style="width:{thumbWidth}px;transform:translateX({thumbLeft}px)"></span>
 						</button>
 					{/if}
 				</div>

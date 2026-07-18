@@ -193,6 +193,7 @@
 				await createBinding({
 					deviceId,
 					deviceName,
+					productId: product.id,
 					powerControllerId: template.kind === 'light' ? assignedPowerControllerId || undefined : undefined,
 					controllerChannelId: template.kind === 'fan' ? controllerChannelId : undefined,
 					environmentId: environmentId!,
@@ -229,6 +230,7 @@
 					await updateBinding(light.id, {
 						deviceId: light.deviceId,
 						deviceName: light.deviceName,
+						productId: light.productId,
 						powerControllerId: deviceId,
 						environmentId: light.environmentId,
 						kind: light.kind,
@@ -239,7 +241,7 @@
 					});
 				}
 			}
-			goto(`/env/${environmentId}/settings#devices`);
+			goto(`/env/${environmentId}?tab=equipment`);
 		} catch (e) {
 			error = errMsg(e, 'Installation failed');
 		} finally {
@@ -248,7 +250,7 @@
 	}
 </script>
 
-<a href="/env/{environmentId}/settings#devices" class="mb-5 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100"><ArrowLeft size={15} /> Back to settings</a>
+<a href="/env/{environmentId}?tab=equipment" class="mb-5 inline-flex items-center gap-1 text-sm text-rig-400 hover:text-rig-100"><ArrowLeft size={15} /> Back to equipment</a>
 
 {#if loading}
 	<p class="text-rig-400">Inspecting Home Assistant…</p>
@@ -257,7 +259,7 @@
 {:else}
 	<div class="mx-auto max-w-3xl space-y-5">
 		<header>
-			<div class="text-xs font-medium uppercase tracking-wider text-leaf">Device installation</div>
+			<div class="text-xs font-medium uppercase tracking-wider text-rig-400">Device installation</div>
 			<h1 class="mt-1 text-3xl font-semibold">{product.brand} {product.model}</h1>
 			<p class="mt-2 text-rig-400">{product.description}</p>
 		</header>
@@ -335,7 +337,7 @@
 			<p class="mt-1 text-sm text-rig-500">This device does not require Home Assistant. You can connect a controller now or assign one later.</p>
 			<label class="mt-4 block">
 				<span class="text-sm text-rig-300">Name</span>
-				<input bind:value={standaloneName} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-rig-500 focus:outline-none" />
+				<input bind:value={standaloneName} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-leaf focus:outline-none" />
 			</label>
 			{#if isGenericCamera}
 				<label class="mt-4 block">
@@ -351,7 +353,7 @@
 				{:else}
 				<label class="mt-4 block">
 					<span class="text-sm text-rig-300">Stream URL</span>
-					<input bind:value={cameraStreamUrl} placeholder={cameraType === 'rtsp' ? 'rtsp://user:password@192.168.1.50/stream' : 'http://192.168.1.50/snapshot.jpg'} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 font-mono text-xs focus:border-rig-500 focus:outline-none" />
+					<input bind:value={cameraStreamUrl} placeholder={cameraType === 'rtsp' ? 'rtsp://user:password@192.168.1.50/stream' : 'http://192.168.1.50/snapshot.jpg'} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 font-mono text-xs focus:border-leaf focus:outline-none" />
 					<span class="mt-1 block text-xs text-rig-500">JPEG and MJPEG render directly. RTSP unicast is securely relayed over TCP by GrowRig.</span>
 				</label>
 				<label class="mt-4 block">
@@ -382,8 +384,8 @@
 					<Select value={irrigationType} onValueChange={(value) => (irrigationType = value as IrrigationType)} items={[{ value: 'autopot', label: 'AutoPot (gravity-fed trays)' }, { value: 'drip', label: 'Drip / emitters' }, { value: 'wick', label: 'Wick' }, { value: 'ebb_flow', label: 'Ebb & flow' }, { value: 'hand', label: 'Hand-watering' }]} class="mt-1" />
 				</label>
 				<div class="mt-4 grid gap-3 sm:grid-cols-2">
-					<label><span class="text-sm text-rig-300">Reservoir <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.5" bind:value={reservoirL} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">L</span></div></label>
-					<label><span class="text-sm text-rig-300">Trays / valves <span class="text-rig-600">(optional)</span></span><input type="number" min="0" step="1" bind:value={valveCount} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-rig-500 focus:outline-none" /></label>
+					<label><span class="text-sm text-rig-300">Reservoir <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.5" bind:value={reservoirL} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">L</span></div></label>
+					<label><span class="text-sm text-rig-300">Trays / valves <span class="text-rig-600">(optional)</span></span><input type="number" min="0" step="1" bind:value={valveCount} class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 text-sm focus:border-leaf focus:outline-none" /></label>
 				</div>
 				<p class="mt-2 text-xs text-rig-500">Passive setup — no pump or Home Assistant entity. Its presence marks the grow as auto-watered; you top up the reservoir and check pH/EC instead of hand-watering.</p>
 			{/if}
@@ -395,7 +397,7 @@
 					<label class="mt-4 block">
 						<span class="text-sm text-rig-300">Rated wattage</span>
 						<div class="relative mt-1">
-							<input type="number" min="1" max="100000" step="1" bind:value={lightWattage} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-rig-500 focus:outline-none" />
+							<input type="number" min="1" max="100000" step="1" bind:value={lightWattage} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-leaf focus:outline-none" />
 							<span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-rig-500">W</span>
 						</div>
 					</label>
@@ -414,13 +416,13 @@
 				{/if}
 				{#if showFanSpecs}
 				<div class="mt-4 grid gap-3 sm:grid-cols-2">
-					<label><span class="text-sm text-rig-300">Fan size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanSizeMm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mm</span></div></label>
-					<label><span class="text-sm text-rig-300">Maximum speed <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanMaxRpm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">RPM</span></div></label>
-					<label><span class="text-sm text-rig-300">Airflow <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanAirflowCfm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">CFM</span></div></label>
-					<label><span class="text-sm text-rig-300">Static pressure <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.01" bind:value={fanStaticPressure} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-20 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mmH₂O</span></div></label>
-					<label><span class="text-sm text-rig-300">Starting voltage <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" max="48" step="0.1" bind:value={fanStartingVoltage} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">V</span></div></label>
-					<label><span class="text-sm text-rig-300">Duct size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanDuctSizeInches} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">in</span></div></label>
-					<label><span class="text-sm text-rig-300">Noise <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanNoiseDba} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-rig-500 focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">dBA</span></div></label>
+					<label><span class="text-sm text-rig-300">Fan size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanSizeMm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mm</span></div></label>
+					<label><span class="text-sm text-rig-300">Maximum speed <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="1" bind:value={fanMaxRpm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">RPM</span></div></label>
+					<label><span class="text-sm text-rig-300">Airflow <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanAirflowCfm} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-14 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">CFM</span></div></label>
+					<label><span class="text-sm text-rig-300">Static pressure <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.01" bind:value={fanStaticPressure} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-20 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">mmH₂O</span></div></label>
+					<label><span class="text-sm text-rig-300">Starting voltage <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" max="48" step="0.1" bind:value={fanStartingVoltage} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">V</span></div></label>
+					<label><span class="text-sm text-rig-300">Duct size <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanDuctSizeInches} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-10 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">in</span></div></label>
+					<label><span class="text-sm text-rig-300">Noise <span class="text-rig-600">(optional)</span></span><div class="relative mt-1"><input type="number" min="0" step="0.1" bind:value={fanNoiseDba} class="w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2.5 pr-12 text-sm focus:border-leaf focus:outline-none" /><span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-rig-500">dBA</span></div></label>
 				</div>
 				{/if}
 				<label class="mt-4 block">

@@ -65,6 +65,7 @@ type environmentDocument struct {
 type deviceDocument struct {
 	ID                  string               `yaml:"id"`
 	Name                string               `yaml:"name"`
+	ProductID           string               `yaml:"productId,omitempty"`
 	PowerControllerID   string               `yaml:"powerControllerId,omitempty"`
 	ControllerChannelID string               `yaml:"controllerChannelId,omitempty"`
 	Capabilities        []capabilityDocument `yaml:"capabilities"`
@@ -144,7 +145,7 @@ func (s *Store) syncYAMLConfig() error {
 		for _, dev := range doc.Devices {
 			for _, cap := range dev.Capabilities {
 				b := domain.Binding{
-					ID: cap.ID, DeviceID: dev.ID, DeviceName: dev.Name,
+					ID: cap.ID, DeviceID: dev.ID, DeviceName: dev.Name, ProductID: dev.ProductID,
 					PowerControllerID: dev.PowerControllerID, ControllerChannelID: dev.ControllerChannelID,
 					EnvironmentID: doc.ID, Kind: cap.Kind, Name: cap.Name, Entity: cap.Entity,
 					Measurement: cap.Measurement, Role: cap.Role, RPMEntity: cap.RPMEntity, FanType: cap.FanType, SizeMM: cap.SizeMM, MaxRPM: cap.MaxRPM, AirflowCFM: cap.AirflowCFM, StaticPressureMMH2O: cap.StaticPressureMMH2O, StartingVoltage: cap.StartingVoltage, DuctSizeInches: cap.DuctSizeInches, NoiseDBA: cap.NoiseDBA,
@@ -191,6 +192,9 @@ func (s *Store) writeEnvironmentConfig(envID string) error {
 		if dev == nil {
 			dev = &deviceDocument{ID: b.DeviceID, Name: b.DeviceName}
 			byDevice[b.DeviceID] = dev
+		}
+		if b.ProductID != "" {
+			dev.ProductID = b.ProductID
 		}
 		if b.PowerControllerID != "" {
 			dev.PowerControllerID = b.PowerControllerID

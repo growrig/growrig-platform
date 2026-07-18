@@ -268,7 +268,7 @@
 							onclick={() => openEditEnv(env)}
 							title="Edit details"
 							aria-label="Edit details"
-							class="pointer-events-auto grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/box:opacity-100 hover:border-rig-500 hover:text-rig-100"
+							class="pointer-events-auto grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/box:opacity-100 hover:border-leaf hover:text-rig-100"
 						>
 							<Pencil size={13} />
 						</button>
@@ -335,7 +335,7 @@
 							onclick={() => openEditEnv(node.room)}
 							title="Edit room"
 							aria-label="Edit room"
-							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-leaf hover:text-rig-100"
 						>
 							<Pencil size={13} />
 						</button>
@@ -343,7 +343,7 @@
 							href="/wizard/box?room={node.room.id}"
 							title="Add new tent"
 							aria-label="Add new tent"
-							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-leaf hover:text-rig-100"
 						>
 							<Plus size={14} />
 						</a>
@@ -404,7 +404,7 @@
 		<div class="flex flex-wrap justify-center gap-3">
 			<a
 				href="/wizard/box"
-				class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+				class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 			>
 				Set up a Grow Box
 			</a>
@@ -412,7 +412,7 @@
 				<button
 					onclick={seedDemo}
 					disabled={loadingDemo}
-					class="rounded-md border border-rig-700 px-5 py-2 text-sm text-rig-200 transition-colors hover:border-rig-500 disabled:opacity-50"
+					class="rounded-md border border-rig-700 px-5 py-2 text-sm text-rig-200 transition-colors hover:border-leaf disabled:opacity-50"
 				>
 					{loadingDemo ? 'Loading…' : 'Load demo tent'}
 				</button>
@@ -428,7 +428,7 @@
 				<div class="group/loc mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 					<h1
 						class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide {group.located
-							? 'text-leaf'
+							? 'text-rig-400'
 							: 'text-rig-500'}"
 					>
 						<span class="flex items-center gap-1.5"><MapPin size={14} />{group.name}</span>
@@ -441,14 +441,14 @@
 										onclick={() => group.loc && openEditLocation(group.loc)}
 										title="Edit location"
 										aria-label="Edit location"
-										class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100"
+										class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-leaf hover:text-rig-100"
 									>
 										<Pencil size={13} />
 									</button>
 								{/if}
 								<button
 									onclick={() => openAddRoom(group.loc?.id ?? '')}
-									class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100"
+									class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-rig-300 transition-colors hover:border-leaf hover:text-rig-100"
 								>
 									<Plus size={12} /> Add lung room
 								</button>
@@ -474,7 +474,7 @@
 		<!-- Active Grows — the cultivation layer, below the physical locations. -->
 		<section>
 			<div class="mb-4 flex items-center justify-between gap-4">
-				<h1 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-leaf">
+				<h1 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-rig-400">
 					<Sprout size={14} /> Active Grows
 				</h1>
 				<a href="/grows" class="text-xs text-rig-500 hover:text-leaf">Manage grows</a>
@@ -518,7 +518,7 @@
 				<span class="text-sm text-rig-400">Room name</span>
 				<input
 					bind:value={roomName}
-					class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none"
+					class="mt-1 w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-leaf focus:outline-none"
 				/>
 			</label>
 			<label class="block">
@@ -537,7 +537,7 @@
 				<button
 					onclick={saveRoom}
 					disabled={savingRoom || !roomName.trim()}
-					class="rounded-md bg-rig-500 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+					class="rounded-md bg-rig-50 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 				>
 					{savingRoom ? 'Creating…' : 'Create room'}
 				</button>

@@ -121,7 +121,7 @@
 						<PhotoUpload
 							growId={grow.id}
 							onUploaded={onPhotoUploaded}
-							triggerClass="inline-flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+							triggerClass="inline-flex items-center gap-1.5 rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 						/>
 					{/if}
 				</div>

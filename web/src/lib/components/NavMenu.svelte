@@ -119,7 +119,7 @@
 							<div class="mb-2 last:mb-0">
 								<div
 									class="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide {loc.located
-										? 'text-leaf'
+										? 'text-rig-400'
 										: 'text-rig-500'}"
 								>
 									<MapPin size={12} />{loc.name}

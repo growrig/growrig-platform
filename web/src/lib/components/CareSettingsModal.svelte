@@ -125,7 +125,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-2.5 py-1 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-2.5 py-1 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <Dialog bind:open title="Care actions" description="Enable, reorder, rename and add the actions this grow can log." size="2xl">
@@ -163,7 +163,7 @@
 						{#each ALL_FIELDS as f (f.key)}
 							<button
 								onclick={() => toggleField(f.key)}
-								class="rounded-full border px-2.5 py-0.5 text-xs transition-colors {newFields.has(f.key) ? 'border-leaf/60 bg-leaf/15 text-leaf' : 'border-rig-700 text-rig-400 hover:border-rig-500'}"
+								class="rounded-full border px-2.5 py-0.5 text-xs transition-colors {newFields.has(f.key) ? 'border-leaf/60 bg-leaf/15 text-leaf' : 'border-rig-700 text-rig-400 hover:border-leaf'}"
 							>{f.label}</button>
 						{/each}
 					</div>

@@ -117,7 +117,7 @@
 			<button
 				onclick={checkUpdates}
 				disabled={busy === 'reload'}
-				class="flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100 disabled:opacity-50"
+				class="flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf hover:text-rig-100 disabled:opacity-50"
 			>
 				<RefreshCw size={15} class={busy === 'reload' ? 'animate-spin' : ''} /> Check for updates
 			</button>

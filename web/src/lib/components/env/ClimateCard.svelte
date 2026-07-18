@@ -80,7 +80,7 @@
 	role={onclick ? 'button' : undefined}
 	title={updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString()}` : undefined}
 	class="group flex w-full flex-col rounded-xl border border-rig-800 bg-rig-900/40 p-4 text-left transition-colors {onclick
-		? 'cursor-pointer hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none'
+		? 'cursor-pointer hover:border-rig-600 focus-visible:border-leaf focus-visible:outline-none'
 		: ''}"
 >
 	<div class="flex items-start justify-between gap-2">

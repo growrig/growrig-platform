@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS bindings (
     id             TEXT PRIMARY KEY,
 	device_id      TEXT NOT NULL,
 	device_name    TEXT NOT NULL,
+	product_id     TEXT NOT NULL DEFAULT '',
 	power_controller_id TEXT NOT NULL DEFAULT '',
 	controller_channel_id TEXT NOT NULL DEFAULT '',
     environment_id TEXT NOT NULL,
@@ -479,6 +480,7 @@ DROP TABLE IF EXISTS devices;
 		{"environments", "height_cm", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "wattage", "REAL NOT NULL DEFAULT 0"},
 		{"bindings", "is_primary", "INTEGER NOT NULL DEFAULT 0"},
+		{"bindings", "product_id", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "power_controller_id", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "controller_channel_id", "TEXT NOT NULL DEFAULT ''"},
 		{"bindings", "max_rpm", "INTEGER NOT NULL DEFAULT 0"},
@@ -1394,10 +1396,11 @@ func (s *Store) DeleteEnvironment(id string) error {
 
 func (s *Store) SaveBinding(b domain.Binding) error {
 	_, err := s.db.Exec(
-		`INSERT INTO bindings (id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count, created)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO bindings (id, device_id, device_name, product_id, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count, created)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 		   device_id=excluded.device_id, device_name=excluded.device_name,
+		   product_id=excluded.product_id,
 		   power_controller_id=excluded.power_controller_id,
 		   controller_channel_id=excluded.controller_channel_id,
 		   environment_id=excluded.environment_id, kind=excluded.kind, name=excluded.name,
@@ -1411,7 +1414,7 @@ func (s *Store) SaveBinding(b domain.Binding) error {
 		   camera_storage_mb=excluded.camera_storage_mb,
 		   irrigation_type=excluded.irrigation_type, irrigation_mode=excluded.irrigation_mode,
 		   reservoir_l=excluded.reservoir_l, valve_count=excluded.valve_count`,
-		b.ID, b.DeviceID, b.DeviceName, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
+		b.ID, b.DeviceID, b.DeviceName, b.ProductID, b.PowerControllerID, b.ControllerChannelID, b.EnvironmentID, string(b.Kind), b.Name, b.Entity,
 		string(b.Measurement), string(b.Role), b.RPMEntity, b.Wattage, boolToInt(b.Primary), b.FanType, b.SizeMM, b.MaxRPM, b.AirflowCFM, b.StaticPressureMMH2O, b.StartingVoltage, b.DuctSizeInches, b.NoiseDBA, b.StreamURL, string(b.CameraType), b.CameraCaptureInterval, b.CameraRetentionDays, b.CameraStorageMB, string(b.IrrigationType), string(b.IrrigationMode), b.ReservoirL, b.ValveCount, time.Now().UnixNano(),
 	)
 	if err != nil {
@@ -1493,7 +1496,7 @@ func boolToInt(b bool) int {
 
 func (s *Store) Bindings() ([]domain.Binding, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, device_name, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count
+		`SELECT id, device_id, device_name, product_id, power_controller_id, controller_channel_id, environment_id, kind, name, entity, measurement, role, rpm_entity, wattage, is_primary, fan_type, size_mm, max_rpm, airflow_cfm, static_pressure, starting_voltage, duct_size_inches, noise_dba, stream_url, camera_type, camera_capture_interval, camera_retention_days, camera_storage_mb, irrigation_type, irrigation_mode, reservoir_l, valve_count
 		 FROM bindings ORDER BY created`)
 	if err != nil {
 		return nil, err
@@ -1504,7 +1507,7 @@ func (s *Store) Bindings() ([]domain.Binding, error) {
 		var b domain.Binding
 		var kind, measurement, role, cameraType, irrigationType, irrigationMode string
 		var isPrimary int
-		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType, &b.CameraCaptureInterval, &b.CameraRetentionDays, &b.CameraStorageMB, &irrigationType, &irrigationMode, &b.ReservoirL, &b.ValveCount); err != nil {
+		if err := rows.Scan(&b.ID, &b.DeviceID, &b.DeviceName, &b.ProductID, &b.PowerControllerID, &b.ControllerChannelID, &b.EnvironmentID, &kind, &b.Name, &b.Entity, &measurement, &role, &b.RPMEntity, &b.Wattage, &isPrimary, &b.FanType, &b.SizeMM, &b.MaxRPM, &b.AirflowCFM, &b.StaticPressureMMH2O, &b.StartingVoltage, &b.DuctSizeInches, &b.NoiseDBA, &b.StreamURL, &cameraType, &b.CameraCaptureInterval, &b.CameraRetentionDays, &b.CameraStorageMB, &irrigationType, &irrigationMode, &b.ReservoirL, &b.ValveCount); err != nil {
 			return nil, err
 		}
 		b.Kind = domain.BindingKind(kind)

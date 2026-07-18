@@ -170,9 +170,9 @@
 	// Full-width top fields keep w-full; row inputs must NOT (w-full fights flex
 	// sizing and collapses the name inputs), so they use `cell` + explicit widths.
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 	const cell =
-		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 	const iconBtn = 'rounded p-1.5 text-rig-400 transition-colors hover:text-rig-100 disabled:opacity-30';
 </script>
 
@@ -205,7 +205,7 @@
 		<!-- Start from a built-in schedule (create mode only). -->
 		{#if !isEdit && templateOptions.length}
 			<label class="block rounded-lg border border-rig-800 bg-rig-900/40 p-3">
-				<span class="text-xs font-semibold uppercase tracking-wide text-leaf">Start from a built-in template</span>
+				<span class="text-xs font-semibold uppercase tracking-wide text-rig-400">Start from a built-in template</span>
 				<Select
 					class="mt-1.5"
 					bind:value={templateId}
@@ -241,11 +241,11 @@
 		<!-- Products -->
 		<section class="space-y-2">
 			<div class="flex items-center justify-between">
-				<h3 class="text-xs font-semibold uppercase tracking-wide text-leaf">Products</h3>
+				<h3 class="text-xs font-semibold uppercase tracking-wide text-rig-400">Products</h3>
 				<button
 					type="button"
 					onclick={addProduct}
-					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-200 hover:border-rig-500 hover:text-white"
+					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-200 hover:border-leaf hover:text-white"
 				>
 					<Plus size={13} /> Add product
 				</button>
@@ -280,11 +280,11 @@
 		<!-- Phases -->
 		<section class="space-y-3">
 			<div class="flex items-center justify-between">
-				<h3 class="text-xs font-semibold uppercase tracking-wide text-leaf">Phases &amp; weeks</h3>
+				<h3 class="text-xs font-semibold uppercase tracking-wide text-rig-400">Phases &amp; weeks</h3>
 				<button
 					type="button"
 					onclick={addPhase}
-					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-200 hover:border-rig-500 hover:text-white"
+					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-xs text-rig-200 hover:border-leaf hover:text-white"
 				>
 					<Plus size={13} /> Add phase
 				</button>
@@ -351,7 +351,7 @@
 												type="button"
 												onclick={() => addWeek(pi)}
 												aria-label="Add week"
-												class="inline-flex items-center gap-0.5 rounded border border-rig-700 px-1.5 py-0.5 text-[11px] text-rig-300 hover:border-rig-500 hover:text-white"
+												class="inline-flex items-center gap-0.5 rounded border border-rig-700 px-1.5 py-0.5 text-[11px] text-rig-300 hover:border-leaf hover:text-white"
 											>
 												<Plus size={11} /> Week
 											</button>
@@ -373,7 +373,7 @@
 														step="any"
 														min="0"
 														bind:value={phase.weeks[wi].doses[p.key]}
-														class="w-14 rounded border border-rig-700 bg-rig-950 px-1.5 py-1 text-center text-xs focus:border-rig-500 focus:outline-none"
+														class="w-14 rounded border border-rig-700 bg-rig-950 px-1.5 py-1 text-center text-xs focus:border-leaf focus:outline-none"
 													/>
 												</td>
 											{/each}

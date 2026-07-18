@@ -184,7 +184,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <Dialog
@@ -268,7 +268,7 @@
 				<button
 					type="button"
 					onclick={addLine}
-					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-[11px] text-rig-300 hover:border-rig-500 hover:text-white"
+					class="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2 py-1 text-[11px] text-rig-300 hover:border-leaf hover:text-white"
 				>
 					<Plus size={12} /> Add size
 				</button>

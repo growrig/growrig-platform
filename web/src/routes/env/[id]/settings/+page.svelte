@@ -6,7 +6,6 @@
 	import { getEnvironments, getBindings, getLocations, deleteBinding, deleteEnvironment, getEnvironmentYAML, updateEnvironmentYAML } from '$lib/api';
 	import type { Binding, Environment, Location } from '$lib/types';
 	import EnvironmentCard from '$lib/components/EnvironmentCard.svelte';
-	import DevicesPage from '../devices/+page.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Code2 from '@lucide/svelte/icons/code-2';
 	import { Button, Dialog } from '$lib/components/ui';
@@ -113,9 +112,6 @@
 		<!-- Environment settings -->
 		<EnvironmentCard {env} {rooms} {locations} onChanged={reload} {flash} />
 
-		<!-- Device configuration is part of environment settings. -->
-		<DevicesPage embedded />
-
 		<!-- Danger zone -->
 		<section class="space-y-3">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-danger/80">Danger zone</h2>
@@ -149,7 +145,7 @@
 
 	<Dialog bind:open={yamlOpen} title="Edit environment YAML" description="Changes are validated and applied immediately. Keep the environment id unchanged.">
 		<div class="space-y-3">
-			<textarea bind:value={yamlText} rows="24" spellcheck="false" class="w-full resize-y rounded-md border border-rig-700 bg-rig-950 p-3 font-mono text-xs leading-5 text-rig-200 focus:border-rig-500 focus:outline-none"></textarea>
+			<textarea bind:value={yamlText} rows="24" spellcheck="false" class="w-full resize-y rounded-md border border-rig-700 bg-rig-950 p-3 font-mono text-xs leading-5 text-rig-200 focus:border-leaf focus:outline-none"></textarea>
 			{#if yamlError}<p class="text-sm text-danger">{yamlError}</p>{/if}
 			<div class="flex justify-end gap-2">
 				<Button variant="ghost" onclick={() => (yamlOpen = false)} disabled={yamlBusy}>Cancel</Button>

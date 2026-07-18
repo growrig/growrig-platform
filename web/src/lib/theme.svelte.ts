@@ -38,7 +38,7 @@ function applyToDocument(resolved: ResolvedTheme) {
 	// Keep the address-bar / PWA chrome color in step with the page background.
 	document
 		.querySelector('meta[name="theme-color"]')
-		?.setAttribute('content', resolved === 'dark' ? '#0b0f0c' : '#f7fbf7');
+		?.setAttribute('content', resolved === 'dark' ? '#0c0f0d' : '#f8faf9');
 }
 
 class ThemeState {

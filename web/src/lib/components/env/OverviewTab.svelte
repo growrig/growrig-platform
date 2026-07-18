@@ -98,7 +98,7 @@
 						role="button" tabindex="0"
 						onclick={() => (cameraOpen = true)}
 						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cameraOpen = true; } }}
-						class="group cursor-pointer overflow-hidden rounded-lg border border-rig-800 bg-rig-950/40 transition-colors hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none"
+						class="group cursor-pointer overflow-hidden rounded-lg border border-rig-800 bg-rig-950/40 transition-colors hover:border-rig-600 focus-visible:border-leaf focus-visible:outline-none"
 					>
 						<CameraPreview
 							url={firstCamera.cameraType === 'rtsp' || firstCamera.entity || !firstCamera.streamUrl ? cameraProxyURL(firstCamera.id) : firstCamera.streamUrl}
@@ -110,7 +110,7 @@
 						/>
 						<div class="flex items-center gap-2 px-3 py-2 text-sm">
 							<Camera size={15} class="text-rig-400" />
-							<span class="transition-colors group-hover:text-leaf">{firstCamera.name}</span>
+							<span class="transition-colors group-hover:text-rig-50">{firstCamera.name}</span>
 						</div>
 					</div>
 				</section>

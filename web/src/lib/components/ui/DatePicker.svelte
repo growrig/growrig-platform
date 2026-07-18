@@ -53,7 +53,7 @@
 >
 	<DatePicker.Input
 		class={cn(
-			'flex h-9 w-full items-center gap-0.5 rounded-md border border-rig-700 bg-rig-950 px-3 text-sm text-rig-100 focus-within:border-rig-500',
+			'flex h-9 w-full items-center gap-0.5 rounded-md border border-rig-700 bg-rig-950 px-3 text-sm text-rig-100 focus-within:border-leaf',
 			'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
 			className
 		)}
@@ -109,7 +109,7 @@
 									{#each weekDates as date (date)}
 										<DatePicker.Cell {date} month={month.value} class="p-0">
 											<DatePicker.Day
-												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-rig-500 data-[selected]:font-medium data-[selected]:text-rig-950 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
+												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-leaf data-[selected]:font-medium data-[selected]:text-rig-950 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
 											>
 												{date.day}
 											</DatePicker.Day>

@@ -164,6 +164,7 @@
 			await updateBinding(binding.id, {
 				deviceId: binding.deviceId,
 				deviceName: name.trim() || binding.deviceName,
+				productId: binding.productId,
 				powerControllerId: binding.kind === 'light' ? powerControllerId || undefined : binding.powerControllerId,
 				controllerChannelId: binding.kind === 'fan' ? controllerChannelId || undefined : binding.controllerChannelId,
 				environmentId: binding.environmentId,
@@ -204,7 +205,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <Dialog

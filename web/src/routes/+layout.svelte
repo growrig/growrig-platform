@@ -141,7 +141,7 @@
 	     until a session exists, or a stray 401 would bounce us to /login. -->
 	<div class="grid min-h-screen place-items-center text-rig-400">
 		<div class="flex items-center gap-2">
-			<span class="grid h-8 w-8 place-items-center rounded-md bg-rig-500 text-rig-950">
+			<span class="grid h-8 w-8 place-items-center rounded-md bg-leaf text-rig-950">
 				<Sprout size={20} />
 			</span>
 			<span>Starting GrowRig…</span>
@@ -152,7 +152,7 @@
 		<header class="sticky top-0 z-10 border-b border-rig-800 bg-rig-900/60 backdrop-blur">
 			<div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3 lg:gap-6">
 				<a href="/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
-					<span class="grid h-7 w-7 place-items-center rounded-md bg-rig-500 text-rig-950">
+					<span class="grid h-7 w-7 place-items-center rounded-md bg-leaf text-rig-950">
 						<Sprout size={18} />
 					</span>
 					<span>GrowRig</span>
@@ -172,7 +172,6 @@
 								triggerClass="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 outline-none transition-colors hover:bg-rig-800/50 hover:text-rig-100"
 							>
 								{#snippet trigger()}
-									{#if auth.isAdmin}<Shield size={14} class="text-leaf" />{/if}
 									{auth.user?.username}
 									<ChevronDown size={14} />
 								{/snippet}

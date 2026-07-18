@@ -25,9 +25,9 @@
 		onValueChange
 	}: Props = $props();
 
-	const rangeColor = $derived(tone === 'warn' ? 'bg-warn' : 'bg-rig-500');
+	const rangeColor = $derived(tone === 'warn' ? 'bg-warn' : 'bg-leaf');
 	const thumbColor = $derived(
-		tone === 'warn' ? 'border-warn focus-visible:ring-warn' : 'border-rig-500 focus-visible:ring-rig-400'
+		tone === 'warn' ? 'border-warn focus-visible:ring-warn' : 'border-leaf focus-visible:ring-leaf'
 	);
 </script>
 

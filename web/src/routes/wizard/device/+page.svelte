@@ -51,7 +51,7 @@
 		}
 	}
 
-	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <div class="mx-auto max-w-2xl">
@@ -90,7 +90,7 @@
 			<button
 				onclick={finish}
 				disabled={saving || added.length === 0}
-				class="rounded-md bg-rig-500 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+				class="rounded-md bg-rig-50 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 			>
 				{saving ? 'Adding…' : `Add ${added.length} device${added.length === 1 ? '' : 's'}`}
 			</button>

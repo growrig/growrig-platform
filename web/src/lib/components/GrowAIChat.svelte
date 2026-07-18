@@ -340,7 +340,7 @@
 						<p>Ask about {scopeName()}. Choose all of GrowRig, one grow, or one environment as the conversation context.</p>
 						<div class="mt-3 flex flex-wrap gap-2">
 							{#each suggestions as suggestion}
-								<button onclick={() => send(suggestion)} class="rounded-full border border-rig-700 px-3 py-1.5 text-left text-xs text-rig-400 transition hover:border-rig-500 hover:text-rig-100">{suggestion}</button>
+								<button onclick={() => send(suggestion)} class="rounded-full border border-rig-700 px-3 py-1.5 text-left text-xs text-rig-400 transition hover:border-leaf hover:text-rig-100">{suggestion}</button>
 							{/each}
 						</div>
 					</div>
@@ -377,8 +377,8 @@
 			{:else}
 			<div class="shrink-0 border-t border-rig-800 bg-rig-900 p-3">
 				<div class="flex items-end gap-2">
-					<textarea bind:value={draft} onkeydown={onKeydown} rows="2" maxlength="4000" placeholder="Ask GrowRig…" class="min-h-11 flex-1 resize-none rounded-lg border border-rig-700 bg-rig-950 px-3 py-2 text-sm outline-none placeholder:text-rig-600 focus:border-rig-500"></textarea>
-					<button onclick={() => send()} disabled={sending || !draft.trim()} aria-label="Send message" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rig-500 text-rig-950 transition hover:bg-rig-400 disabled:cursor-not-allowed disabled:opacity-40"><Send size={17} /></button>
+					<textarea bind:value={draft} onkeydown={onKeydown} rows="2" maxlength="4000" placeholder="Ask GrowRig…" class="min-h-11 flex-1 resize-none rounded-lg border border-rig-700 bg-rig-950 px-3 py-2 text-sm outline-none placeholder:text-rig-600 focus:border-leaf"></textarea>
+					<button onclick={() => send()} disabled={sending || !draft.trim()} aria-label="Send message" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rig-50 text-rig-950 transition hover:bg-rig-200 disabled:cursor-not-allowed disabled:opacity-40"><Send size={17} /></button>
 				</div>
 				<p class="mt-2 text-[11px] text-rig-600">Read-only · {scopeName()} context is sent to {instanceName}</p>
 			</div>
@@ -394,7 +394,7 @@
 			</button>
 		{/each}
 		</div>
-		<button onclick={toggleAssistant} aria-label={opened ? 'Minimize GrowRig Assistant' : 'Open GrowRig Assistant'} title={opened ? 'Minimize' : 'GrowRig Assistant'} class="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-leaf/30 bg-rig-500 text-rig-950 shadow-xl shadow-black/40 transition hover:scale-105 hover:bg-rig-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf">
+		<button onclick={toggleAssistant} aria-label={opened ? 'Minimize GrowRig Assistant' : 'Open GrowRig Assistant'} title={opened ? 'Minimize' : 'GrowRig Assistant'} class="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-rig-300/30 bg-rig-50 text-rig-950 shadow-xl shadow-black/40 transition hover:scale-105 hover:bg-rig-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rig-400">
 			<Sparkles size={27} />
 			{#if sending}<span class="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-rig-900 bg-leaf px-1 text-[10px] font-semibold tabular-nums text-rig-950">{elapsedSeconds}s</span>{/if}
 		</button>

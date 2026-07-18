@@ -163,6 +163,7 @@ func (s *Server) buildEnvironment(envID string, b environmentBody) (domain.Envir
 type bindingBody struct {
 	DeviceID              string             `json:"deviceId"`
 	DeviceName            string             `json:"deviceName"`
+	ProductID             string             `json:"productId"`
 	PowerControllerID     string             `json:"powerControllerId"`
 	ControllerChannelID   string             `json:"controllerChannelId"`
 	EnvironmentID         string             `json:"environmentId"`
@@ -328,7 +329,7 @@ func (s *Server) buildBinding(bindingID string, b bindingBody) (domain.Binding, 
 	}
 
 	binding := domain.Binding{
-		ID: bindingID, DeviceID: b.DeviceID, DeviceName: b.DeviceName,
+		ID: bindingID, DeviceID: b.DeviceID, DeviceName: b.DeviceName, ProductID: strings.TrimSpace(b.ProductID),
 		PowerControllerID: b.PowerControllerID, ControllerChannelID: b.ControllerChannelID, EnvironmentID: b.EnvironmentID, Kind: b.Kind, Name: b.Name, Entity: b.Entity,
 	}
 	switch b.Kind {

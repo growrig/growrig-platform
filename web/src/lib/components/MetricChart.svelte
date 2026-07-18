@@ -179,7 +179,7 @@
 <div class="relative" bind:clientWidth={wrapW}>
 	<svg viewBox="0 0 {wrapW} {height}" width={wrapW} {height} class="block">
 		<!-- y grid + labels -->
-		{#each yTicks as t (t.label)}
+		{#each yTicks as t, i (i)}
 			<line x1={pad.left} x2={wrapW - pad.right} y1={t.y} y2={t.y} stroke="var(--color-rig-800)" stroke-width="1" />
 			<text x={pad.left - 6} y={t.y + 3} text-anchor="end" fill="var(--color-rig-500)" font-size="10">{t.label}</text>
 		{/each}
@@ -189,7 +189,7 @@
 			{/each}
 		{/if}
 		<!-- x labels -->
-		{#each xTicks as t (t.x)}
+		{#each xTicks as t, i (i)}
 			<text x={t.x} y={height - 6} text-anchor="middle" fill="var(--color-rig-500)" font-size="10">{t.label}</text>
 		{/each}
 		<!-- now -->

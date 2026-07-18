@@ -123,7 +123,7 @@
 	{#if auth.isAdmin && items.length}
 		<button
 			onclick={() => newItem()}
-			class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-rig-500 hover:text-white"
+			class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-leaf hover:text-white"
 		>
 			<Plus size={14} /> New item
 		</button>
@@ -153,7 +153,7 @@
 		{#if auth.isAdmin}
 			<button
 				onclick={() => newItem()}
-				class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+				class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 			>
 				Add an item
 			</button>
@@ -166,7 +166,7 @@
 			<section>
 				<div class="mb-3 flex items-center justify-between gap-4">
 					<div>
-						<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+						<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">
 							{cat.label}{catItems.length ? ` · ${catItems.length}` : ''}
 						</h2>
 						{#if cat.description}<p class="text-xs text-rig-500">{cat.description}</p>{/if}
@@ -175,7 +175,7 @@
 						<button
 							onclick={() => newItem(cat.id)}
 							aria-label="Add item to {cat.label}"
-							class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rig-800 px-2.5 py-1.5 text-xs text-rig-300 transition-colors hover:border-rig-500 hover:text-white"
+							class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rig-800 px-2.5 py-1.5 text-xs text-rig-300 transition-colors hover:border-leaf hover:text-white"
 						>
 							<Plus size={13} /> Add
 						</button>

@@ -20,7 +20,7 @@
 	let refreshing = $state<string | null>(null);
 	let error = $state<string | null>(null);
 
-	const fieldClass = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm text-rig-100 outline-none placeholder:text-rig-600 focus:border-rig-500';
+	const fieldClass = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm text-rig-100 outline-none placeholder:text-rig-600 focus:border-leaf';
 
 	onMount(load);
 
@@ -148,7 +148,7 @@
 				<span class="mb-1 block text-xs text-rig-400">Branch, tag, or commit</span>
 				<input class={fieldClass} bind:value={ref} placeholder="Default branch" />
 			</label>
-			<button type="submit" disabled={saving || !repository.trim()} class="mt-5 flex items-center justify-center gap-1.5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">
+			<button type="submit" disabled={saving || !repository.trim()} class="mt-5 flex items-center justify-center gap-1.5 rounded-md bg-rig-50 px-4 py-2 text-sm font-medium text-rig-950 disabled:opacity-50">
 				<Plus size={15} /> {saving ? 'Fetching…' : 'Add source'}
 			</button>
 		</div>

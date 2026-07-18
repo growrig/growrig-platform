@@ -700,6 +700,8 @@ export interface Binding {
 	id: string;
 	deviceId: string;
 	deviceName: string;
+	/** Catalog product this device was installed from ("<category>/<id>"). */
+	productId?: string;
 	powerControllerId?: string;
 	controllerChannelId?: string;
 	environmentId: string;

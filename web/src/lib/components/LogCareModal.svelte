@@ -159,7 +159,7 @@
 	]);
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 	const dialogTitle = $derived(
 		step === 'action' ? 'Log care' : action ? `${action.label}` : 'Log care'
 	);

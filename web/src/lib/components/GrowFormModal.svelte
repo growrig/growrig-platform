@@ -57,7 +57,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <Dialog bind:open title={grow ? 'Edit grow' : 'New grow'} description="A crop-neutral cultivation run with a configurable stage sequence.">

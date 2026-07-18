@@ -34,7 +34,7 @@
 					{/if}
 				</div>
 				<span
-					class="absolute -bottom-1 -right-1 min-w-[16px] rounded-full bg-rig-500 px-1 text-center text-[10px] font-semibold leading-4 text-rig-950"
+					class="absolute -bottom-1 -right-1 min-w-[16px] rounded-full bg-leaf px-1 text-center text-[10px] font-semibold leading-4 text-rig-950"
 				>
 					{pc.count}
 				</span>

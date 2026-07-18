@@ -62,7 +62,7 @@
 		<div class="mb-3 flex items-center justify-between gap-3">
 			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">Care actions</h2>
 			{#if isAdmin}
-				<button onclick={onCareSettings} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"><Settings2 size={14} /> Configure</button>
+				<button onclick={onCareSettings} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf"><Settings2 size={14} /> Configure</button>
 			{/if}
 		</div>
 		{#if enabledActions.length}

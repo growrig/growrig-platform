@@ -35,7 +35,7 @@
 				class="-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors {isActive(
 					tab.href
 				)
-					? 'border-leaf text-rig-50'
+					? 'border-rig-50 text-rig-50'
 					: 'border-transparent text-rig-400 hover:text-rig-100'}"
 			>
 				<tab.icon size={16} />

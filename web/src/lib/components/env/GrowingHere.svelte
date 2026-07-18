@@ -87,7 +87,7 @@
 					<div class="flex items-start justify-between gap-3">
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
-								<span class="truncate font-medium transition-colors group-hover:text-leaf">{g.grow.name}</span>
+								<span class="truncate font-medium transition-colors group-hover:text-rig-50">{g.grow.name}</span>
 								<span class="shrink-0 rounded-full bg-rig-800 px-2 py-0.5 text-xs capitalize text-leaf">
 									{titleCase(g.grow.stage)}
 								</span>
@@ -115,7 +115,7 @@
 			<span class="text-sm text-rig-400">Nothing is growing here yet</span>
 			<a
 				href="/grows"
-				class="inline-flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+				class="inline-flex items-center gap-1.5 rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 			>
 				<Sprout size={15} /> Place plants
 			</a>

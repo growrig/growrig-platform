@@ -69,7 +69,7 @@
 	]);
 	const volume = $derived(volumeM3(widthCm, depthCm, heightCm));
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-leaf focus:outline-none';
 
 	async function save() {
 		busy = true;

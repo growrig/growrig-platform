@@ -170,7 +170,7 @@
 	}
 
 	const field =
-		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <!-- Per-environment access editor, shared by the create and edit forms. -->
@@ -188,7 +188,7 @@
 								type="button"
 								onclick={() => set(env.id, level)}
 								class="rounded px-2 py-0.5 text-xs capitalize transition-colors {(choices[env.id] ?? 'none') === level
-									? 'bg-rig-500 text-rig-950'
+									? 'bg-rig-50 text-rig-950'
 									: 'bg-rig-800 text-rig-300 hover:bg-rig-700'}"
 							>
 								{level}
@@ -206,7 +206,7 @@
 		<h2 class="text-lg font-semibold">Users</h2>
 		<button
 			onclick={openNew}
-			class="flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+			class="flex items-center gap-1.5 rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 		>
 			<Plus size={16} /> New user
 		</button>
@@ -260,11 +260,11 @@
 				</div>
 			{/if}
 			<div class="flex justify-end gap-2">
-				<button onclick={() => (showNew = false)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-rig-500">Cancel</button>
+				<button onclick={() => (showNew = false)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-leaf">Cancel</button>
 				<button
 					onclick={submitNew}
 					disabled={creating || nuName.trim().length < 3 || nuPassword.length < 8}
-					class="rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400 disabled:opacity-40"
+					class="rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-200 disabled:opacity-40"
 				>
 					{creating ? 'Creating…' : 'Create user'}
 				</button>
@@ -344,11 +344,11 @@
 											</div>
 										{/if}
 										<div class="flex justify-end gap-2">
-											<button onclick={() => (editingId = null)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-rig-500">Cancel</button>
+											<button onclick={() => (editingId = null)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-leaf">Cancel</button>
 											<button
 												onclick={() => submitEdit(u)}
 												disabled={savingEdit || (edPassword.length > 0 && edPassword.length < 8)}
-												class="rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400 disabled:opacity-40"
+												class="rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-200 disabled:opacity-40"
 											>
 												{savingEdit ? 'Saving…' : 'Save changes'}
 											</button>

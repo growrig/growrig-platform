@@ -28,12 +28,12 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <div class="rounded-2xl border border-rig-800 bg-rig-900/40 p-6">
 	<div class="mb-5 flex flex-col items-center text-center">
-		<span class="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-rig-500 text-rig-950">
+		<span class="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-leaf text-rig-950">
 			<Sprout size={24} />
 		</span>
 		<h1 class="text-xl font-semibold">Welcome to GrowRig</h1>
@@ -65,7 +65,7 @@
 		<button
 			type="submit"
 			disabled={!valid || saving}
-			class="w-full rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+			class="w-full rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 		>
 			{saving ? 'Creating…' : 'Create administrator'}
 		</button>

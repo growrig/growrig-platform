@@ -84,7 +84,7 @@
 				{#if canLogCare}
 					<button
 						onclick={onLogCare}
-						class="inline-flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+						class="inline-flex items-center gap-1.5 rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 					>
 						<Droplet size={15} /> Log care
 					</button>
@@ -92,7 +92,7 @@
 				<DropdownMenu
 					items={menu}
 					align="end"
-					triggerClass="grid h-9 w-9 place-items-center rounded-md border border-rig-700 text-rig-300 outline-none transition-colors hover:border-rig-500 hover:text-rig-100"
+					triggerClass="grid h-9 w-9 place-items-center rounded-md border border-rig-700 text-rig-300 outline-none transition-colors hover:border-leaf hover:text-rig-100"
 				>
 					{#snippet trigger()}
 						<MoreHorizontal size={18} />

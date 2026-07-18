@@ -35,7 +35,7 @@
 	{#if auth.isAdmin}
 		<button
 			onclick={() => (creating = true)}
-			class="inline-flex items-center gap-1.5 rounded-md bg-rig-500 px-4 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+			class="inline-flex items-center gap-1.5 rounded-md bg-rig-50 px-4 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 		>
 			<Plus size={15} /> New grow
 		</button>
@@ -53,7 +53,7 @@
 			{#if auth.isAdmin}
 				<button
 					onclick={() => (creating = true)}
-					class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+					class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 				>
 					Start a grow
 				</button>
@@ -66,7 +66,7 @@
 			{/snippet}
 
 			<section>
-				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-leaf">Active</h2>
+				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Active</h2>
 				{#if active.length}
 					<div class="grid gap-3 sm:grid-cols-2">
 						{#each active as g (g.id)}{@render growRow(g)}{/each}

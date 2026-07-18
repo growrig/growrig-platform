@@ -43,7 +43,7 @@
 	<Select.Trigger
 		class={cn(
 			'inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-rig-700 bg-rig-950 px-3 text-sm text-rig-100 transition-colors',
-			'hover:border-rig-600 focus:border-rig-500 focus:outline-none data-[placeholder]:text-rig-500',
+			'hover:border-rig-600 focus:border-leaf focus:outline-none data-[placeholder]:text-rig-500',
 			'disabled:cursor-not-allowed disabled:opacity-50',
 			className
 		)}

@@ -11,9 +11,9 @@
 	bind:checked
 	class={cn(
 		'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors',
-		'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rig-400 focus-visible:ring-offset-2 focus-visible:ring-offset-rig-950',
+		'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-leaf focus-visible:ring-offset-2 focus-visible:ring-offset-rig-950',
 		'disabled:cursor-not-allowed disabled:opacity-50',
-		'data-[state=checked]:bg-rig-500 data-[state=unchecked]:bg-rig-700',
+		'data-[state=checked]:bg-leaf data-[state=unchecked]:bg-rig-700',
 		className
 	)}
 	{...rest}

@@ -29,7 +29,7 @@
 <div class="space-y-2">
 	<div class="flex items-center gap-2">
 		<Select items={items} value={value || '__none__'} onValueChange={(v) => (value = v === '__none__' ? '' : v)} class="flex-1" />
-		<button type="button" onclick={() => (adding = !adding)} class="whitespace-nowrap rounded-md border border-rig-700 px-3 py-2 text-sm text-rig-300 hover:border-rig-500">
+		<button type="button" onclick={() => (adding = !adding)} class="whitespace-nowrap rounded-md border border-rig-700 px-3 py-2 text-sm text-rig-300 hover:border-leaf">
 			{adding ? 'Cancel' : '+ New'}
 		</button>
 	</div>

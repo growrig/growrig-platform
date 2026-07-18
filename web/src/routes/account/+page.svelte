@@ -70,7 +70,7 @@
 	}
 
 	const field =
-		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <div class="mx-auto max-w-2xl space-y-6">
@@ -100,8 +100,8 @@
 					aria-checked={selected}
 					onclick={() => theme.set(opt.value)}
 					class="flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 text-sm transition-colors {selected
-						? 'border-rig-500 bg-rig-500/10 text-rig-100'
-						: 'border-rig-700 text-rig-300 hover:border-rig-500 hover:text-rig-100'}"
+						? 'border-leaf bg-leaf/10 text-rig-100'
+						: 'border-rig-700 text-rig-300 hover:border-leaf hover:text-rig-100'}"
 				>
 					<opt.icon size={18} />
 					{opt.label}
@@ -116,7 +116,7 @@
 			{#if passkeysSupported() && !adding}
 				<button
 					onclick={() => { adding = true; error = null; }}
-					class="flex items-center gap-1.5 rounded-md bg-rig-500 px-3 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+					class="flex items-center gap-1.5 rounded-md bg-rig-50 px-3 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 				>
 					<Plus size={15} /> Add a passkey
 				</button>
@@ -137,11 +137,11 @@
 					<input bind:value={newName} placeholder="Passkey" class="{field} mt-1 w-full" />
 				</label>
 				<div class="flex gap-2">
-					<button onclick={() => (adding = false)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-rig-500">Cancel</button>
+					<button onclick={() => (adding = false)} class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 hover:border-leaf">Cancel</button>
 					<button
 						onclick={add}
 						disabled={registering}
-						class="rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400 disabled:opacity-50"
+						class="rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-200 disabled:opacity-50"
 					>
 						{registering ? 'Waiting…' : 'Create passkey'}
 					</button>

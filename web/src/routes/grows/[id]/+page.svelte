@@ -433,7 +433,7 @@
 		}
 	}
 
-	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+	const field = 'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 {#if loading}
@@ -461,7 +461,7 @@
 			{#each tabs as t (t.id)}
 				<button
 					onclick={() => setTab(t.id)}
-					class="-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors {activeTab === t.id ? 'border-leaf text-rig-50' : 'border-transparent text-rig-400 hover:text-rig-100'}"
+					class="-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors {activeTab === t.id ? 'border-rig-50 text-rig-50' : 'border-transparent text-rig-400 hover:text-rig-100'}"
 				>
 					{t.label}
 				</button>

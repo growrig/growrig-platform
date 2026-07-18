@@ -89,7 +89,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-2 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <div class="space-y-3">
@@ -139,7 +139,7 @@
 		type="button"
 		onclick={save}
 		disabled={busy || !name.trim()}
-		class="rounded-md bg-rig-500 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-400 disabled:opacity-50"
+		class="rounded-md bg-rig-50 px-4 py-1.5 text-sm font-medium text-rig-950 hover:bg-rig-200 disabled:opacity-50"
 	>
 		{busy ? 'Saving…' : editing ? 'Save changes' : 'Add location'}
 	</button>

@@ -70,7 +70,7 @@
 		<button
 			type="button"
 			onclick={() => (editing = true)}
-			class="block w-full rounded-lg border border-rig-800 bg-rig-950/40 p-4 text-left transition-colors hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none"
+			class="block w-full rounded-lg border border-rig-800 bg-rig-950/40 p-4 text-left transition-colors hover:border-rig-600 focus-visible:border-leaf focus-visible:outline-none"
 		>
 			{@render body()}
 		</button>

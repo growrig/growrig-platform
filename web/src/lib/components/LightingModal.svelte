@@ -116,7 +116,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <Dialog bind:open title="Control grow & lighting" description="Choose the grow whose stage drives this tent, and the light photoperiod.">
@@ -180,7 +180,7 @@
 								max="24"
 								step="0.5"
 								bind:value={stageHours[st]}
-								class="w-20 rounded-md border border-rig-700 bg-rig-950 px-2 py-1 text-sm focus:border-rig-500 focus:outline-none"
+								class="w-20 rounded-md border border-rig-700 bg-rig-950 px-2 py-1 text-sm focus:border-leaf focus:outline-none"
 							/>
 							<span class="text-xs text-rig-500">
 								{offHours(stageHours[st] ?? 0)}

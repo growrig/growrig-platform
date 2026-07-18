@@ -186,7 +186,7 @@
 				<button
 					onclick={() => setTab(t.id)}
 					class="-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors {activeTab === t.id
-						? 'border-leaf text-rig-50'
+						? 'border-rig-50 text-rig-50'
 						: 'border-transparent text-rig-400 hover:text-rig-100'}"
 				>
 					{t.label}
@@ -223,7 +223,7 @@
 		{:else if activeTab === 'control'}
 			<ControlTab {env} {canWrite} {grows} defaults={lightingDefaults} />
 		{:else if activeTab === 'equipment'}
-			<EquipmentTab {env} {canWrite} {isAdmin} onMetric={openMetric} />
+			<EquipmentTab {env} {canWrite} {isAdmin} />
 		{:else if activeTab === 'activity'}
 			<ActivityTab environmentId={env.id} />
 		{/if}

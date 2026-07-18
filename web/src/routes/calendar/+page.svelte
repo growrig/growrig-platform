@@ -227,12 +227,12 @@
 					onclick={() => (selectedKey = selectedKey === cell.key ? null : cell.key)}
 					class="flex min-h-[6.5rem] flex-col gap-1 p-1.5 text-left transition-colors
 						{cell.inMonth ? 'bg-rig-900/40' : 'bg-rig-950/40 text-rig-600'}
-						{selectedKey === cell.key ? 'ring-1 ring-inset ring-rig-500' : 'hover:bg-rig-800/40'}"
+						{selectedKey === cell.key ? 'ring-1 ring-inset ring-leaf' : 'hover:bg-rig-800/40'}"
 				>
 					<div class="flex items-center justify-between">
 						<span
 							class="grid h-6 w-6 place-items-center rounded-full text-xs
-								{cell.today ? 'bg-rig-500 font-semibold text-rig-950' : cell.inMonth ? 'text-rig-300' : 'text-rig-600'}"
+								{cell.today ? 'bg-leaf font-semibold text-rig-950' : cell.inMonth ? 'text-rig-300' : 'text-rig-600'}"
 						>
 							{cell.date.getDate()}
 						</span>
@@ -328,7 +328,7 @@
 			</section>
 		{:else}
 			<section class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
-				<h2 class="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-leaf">
+				<h2 class="mb-3 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-rig-400">
 					<Sprout size={14} /> Active grows
 				</h2>
 				{#if !snap}

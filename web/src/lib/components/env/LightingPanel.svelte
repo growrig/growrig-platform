@@ -95,7 +95,7 @@
 		<div transition:slide={{ duration: 200 }} class="border-t border-rig-800 p-5 pt-4">
 			{#if !hasPrimaryLight}
 				<p class="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-					No grow light assigned. Add one under <a href="/env/{env.id}/settings#devices" class="underline">Settings → Devices</a> to control the photoperiod.
+					No grow light assigned. Add one under <a href="/env/{env.id}?tab=equipment" class="underline">Equipment</a> to control the photoperiod.
 				</p>
 			{:else if mode === 'auto'}
 				<!-- Read-only photoperiod (automation owns these values). -->

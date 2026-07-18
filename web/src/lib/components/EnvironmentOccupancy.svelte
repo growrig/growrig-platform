@@ -51,7 +51,7 @@
 			{#each groups as g (g.grow.id)}
 				<a
 					href="/grows/{g.grow.id}"
-					class="group block rounded-lg border border-rig-800 bg-rig-950/40 p-4 transition-colors hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none"
+					class="group block rounded-lg border border-rig-800 bg-rig-950/40 p-4 transition-colors hover:border-rig-600 focus-visible:border-leaf focus-visible:outline-none"
 				>
 					<div class="flex items-center justify-between">
 						<span class="font-medium">{g.grow.name}</span>

@@ -56,7 +56,7 @@
 			<button onclick={() => (view = 'table')} title="Table" aria-label="Table view" class="rounded-md p-1.5 {view === 'table' ? 'bg-rig-800 text-rig-100' : 'text-rig-500 hover:text-rig-200'}"><Table size={15} /></button>
 		</div>
 		{#if isAdmin}
-			<button onclick={onAddPlant} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500"><Plus size={14} /> Add plant</button>
+			<button onclick={onAddPlant} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf"><Plus size={14} /> Add plant</button>
 		{/if}
 	</div>
 </div>

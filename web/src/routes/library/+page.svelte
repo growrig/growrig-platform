@@ -138,7 +138,7 @@
 		<button
 			onclick={() => (tab = t.id)}
 			class="relative -mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors {tab === t.id
-				? 'border-leaf text-rig-50'
+				? 'border-rig-50 text-rig-50'
 				: 'border-transparent text-rig-400 hover:text-rig-100'}"
 		>
 			{t.label}
@@ -150,13 +150,13 @@
 	<!-- Feeding recipes: nutrient schedules (built-in + user). -->
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-4">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">
 				Feeding recipes{feedings.length ? ` · ${feedings.length}` : ''}
 			</h2>
 			{#if auth.isAdmin && feedings.length}
 				<button
 					onclick={newFeeding}
-					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-rig-500 hover:text-white"
+					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-leaf hover:text-white"
 				>
 					<Plus size={14} /> New recipe
 				</button>
@@ -170,7 +170,7 @@
 				{#if auth.isAdmin}
 					<button
 						onclick={newFeeding}
-						class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+						class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 					>
 						Add a recipe
 					</button>
@@ -242,13 +242,13 @@
 {:else if tab === 'cultivars'}
 	<section>
 		<div class="mb-3 flex items-center justify-between gap-4">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">
 				Cultivars{cultivars.length ? ` · ${cultivars.length}` : ''}
 			</h2>
 			{#if auth.isAdmin && cultivars.length}
 				<button
 					onclick={newCultivar}
-					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-rig-500 hover:text-white"
+					class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-xs font-medium text-rig-200 transition-colors hover:border-leaf hover:text-white"
 				>
 					<Plus size={14} /> New cultivar
 				</button>
@@ -262,7 +262,7 @@
 				{#if auth.isAdmin}
 					<button
 						onclick={newCultivar}
-						class="rounded-md bg-rig-500 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400"
+						class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 					>
 						Add a cultivar
 					</button>
@@ -334,7 +334,7 @@
 	<!-- Species: read-only reference definitions (stages + cultivar attributes). -->
 	<section>
 		<div class="mb-3 flex items-center gap-2">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-leaf">
+			<h2 class="text-sm font-semibold uppercase tracking-wide text-rig-400">
 				Species{species.length ? ` · ${species.length}` : ''}
 			</h2>
 		</div>

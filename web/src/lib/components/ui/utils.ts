@@ -9,13 +9,13 @@ export function cn(...parts: Array<string | false | null | undefined>): string {
 /** Shared styling for native inputs/textareas so form fields match the bits-ui
  *  controls (Select, DatePicker) that carry their own trigger styling. */
 export const fieldClass =
-	'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm text-rig-100 focus:border-rig-500 focus:outline-none';
+	'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm text-rig-100 focus:border-leaf focus:outline-none';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 export const buttonVariants: Record<ButtonVariant, string> = {
-	primary: 'bg-rig-500 text-rig-950 hover:bg-rig-400 focus-visible:ring-rig-400',
+	primary: 'bg-rig-50 text-rig-950 hover:bg-rig-200 focus-visible:ring-rig-400',
 	secondary:
 		'border border-rig-700 bg-rig-900 text-rig-100 hover:border-rig-600 hover:bg-rig-800 focus-visible:ring-rig-600',
 	ghost: 'text-rig-300 hover:bg-rig-800/60 hover:text-rig-100 focus-visible:ring-rig-700',

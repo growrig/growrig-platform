@@ -33,7 +33,7 @@
 	description="Every bound sensor and its latest reading. Values marked offline are excluded from the aggregate."
 >
 	{#snippet trigger()}
-		<span class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100">
+		<span class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf hover:text-rig-100">
 			<Thermometer size={15} /> Sensors <span class="text-rig-500">({sensors.length})</span>
 		</span>
 	{/snippet}

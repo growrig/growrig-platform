@@ -34,7 +34,7 @@
 	type={onclick ? 'button' : undefined}
 	role={onclick ? 'button' : undefined}
 	class="w-full rounded-xl border border-rig-800 bg-rig-900/50 px-4 py-3 text-left transition-colors {onclick
-		? 'cursor-pointer hover:border-rig-600 focus-visible:border-rig-500 focus-visible:outline-none'
+		? 'cursor-pointer hover:border-rig-600 focus-visible:border-leaf focus-visible:outline-none'
 		: ''}"
 >
 	<div class="flex items-center justify-between gap-3">

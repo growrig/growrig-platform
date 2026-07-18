@@ -93,7 +93,7 @@
 							<td class="px-4 py-3">
 								<div class="flex justify-end gap-2">
 									<a href={`/ai/chats?chat=${encodeURIComponent(chat.id)}`} class="inline-flex items-center gap-1.5 rounded-md bg-rig-700 px-3 py-2 text-xs font-medium text-rig-100 hover:bg-rig-600">Open <ExternalLink size={13} /></a>
-									<button onclick={() => toggleArchived(chat)} disabled={updating === chat.id} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-2 text-xs text-rig-300 hover:border-rig-500 hover:text-rig-100 disabled:opacity-40">
+									<button onclick={() => toggleArchived(chat)} disabled={updating === chat.id} class="inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-2 text-xs text-rig-300 hover:border-leaf hover:text-rig-100 disabled:opacity-40">
 										{#if chat.archived}<ArchiveRestore size={13} /> Restore{:else}<Archive size={13} /> Archive{/if}
 									</button>
 								</div>

@@ -76,7 +76,7 @@
 				disabled={busy[t.id]}
 				title="Mark done"
 				aria-label="Mark done"
-				class="grid h-8 w-8 place-items-center rounded-md bg-rig-500 text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+				class="grid h-8 w-8 place-items-center rounded-md bg-rig-50 text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 			>
 				<Check size={16} />
 			</button>
@@ -85,7 +85,7 @@
 				disabled={busy[t.id]}
 				title="Skip"
 				aria-label="Skip"
-				class="grid h-8 w-8 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-rig-500 hover:text-rig-100 disabled:opacity-40"
+				class="grid h-8 w-8 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-leaf hover:text-rig-100 disabled:opacity-40"
 			>
 				<X size={15} />
 			</button>
@@ -95,7 +95,7 @@
 
 <section>
 	<div class="mb-4 flex items-center justify-between gap-4">
-		<h1 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-leaf">
+		<h1 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-rig-400">
 			<TriangleAlert size={14} /> Needs attention
 		</h1>
 	</div>
@@ -169,7 +169,7 @@
 
 {#if dueToday.length}
 	<section>
-		<div class="mb-4 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-leaf">
+		<div class="mb-4 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-rig-400">
 			Today
 		</div>
 		<div class="space-y-3">

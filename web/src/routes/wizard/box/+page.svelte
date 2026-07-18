@@ -156,7 +156,7 @@
 	}
 
 	const field =
-		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-rig-500 focus:outline-none';
+		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
 </script>
 
 <div class="mx-auto max-w-2xl">
@@ -169,7 +169,7 @@
 	<div class="mb-6 flex gap-2">
 		{#each steps as label, i (label)}
 			<div class="flex-1">
-				<div class="h-1 rounded-full {i <= step ? 'bg-rig-500' : 'bg-rig-800'}"></div>
+				<div class="h-1 rounded-full {i <= step ? 'bg-leaf' : 'bg-rig-800'}"></div>
 				<div class="mt-1 text-[11px] {i === step ? 'text-rig-100' : 'text-rig-500'}">{label}</div>
 			</div>
 		{/each}
@@ -205,15 +205,15 @@
 			<div class="grid gap-4 sm:grid-cols-2">
 				<label class="block">
 					<span class="text-sm text-rig-400">Target temp — {targetTempC}°C</span>
-					<input type="range" min="15" max="35" step="0.5" bind:value={targetTempC} class="mt-2 w-full accent-rig-500" />
+					<input type="range" min="15" max="35" step="0.5" bind:value={targetTempC} class="mt-2 w-full accent-leaf" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Target humidity — {targetHumidity}%</span>
-					<input type="range" min="20" max="90" step="1" bind:value={targetHumidity} class="mt-2 w-full accent-rig-500" />
+					<input type="range" min="20" max="90" step="1" bind:value={targetHumidity} class="mt-2 w-full accent-leaf" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Target CO₂ — {targetCO2 || 'off'}{targetCO2 ? ' ppm' : ''}</span>
-					<input type="range" min="0" max="1500" step="50" bind:value={targetCO2} class="mt-2 w-full accent-rig-500" />
+					<input type="range" min="0" max="1500" step="50" bind:value={targetCO2} class="mt-2 w-full accent-leaf" />
 				</label>
 				<label class="block">
 					<span class="text-sm text-rig-400">Emergency temp — {emergencyTempC}°C</span>
@@ -299,7 +299,7 @@
 		<button
 			onclick={() => (step = Math.max(0, step - 1))}
 			disabled={step === 0}
-			class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 disabled:opacity-40"
+			class="rounded-md border border-rig-700 px-4 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf disabled:opacity-40"
 		>
 			Back
 		</button>
@@ -307,7 +307,7 @@
 			<button
 				onclick={() => (step += 1)}
 				disabled={!canNext}
-				class="rounded-md bg-rig-500 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+				class="rounded-md bg-rig-50 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 			>
 				Next
 			</button>
@@ -315,7 +315,7 @@
 			<button
 				onclick={finish}
 				disabled={saving || !name.trim()}
-				class="rounded-md bg-rig-500 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-400 disabled:opacity-40"
+				class="rounded-md bg-rig-50 px-5 py-1.5 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200 disabled:opacity-40"
 			>
 				{saving ? 'Creating…' : 'Create grow box'}
 			</button>

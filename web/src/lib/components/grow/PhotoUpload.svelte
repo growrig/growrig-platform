@@ -18,7 +18,7 @@
 		plantUnitId,
 		onUploaded,
 		trigger,
-		triggerClass = 'inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-rig-500 hover:text-rig-100',
+		triggerClass = 'inline-flex items-center gap-1.5 rounded-md border border-rig-700 px-3 py-1.5 text-sm text-rig-300 transition-colors hover:border-leaf hover:text-rig-100',
 		label = 'Add photo'
 	}: Props = $props();
 

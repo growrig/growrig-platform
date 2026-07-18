@@ -47,7 +47,7 @@
 	});
 
 	const rangeInput =
-		'w-full min-w-0 rounded-md border border-rig-700 bg-rig-950 px-2 py-1.5 text-sm tabular-nums focus:border-rig-500 focus:outline-none';
+		'w-full min-w-0 rounded-md border border-rig-700 bg-rig-950 px-2 py-1.5 text-sm tabular-nums focus:border-leaf focus:outline-none';
 
 	async function saveTargets() {
 		busy = true;

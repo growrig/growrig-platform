@@ -407,6 +407,11 @@ type Binding struct {
 	ID         string `json:"id"`
 	DeviceID   string `json:"deviceId"`
 	DeviceName string `json:"deviceName"`
+	// ProductID links the physical device to the catalog product it was
+	// installed from ("<category>/<id>"), so the UI can show its image and
+	// datasheet. Empty for manually-added devices. Shared by all of a device's
+	// capabilities.
+	ProductID string `json:"productId,omitempty"`
 	// PowerControllerID links an entityless light fixture to a separately
 	// configured power device.
 	PowerControllerID   string      `json:"powerControllerId,omitempty"`
