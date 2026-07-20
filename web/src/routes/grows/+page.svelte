@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { live } from '$lib/live.svelte';
 	import { auth } from '$lib/auth.svelte';
 	import { getStagePresets, getCultivars } from '$lib/api';
@@ -24,6 +26,8 @@
 	onMount(() => {
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
+		// Opened from the header quick-add (`/grows?new=1`).
+		if (auth.isAdmin && page.url.searchParams.get('new') !== null) creating = true;
 	});
 </script>
 
@@ -89,5 +93,5 @@
 </div>
 
 {#if auth.isAdmin}
-	<GrowFormModal bind:open={creating} {presets} />
+	<GrowFormModal bind:open={creating} {presets} onSaved={(g) => goto(`/grows/${g.id}`)} />
 {/if}

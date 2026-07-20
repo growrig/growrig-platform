@@ -7,6 +7,7 @@
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import Library from '@lucide/svelte/icons/library';
 	import Activity from '@lucide/svelte/icons/activity';
+	import Globe from '@lucide/svelte/icons/globe';
 
 	let { children } = $props();
 
@@ -17,6 +18,7 @@
 		{ href: '/admin/integrations', label: 'Integrations', icon: Blocks },
 		{ href: '/admin/catalog', label: 'Catalogs', icon: Library },
 		{ href: '/admin/home-assistant', label: 'Home Assistant', icon: HousePlug },
+		{ href: '/admin/remote-access', label: 'Remote access', icon: Globe },
 		{ href: '/admin/debug', label: 'Debug', icon: Bug }
 	];
 	const isActive = (href: string) => page.url.pathname === href;

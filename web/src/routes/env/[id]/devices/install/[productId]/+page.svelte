@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -241,9 +242,11 @@
 					});
 				}
 			}
+			toast.success('Device installed', { description: deviceName });
 			goto(`/env/${environmentId}?tab=equipment`);
 		} catch (e) {
 			error = errMsg(e, 'Installation failed');
+			toast.error('Installation failed', { description: errMsg(e, 'Installation failed') });
 		} finally {
 			busy = false;
 		}

@@ -10,9 +10,13 @@
 	import { preferences, onPreferencesUpdated } from '$lib/preferences.svelte';
 	import { fmtClock } from '$lib/datetime';
 	import { fmtLatencyMs } from '$lib/format';
+	import { NavigationMenu } from 'bits-ui';
 	import { Button, DropdownMenu, type DropdownItem } from '$lib/components/ui';
 	import NavMenu from '$lib/components/NavMenu.svelte';
 	import GrowAIChat from '$lib/components/GrowAIChat.svelte';
+	import Toaster from '$lib/components/Toaster.svelte';
+	import EnvironmentFormModal from '$lib/components/EnvironmentFormModal.svelte';
+	import { addEnv } from '$lib/addEnv.svelte';
 	import Sprout from '@lucide/svelte/icons/sprout';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -21,6 +25,10 @@
 	import UserIcon from '@lucide/svelte/icons/user';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Image from '@lucide/svelte/icons/image';
+	import Droplet from '@lucide/svelte/icons/droplet';
+	import Tent from '@lucide/svelte/icons/tent';
 	import Menu from '@lucide/svelte/icons/menu';
 	import X from '@lucide/svelte/icons/x';
 
@@ -101,6 +109,10 @@
 	const navGroups = $derived([
 		{ label: '', items: [{ href: '/', label: 'Home' }] },
 		{
+			label: 'Environments',
+			items: [{ href: '/env', label: 'All environments' }]
+		},
+		{
 			label: 'Growing',
 			items: [
 				{ href: '/grows', label: 'Grows' },
@@ -122,6 +134,19 @@
 		connecting: { label: 'Connecting', dot: 'bg-warn animate-pulse' },
 		offline: { label: 'Offline', dot: 'bg-danger' }
 	} as const;
+
+	// Quick-add menu. Grow/environment creation are global; Log care and Add
+	// photo need a grow, so they jump to the single active grow when there is
+	// exactly one, otherwise to the Grows list to pick one. (Add photo can't
+	// auto-open the OS file picker across a navigation, so it lands on the grow.)
+	const activeGrows = $derived((live.snapshot?.grows ?? []).filter((g) => g.status === 'active'));
+	const soleActive = $derived(activeGrows.length === 1 ? activeGrows[0] : null);
+	const addMenu = $derived<DropdownItem[]>([
+		{ label: 'Add photo', icon: Image, onSelect: () => goto(soleActive ? `/grows/${soleActive.id}` : '/grows') },
+		{ label: 'Log care', icon: Droplet, onSelect: () => goto(soleActive ? `/grows/${soleActive.id}?action=logcare` : '/grows') },
+		{ label: 'Add grow', icon: Sprout, onSelect: () => goto('/grows?new=1') },
+		{ label: 'Add environment', icon: Tent, onSelect: () => addEnv.start() }
+	]);
 
 	// The username's dropdown submenu: account, admin settings, and log out.
 	const userMenu = $derived<DropdownItem[]>([
@@ -159,6 +184,17 @@
 				</a>
 				<NavMenu />
 				<div class="ml-auto flex items-center gap-3 lg:gap-4">
+					{#if auth.isAdmin}
+						<DropdownMenu
+							items={addMenu}
+							align="end"
+							triggerClass="inline-flex items-center gap-1 rounded-md border border-rig-700 px-2.5 py-1 text-sm text-rig-200 outline-none transition-colors hover:border-leaf hover:text-rig-50"
+						>
+							{#snippet trigger()}
+								<Plus size={15} /> <span class="hidden sm:inline">Add</span>
+							{/snippet}
+						</DropdownMenu>
+					{/if}
 					<div class="hidden text-sm tabular-nums text-rig-400 sm:block" title="{preferences.timezone} · {preferences.locale}">{instanceTime}</div>
 					<div class="flex items-center gap-2 text-sm text-rig-300">
 						<span class="h-2 w-2 rounded-full {statusMeta[live.status].dot}"></span>
@@ -166,17 +202,44 @@
 					</div>
 					{#if auth.user}
 						<div class="hidden border-l border-rig-800 pl-4 lg:block">
-							<DropdownMenu
-								items={userMenu}
-								align="end"
-								hover
-								triggerClass="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 outline-none transition-colors hover:bg-rig-800/50 hover:text-rig-100"
-							>
-								{#snippet trigger()}
-									{auth.user?.username}
-									<ChevronDown size={14} />
-								{/snippet}
-							</DropdownMenu>
+							<NavigationMenu.Root class="relative">
+								<NavigationMenu.List>
+									<NavigationMenu.Item class="relative">
+										<NavigationMenu.Trigger
+											class="group flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 outline-none transition-colors hover:bg-rig-800/50 hover:text-rig-100"
+										>
+											{auth.user?.username}
+											<ChevronDown
+												size={14}
+												class="transition-transform duration-200 group-data-[state=open]:rotate-180"
+											/>
+										</NavigationMenu.Trigger>
+										<NavigationMenu.Content
+											class="absolute right-0 top-full z-50 mt-2 w-52 rounded-lg border border-rig-700 bg-rig-900 p-1 shadow-xl outline-none"
+										>
+											{#each userMenu as item (item.label)}
+												{#if item.href}
+													<NavigationMenu.Link
+														href={item.href}
+														class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-rig-200 transition-colors hover:bg-rig-800 hover:text-rig-50"
+													>
+														{#if item.icon}<item.icon size={16} class="text-rig-400" />{/if}
+														{item.label}
+													</NavigationMenu.Link>
+												{:else}
+													<button
+														onclick={item.onSelect}
+														class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-rig-200 transition-colors hover:bg-rig-800 hover:text-rig-50"
+													>
+														{#if item.icon}<item.icon size={16} class="text-rig-400" />{/if}
+														{item.label}
+													</button>
+												{/if}
+											{/each}
+										</NavigationMenu.Content>
+									</NavigationMenu.Item>
+								</NavigationMenu.List>
+							</NavigationMenu.Root>
 						</div>
 					{/if}
 					<button
@@ -282,5 +345,15 @@
 			</div>
 		</footer>
 		<GrowAIChat />
+		<Toaster />
+		{#if auth.isAdmin}
+			<EnvironmentFormModal
+				bind:open={addEnv.open}
+				defaultKind={addEnv.kind}
+				defaultAirSourceId={addEnv.airSourceId}
+				defaultLocationId={addEnv.locationId}
+				onSaved={(e) => goto(`/env/${e.id}`)}
+			/>
+		{/if}
 	</div>
 {/if}

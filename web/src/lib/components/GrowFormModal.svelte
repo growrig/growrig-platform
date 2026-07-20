@@ -10,12 +10,14 @@
 		TrackingMode,
 		PotUnit
 	} from '$lib/types';
-	import { createGrow, updateGrow, getSpecies, getCultivars, getEnvironments, createPlant } from '$lib/api';
+	import { createGrow, updateGrow, getSpecies, getCultivars, getEnvironments, createPlant, speciesIconURL } from '$lib/api';
+	import { toast } from '$lib/toast.svelte';
 	import { Button, Dialog, Select, DatePicker } from '$lib/components/ui';
 	import { titleCase } from '$lib/format';
 	import { stageColorAt } from '$lib/stageColor';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Sprout from '@lucide/svelte/icons/sprout';
 
 	// Crop-neutral fallbacks, mirroring Grow Core's species defaults, used until
 	// the species catalog loads or when a species curates no list of its own.
@@ -32,10 +34,10 @@
 	}
 	let { open = $bindable(false), grow, presets, onSaved }: Props = $props();
 
-	// A fresh grow walks through three steps; editing only touches the first two,
+	// A fresh grow walks through four steps; editing skips the final Plants step,
 	// since plant units are managed on the grow's detail page.
 	const isEdit = $derived(!!grow);
-	const totalSteps = $derived(isEdit ? 2 : 3);
+	const totalSteps = $derived(isEdit ? 3 : 4);
 	let step = $state(1);
 
 	let name = $state('');
@@ -69,11 +71,35 @@
 	let catalog = $state<Species[]>([]);
 	let cultivars = $state<Cultivar[]>([]);
 	let environments = $state<Environment[]>([]);
+	// Species icons are SVGs served from the catalog; inline their markup so
+	// `currentColor` tracks the tile's text colour (an <img> can't do that).
+	let iconSvgs = $state<Record<string, string>>({});
 	onMount(() => {
-		getSpecies().then((s) => (catalog = s)).catch(() => {});
+		getSpecies()
+			.then((s) => {
+				catalog = s;
+				for (const sp of s) {
+					if (!sp.icon) continue;
+					fetch(speciesIconURL(sp.id))
+						.then((r) => (r.ok ? r.text() : ''))
+						.then((txt) => {
+							if (txt.trimStart().startsWith('<svg')) iconSvgs = { ...iconSvgs, [sp.id]: txt };
+						})
+						.catch(() => {});
+				}
+			})
+			.catch(() => {});
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
 	});
+
+	// Species picker tiles: the rich catalog when loaded, else the preset ids so
+	// the picker still works before (or without) the catalog.
+	const speciesTiles = $derived(
+		catalog.length
+			? catalog.map((s) => ({ id: s.id, label: s.label, hasIcon: !!s.icon }))
+			: Object.keys(presets).map((k) => ({ id: k, label: titleCase(k), hasIcon: false }))
+	);
 
 	// Reseed on open.
 	$effect(() => {
@@ -208,11 +234,13 @@
 		plants = plants.filter((_, idx) => idx !== i);
 	}
 
-	// Step-1 requires a name and a species that yields a stage sequence; later
-	// steps are optional, so the wizard can be finished from step 2 onward.
-	const step1Valid = $derived(!!name.trim() && orderedStages.length > 0);
-	const canAdvance = $derived(step === 1 ? step1Valid : true);
-	const canFinish = $derived(step1Valid && !busy);
+	// Step 1 requires a species and a name; step 2 a non-empty stage sequence
+	// (guaranteed once a species is chosen). Later steps are optional, so the
+	// wizard can be finished from step 3 onward.
+	const detailsValid = $derived(!!species.trim() && !!name.trim());
+	const stagesValid = $derived(orderedStages.length > 0);
+	const canAdvance = $derived(step === 1 ? detailsValid : step === 2 ? stagesValid : true);
+	const canFinish = $derived(detailsValid && stagesValid && !busy);
 
 	function next() {
 		if (step < totalSteps && canAdvance) step = step + 1;
@@ -260,6 +288,9 @@
 			}
 
 			open = false;
+			toast.success(isEdit ? 'Grow updated' : 'Grow created', {
+				description: isEdit ? saved.name : `“${saved.name}” is ready to track.`
+			});
 			onSaved?.(saved);
 		} catch (e) {
 			err = errMsg(e, 'Save failed');
@@ -270,7 +301,7 @@
 
 	const field =
 		'w-full rounded-md border border-rig-700 bg-rig-950 px-3 py-1.5 text-sm focus:border-leaf focus:outline-none';
-	const stepLabels = ['Details', 'Growing setup', 'Plants'];
+	const stepLabels = ['Details', 'Stages', 'Growing setup', 'Plants'];
 </script>
 
 <Dialog
@@ -303,27 +334,47 @@
 
 		{#if err}<p class="text-xs text-danger">{err}</p>{/if}
 
-		<!-- Step 1: name, species, start date -->
+		<!-- Step 1: species, name, start date -->
 		{#if step === 1}
-			<label class="block">
-				<span class="text-xs text-rig-400">Name</span>
-				<input bind:value={name} placeholder="e.g. Summer basil" class="{field} mt-1" />
-			</label>
+			<div class="block">
+				<span class="text-xs text-rig-400">Species</span>
+				<div class="mt-1.5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+					{#each speciesTiles as t (t.id)}
+						{@const sel = species.trim().toLowerCase() === t.id}
+						<button
+							type="button"
+							onclick={() => (species = t.id)}
+							class="flex flex-col items-center justify-center gap-2 rounded-xl border p-4 transition-colors
+								{sel
+								? 'border-leaf bg-leaf/10 text-leaf'
+								: 'border-rig-800 bg-rig-900/30 text-rig-300 hover:border-rig-600 hover:text-rig-100'}"
+						>
+							<span class="grid h-10 w-10 place-items-center [&_svg]:h-9 [&_svg]:w-9">
+								{#if t.hasIcon && iconSvgs[t.id]}
+									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+									{@html iconSvgs[t.id]}
+								{:else}
+									<Sprout size={30} />
+								{/if}
+							</span>
+							<span class="text-sm font-medium {sel ? 'text-leaf' : 'text-rig-200'}">{t.label}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
 			<div class="grid gap-3 sm:grid-cols-2">
 				<label class="block">
-					<span class="text-xs text-rig-400">Species</span>
-					<Select
-						class="mt-1"
-						bind:value={species}
-						placeholder="Select a species…"
-						items={presetKeys.map((k) => ({ value: k, label: titleCase(k) }))}
-					/>
+					<span class="text-xs text-rig-400">Name</span>
+					<input bind:value={name} placeholder="e.g. Summer basil" class="{field} mt-1" />
 				</label>
 				<label class="block">
 					<span class="text-xs text-rig-400">Start date</span>
 					<DatePicker class="mt-1" bind:value={startDate} />
 				</label>
 			</div>
+
+		<!-- Step 2: stage sequence -->
+		{:else if step === 2}
 			<div class="block">
 				<span class="text-xs text-rig-400">Stages</span>
 				{#if stageDefs.length}
@@ -353,8 +404,8 @@
 				{/if}
 			</div>
 
-		<!-- Step 2: growing setup -->
-		{:else if step === 2}
+		<!-- Step 3: growing setup -->
+		{:else if step === 3}
 			<div class="grid gap-3 sm:grid-cols-2">
 				<label class="block">
 					<span class="text-xs text-rig-400">Growing medium</span>
@@ -389,7 +440,7 @@
 				<textarea bind:value={notes} rows="2" class="{field} mt-1"></textarea>
 			</label>
 
-		<!-- Step 3: plants (create mode only) -->
+		<!-- Step 4: plants (create mode only) -->
 		{:else}
 			<div class="space-y-3">
 				<p class="text-xs text-rig-500">

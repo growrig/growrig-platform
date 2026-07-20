@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -46,9 +47,11 @@
 				leafTempOffsetC: -2
 			});
 			for (const d of devices) await createBinding({ environmentId: room.id, ...d });
+			toast.success('Lung room created', { description: room.name });
 			await goto(`/env/${room.id}`);
 		} catch (e) {
 			error = errMsg(e, 'Failed to create room');
+			toast.error('Failed to create room', { description: errMsg(e, '') });
 			saving = false;
 		}
 	}

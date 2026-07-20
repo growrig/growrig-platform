@@ -4,6 +4,7 @@
 	import { updateStageDates, updateGrow, getSpecies } from '$lib/api';
 	import type { GrowDetail, StageEvent, Species, SpeciesStage } from '$lib/types';
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { stageColorAt } from '$lib/stageColor';
 	import X from '@lucide/svelte/icons/x';
 
@@ -113,6 +114,7 @@
 			const dueDates = Object.fromEntries(Object.entries(dates).filter(([s]) => keep.has(s)));
 			onSaved(await updateStageDates(grow.id, dueDates));
 			open = false;
+			toast.success('Stage plan updated', { description: grow.name });
 		} catch (e) {
 			err = errMsg(e, 'Failed to update stages');
 		} finally {

@@ -70,7 +70,11 @@
 	<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 		{#each grow.plants as p (p.id)}
 			{@const cv = cultivarByName.get(p.cultivar)}
-			<div class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
+			<div class="relative rounded-xl border border-rig-800 bg-rig-900/40 p-4 transition-colors hover:border-rig-600">
+				<!-- Full-card link: a real anchor covering the card, so the whole item
+				     is clickable and keyboard-accessible. Interactive bits below sit
+				     above it via `relative z-10`. -->
+				<a href="/plants/{p.id}" class="absolute inset-0 rounded-xl" aria-label={plantDisplayName(p, plantNumbers.get(p.id))}></a>
 				<div class="flex items-start gap-3">
 					<div class="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-rig-700 bg-rig-950">
 						{#if cv?.imageType}
@@ -81,15 +85,17 @@
 					</div>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center justify-between gap-2">
-							<a href="/plants/{p.id}" class="truncate font-medium hover:text-leaf">{plantDisplayName(p, plantNumbers.get(p.id))}</a>
-							<DropdownMenu items={menuFor(p)} align="end" triggerClass="grid h-7 w-7 shrink-0 place-items-center rounded-md text-rig-400 outline-none hover:bg-rig-800 hover:text-rig-100">
-								{#snippet trigger()}<MoreHorizontal size={16} />{/snippet}
-							</DropdownMenu>
+							<span class="truncate font-medium">{plantDisplayName(p, plantNumbers.get(p.id))}</span>
+							<div class="relative z-10">
+								<DropdownMenu items={menuFor(p)} align="end" triggerClass="grid h-7 w-7 shrink-0 place-items-center rounded-md text-rig-400 outline-none hover:bg-rig-800 hover:text-rig-100">
+									{#snippet trigger()}<MoreHorizontal size={16} />{/snippet}
+								</DropdownMenu>
+							</div>
 						</div>
 						<div class="mt-0.5 text-xs capitalize {statusTone(p.status)}">{p.status} · Day {daysSince(p.createdAt)}</div>
 						<div class="mt-2 space-y-0.5 text-xs text-rig-400">
 							{#if p.currentEnvironmentId}
-								<div><a href="/env/{p.currentEnvironmentId}" class="hover:text-leaf">{p.currentEnvironmentName || p.currentEnvironmentId}</a>{#if p.currentPot} · {p.currentPot.size} {p.currentPot.unit} pot{/if}</div>
+								<div><a href="/env/{p.currentEnvironmentId}" class="relative z-10 hover:text-leaf">{p.currentEnvironmentName || p.currentEnvironmentId}</a>{#if p.currentPot} · {p.currentPot.size} {p.currentPot.unit} pot{/if}</div>
 							{/if}
 							{#if p.tracking === 'group' && p.quantity > 1}<div class="text-rig-500">Group ×{p.quantity}</div>{/if}
 						</div>

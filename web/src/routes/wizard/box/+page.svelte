@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -148,9 +149,11 @@
 				await setControlGrow(tent.id, grow.id);
 			}
 
+			toast.success('Grow box created', { description: tent.name });
 			await goto(`/env/${tent.id}`);
 		} catch (e) {
 			error = errMsg(e, 'Failed to create grow box');
+			toast.error('Failed to create grow box', { description: errMsg(e, '') });
 			saving = false;
 		}
 	}

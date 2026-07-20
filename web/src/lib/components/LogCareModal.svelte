@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { CareAction, CareField, FeedingRecipe, GrowDetail, LogCareInput, PlantDetail } from '$lib/types';
 	import { logCare } from '$lib/api';
 	import { Button, Dialog, Select } from '$lib/components/ui';
@@ -145,6 +146,9 @@
 			}
 			await logCare(grow.id, body);
 			open = false;
+			toast.success(`${action.label} logged`, {
+				description: `${selectedPlants.length} ${selectedPlants.length === 1 ? 'plant' : 'plants'} · ${grow.name}`
+			});
 			onLogged?.();
 		} catch (e) {
 			err = errMsg(e, 'Failed to log care');

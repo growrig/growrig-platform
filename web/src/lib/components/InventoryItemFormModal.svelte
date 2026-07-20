@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { InventoryCategory, InventoryItem, InventoryProduct, InventoryStatus } from '$lib/types';
 	import {
 		createInventoryItem,
@@ -175,6 +176,7 @@
 			};
 			const saved = item ? await updateInventoryItem(item.id, input) : await createInventoryItem(input);
 			open = false;
+			toast.success(item ? 'Item updated' : 'Item added', { description: saved.name });
 			onSaved?.(saved);
 		} catch (e) {
 			err = errMsg(e, 'Save failed');

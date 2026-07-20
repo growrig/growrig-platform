@@ -35,6 +35,7 @@ import (
 	"github.com/growrig/growrig/growcore/internal/integrations"
 	"github.com/growrig/growrig/growcore/internal/sim"
 	"github.com/growrig/growrig/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/tailscale"
 	"github.com/growrig/growrig/growcore/internal/webui"
 )
 
@@ -124,9 +125,22 @@ func main() {
 	apiServer := api.NewServer(st, engine, adapter, hub, string(cfg.Adapter.Type), static, cameraRecorder, filepath.Join(dataDir, "preferences.yaml"), cfg.GrowsDir(), integrationManager, catalogSources)
 	go apiServer.PollWeather(ctx)
 
+	handler := apiServer.Handler()
+
+	// Optional private remote access: the same handler served over a tailnet-only
+	// HTTPS listener, alongside the LAN server below. Off unless the user enables
+	// it in Settings; a start error is surfaced in the UI, never fatal.
+	tsMgr, err := tailscale.New(filepath.Join(dataDir, "tsnet"), filepath.Join(dataDir, "tailscale.yaml"), handler)
+	if err != nil {
+		log.Fatalf("tailscale: %v", err)
+	}
+	apiServer.SetTailscale(tsMgr)
+	tsMgr.Start(ctx)
+	defer tsMgr.Close()
+
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           apiServer.Handler(),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

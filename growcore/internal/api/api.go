@@ -23,6 +23,7 @@ import (
 	"github.com/growrig/growrig/growcore/internal/domain"
 	"github.com/growrig/growrig/growcore/internal/integrations"
 	"github.com/growrig/growrig/growcore/internal/store"
+	"github.com/growrig/growrig/growcore/internal/tailscale"
 )
 
 type Server struct {
@@ -38,7 +39,12 @@ type Server struct {
 	growMediaDir    string
 	integrations    *integrations.Manager
 	catalogSources  *catalogsource.Manager
+	tailscale       *tailscale.Manager
 }
+
+// SetTailscale wires the optional remote-access manager. Left nil, the Tailscale
+// endpoints report the feature as unavailable.
+func (s *Server) SetTailscale(m *tailscale.Manager) { s.tailscale = m }
 
 func (s *Server) activity(envID, deviceID, level, eventType, message string) {
 	_ = s.store.AddActivity(domain.Activity{EnvironmentID: envID, DeviceID: deviceID, Level: level, Type: eventType, Message: message})
@@ -114,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/ai/chats/{id}", s.requireAuth(s.updateAIChat))
 	mux.HandleFunc("GET /api/plants/{id}", s.requireAuth(s.getPlant))
 	mux.HandleFunc("GET /api/species", s.requireAuth(s.getSpecies))
+	mux.HandleFunc("GET /api/species/{id}/icon", s.requireAuth(s.getSpeciesIcon))
 	mux.HandleFunc("GET /api/cultivars", s.requireAuth(s.getCultivars))
 	mux.HandleFunc("GET /api/cultivars/{id}", s.requireAuth(s.getCultivar))
 	mux.HandleFunc("GET /api/cultivars/{id}/image", s.requireAuth(s.getCultivarImage))
@@ -205,6 +212,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/signup", s.requireAdmin(s.setSignupSetting))
 	mux.HandleFunc("PUT /api/preferences", s.requireAdmin(s.putPreferences))
 	mux.HandleFunc("POST /api/admin/restart", s.requireAdmin(s.restart))
+	mux.HandleFunc("GET /api/tailscale", s.requireAdmin(s.getTailscale))
+	mux.HandleFunc("POST /api/tailscale/enable", s.requireAdmin(s.enableTailscale))
+	mux.HandleFunc("POST /api/tailscale/disable", s.requireAdmin(s.disableTailscale))
 	mux.HandleFunc("GET /api/catalog-sources", s.requireAdmin(s.getCatalogSources))
 	mux.HandleFunc("POST /api/catalog-sources", s.requireAdmin(s.createCatalogSource))
 	mux.HandleFunc("POST /api/catalog-sources/{id}/refresh", s.requireAdmin(s.refreshCatalogSource))

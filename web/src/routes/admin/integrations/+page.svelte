@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -66,13 +67,14 @@
 		try {
 			if (editing) await updateIntegrationInstance(editing.id, { name: formName, config: formConfig });
 			else await createIntegrationInstance({ bundleId: selected.id, name: formName, config: formConfig });
+			toast.success(editing ? 'Integration updated' : 'Integration added', { description: formName });
 			modalOpen = false; await load();
 		} catch (e) { error = errMsg(e, 'Failed to save integration'); }
 		finally { saving = false; }
 	}
-	async function toggle(i: IntegrationInstance, enabled: boolean) { try { await updateIntegrationInstance(i.id, { enabled, config: {} }); await load(); } catch (e) { error = errMsg(e, 'Failed to update integration'); } }
-	async function test(i: IntegrationInstance) { testing = i.id; error = null; try { await testIntegrationInstance(i.id); } catch (e) { error = errMsg(e, 'Connection test failed'); } finally { testing = null; await load(); } }
-	async function remove(i: IntegrationInstance) { if (!confirm(`Remove “${i.name}”? Feature bindings using it will also be removed.`)) return; try { await deleteIntegrationInstance(i.id); await load(); } catch (e) { error = errMsg(e, 'Failed to remove integration'); } }
+	async function toggle(i: IntegrationInstance, enabled: boolean) { try { await updateIntegrationInstance(i.id, { enabled, config: {} }); await load(); } catch (e) { error = errMsg(e, 'Failed to update integration'); toast.error('Failed to update integration', { description: errMsg(e, '') }); } }
+	async function test(i: IntegrationInstance) { testing = i.id; error = null; try { await testIntegrationInstance(i.id); toast.success('Connection OK', { description: i.name }); } catch (e) { error = errMsg(e, 'Connection test failed'); toast.error('Connection test failed', { description: i.name }); } finally { testing = null; await load(); } }
+	async function remove(i: IntegrationInstance) { if (!confirm(`Remove “${i.name}”? Feature bindings using it will also be removed.`)) return; try { await deleteIntegrationInstance(i.id); toast.success('Integration removed', { description: i.name }); await load(); } catch (e) { error = errMsg(e, 'Failed to remove integration'); toast.error('Failed to remove integration', { description: i.name }); } }
 	function capable(capability: string) { return instances.filter((i) => i.enabled && bundle(i.bundleId)?.capabilities.includes(capability)); }
 	function selectFeature(value: string) { bindFeature = value; bindCapability = features.find((f) => f.value === value)?.capability ?? ''; bindInstance = capable(bindCapability)[0]?.id ?? ''; }
 	async function addBinding() { if (!bindInstance) return; bindingSaving = true; const growId = bindScope.startsWith('grow:') ? bindScope.slice(5) : ''; const environmentId = bindScope.startsWith('environment:') ? bindScope.slice(12) : ''; try { await saveIntegrationBinding({ feature: bindFeature, growId, environmentId, capability: bindCapability, instanceId: bindInstance }); await load(); } catch (e) { error = errMsg(e, 'Failed to save binding'); } finally { bindingSaving = false; } }

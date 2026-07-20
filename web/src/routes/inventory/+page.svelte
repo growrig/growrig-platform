@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
+	import { toast } from '$lib/toast.svelte';
 	import {
 		getInventoryCategories,
 		getInventoryProducts,
@@ -90,9 +91,10 @@
 		if (!confirm(`Delete “${it.name}” from inventory?`)) return;
 		try {
 			await deleteInventoryItem(it.id);
+			toast.success('Item deleted', { description: it.name });
 			refresh();
-		} catch {
-			/* ignore */
+		} catch (e) {
+			toast.error('Could not delete item', { description: it.name });
 		}
 	}
 

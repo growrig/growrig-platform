@@ -46,6 +46,7 @@ import type {
 	InventoryStatus,
 	HAStatus,
 	HAUpdateTarget,
+	TailscaleStatus,
 	Info,
 	Location,
 	PlantUnit,
@@ -543,6 +544,10 @@ export const setAIChatArchived = (id: string, archived: boolean) =>
 
 export const getSpecies = () => json<Species[]>('/api/species');
 
+/** Authenticated same-origin URL for a species' catalog icon (SVG). */
+export const speciesIconURL = (id: string): string =>
+	authenticatedMediaURL(`/api/species/${encodeURIComponent(id)}/icon`);
+
 /** Cultivars, optionally filtered to a single species. */
 export const getCultivars = (species?: string) =>
 	json<Cultivar[]>(`/api/cultivars${species ? `?species=${encodeURIComponent(species)}` : ''}`);
@@ -856,6 +861,19 @@ export const updateHomeAssistant = (target: HAUpdateTarget, slug?: string) =>
 		method: 'POST',
 		body: JSON.stringify({ target, slug: slug ?? '' })
 	});
+
+// --- Tailscale remote access (admin) ---
+
+export const getTailscale = () => json<TailscaleStatus>('/api/tailscale');
+
+export const enableTailscale = (hostname?: string, controlUrl?: string) =>
+	json<TailscaleStatus>('/api/tailscale/enable', {
+		method: 'POST',
+		body: JSON.stringify({ hostname: hostname ?? '', controlUrl: controlUrl ?? '' })
+	});
+
+export const disableTailscale = () =>
+	json<TailscaleStatus>('/api/tailscale/disable', { method: 'POST' });
 
 // --- integrations ---
 export const getIntegrationBundles = () => json<IntegrationBundle[]>('/api/integration-bundles');

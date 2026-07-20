@@ -7,6 +7,7 @@
 	import { onMount } from 'svelte';
 	import type { Cultivar, EnvironmentView, GrowView, Location, Weather } from '$lib/types';
 	import { resolveLocationId } from '$lib/location';
+	import { addEnv } from '$lib/addEnv.svelte';
 	import { attention } from '$lib/attention.svelte';
 	import { Dialog, Select } from '$lib/components/ui';
 	import NewLocationForm from '$lib/components/NewLocationForm.svelte';
@@ -339,14 +340,14 @@
 						>
 							<Pencil size={13} />
 						</button>
-						<a
-							href="/wizard/box?room={node.room.id}"
+						<button
+							onclick={() => addEnv.start({ kind: 'tent', airSourceId: node.room.id, locationId: locOf(node.room) })}
 							title="Add new tent"
 							aria-label="Add new tent"
 							class="grid h-6 w-6 place-items-center rounded-md border border-rig-700 text-rig-400 transition-colors hover:border-leaf hover:text-rig-100"
 						>
 							<Plus size={14} />
-						</a>
+						</button>
 					</span>
 				{/if}
 			</div>
@@ -402,12 +403,12 @@
 		<h2 class="mb-1 text-lg font-semibold">Welcome to GrowRig</h2>
 		<p class="mb-5 text-sm text-rig-400">Set up your first grow box to get started.</p>
 		<div class="flex flex-wrap justify-center gap-3">
-			<a
-				href="/wizard/box"
+			<button
+				onclick={() => addEnv.start({ kind: 'tent' })}
 				class="rounded-md bg-rig-50 px-5 py-2 text-sm font-medium text-rig-950 transition-colors hover:bg-rig-200"
 			>
 				Set up a Grow Box
-			</a>
+			</button>
 			{#if isSimulator}
 				<button
 					onclick={seedDemo}

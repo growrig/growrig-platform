@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { FeedingRecipe, FeedingProduct, Species } from '$lib/types';
 	import { createRecipe, updateRecipe, type RecipeInput } from '$lib/api';
 	import { Button, Dialog, Select } from '$lib/components/ui';
@@ -159,6 +160,7 @@
 			};
 			const saved = isEdit ? await updateRecipe(recipe!.id, input) : await createRecipe(input);
 			open = false;
+			toast.success(isEdit ? 'Recipe updated' : 'Recipe created', { description: saved.name });
 			onSaved?.(saved);
 		} catch (e) {
 			err = errMsg(e, 'Save failed');

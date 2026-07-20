@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
+	import { toast } from '$lib/toast.svelte';
 	import {
 		getSpecies,
 		getCultivars,
@@ -78,9 +79,10 @@
 		if (!confirm(`Delete feeding recipe “${f.name}”?`)) return;
 		try {
 			await deleteRecipe(f.id);
+			toast.success('Recipe deleted', { description: f.name });
 			refreshFeedings();
-		} catch {
-			/* ignore */
+		} catch (e) {
+			toast.error('Could not delete recipe', { description: f.name });
 		}
 	}
 
@@ -101,9 +103,10 @@
 		if (!confirm(`Delete cultivar “${c.name}”?`)) return;
 		try {
 			await deleteCultivar(c.id);
+			toast.success('Cultivar deleted', { description: c.name });
 			refreshCultivars();
-		} catch {
-			/* ignore */
+		} catch (e) {
+			toast.error('Could not delete cultivar', { description: c.name });
 		}
 	}
 

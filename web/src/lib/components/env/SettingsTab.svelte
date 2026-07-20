@@ -2,6 +2,7 @@
 	import { errMsg } from '$lib/errors';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { toast } from '$lib/toast.svelte';
 	import { getEnvironments, getBindings, getLocations, deleteBinding, deleteEnvironment, getEnvironmentYAML, updateEnvironmentYAML } from '$lib/api';
 	import type { Binding, Environment, Location } from '$lib/types';
 	import EnvironmentCard from '$lib/components/EnvironmentCard.svelte';
@@ -50,13 +51,16 @@
 		if (!env) return;
 		const label = env.kind === 'tent' ? 'grow box' : 'room';
 		if (!confirm(`Remove ${label} "${env.name}" and all its devices? This cannot be undone.`)) return;
+		const removed = env.name;
 		removing = true;
 		try {
 			// Cascade: delete this environment's bindings, then the environment.
 			for (const b of myBindings) await deleteBinding(b.id);
 			await deleteEnvironment(id);
+			toast.success(`${label[0].toUpperCase()}${label.slice(1)} removed`, { description: removed });
 			await goto('/');
 		} catch (e) {
+			toast.error('Remove failed', { description: errMsg(e, 'Remove failed') });
 			error = errMsg(e, 'Remove failed');
 			removing = false;
 		}

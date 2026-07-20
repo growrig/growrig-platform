@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/auth.svelte';
 	import {
@@ -112,6 +113,7 @@
 				role: nuRole,
 				access: nuRole === 'admin' ? [] : choicesToAccess(nuAccess)
 			});
+			toast.success('User created', { description: nuName.trim() });
 			showNew = false;
 			await load();
 		} catch (e) {
@@ -139,6 +141,7 @@
 				...(edPassword ? { password: edPassword } : {})
 			});
 			editingId = null;
+			toast.success('User updated', { description: u.username });
 			await load();
 			if (u.id === auth.user?.id) await auth.refresh();
 		} catch (e) {
@@ -163,9 +166,11 @@
 		error = null;
 		try {
 			await deleteUser(u.id);
+			toast.success('User deleted', { description: u.username });
 			await load();
 		} catch (e) {
 			error = errMsg(e, 'Failed to delete user');
+			toast.error('Failed to delete user', { description: u.username });
 		}
 	}
 

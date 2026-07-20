@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -79,10 +80,13 @@
 	async function move(envId: string) {
 		if (!plant || !envId || envId === plant.currentEnvironmentId) return;
 		try {
+			const dest = environments.find((e) => e.id === envId)?.name;
 			await movePlant(plant.id, envId);
+			toast.success('Plant moved', { description: dest });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not move plant', { description: errMsg(e, 'Failed') });
 		}
 	}
 	let editOpen = $state(false);
@@ -137,6 +141,7 @@
 				});
 			}
 			editOpen = false;
+			toast.success('Plant updated');
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
@@ -177,6 +182,7 @@
 		try {
 			await repotPlant(plant.id, { size: rpSize, unit: rpUnit, type: rpType });
 			repotOpen = false;
+			toast.success('Plant repotted', { description: `${rpSize} ${rpUnit}${rpType ? ` · ${rpType}` : ''}` });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
@@ -189,18 +195,22 @@
 		if (!plant || !confirm(`Harvest ${plantDisplayName(plant, plantNumber)}?`)) return;
 		try {
 			await harvestPlant(plant.id);
+			toast.success('Plant harvested', { description: plantDisplayName(plant, plantNumber) });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not harvest plant', { description: errMsg(e, 'Failed') });
 		}
 	}
 	async function discard() {
 		if (!plant || !confirm('Remove this plant?')) return;
 		try {
 			await removePlant(plant.id);
+			toast.success('Plant removed', { description: plantDisplayName(plant, plantNumber) });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not remove plant', { description: errMsg(e, 'Failed') });
 		}
 	}
 

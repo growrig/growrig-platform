@@ -476,6 +476,8 @@ export interface Species {
 	media?: { default?: string; options: string[] };
 	/** Curated nutrient-method options for this crop. */
 	nutrientMethods?: string[];
+	/** Served URL of the species' catalog icon (SVG), absent when it ships none. */
+	icon?: string;
 }
 
 /** A user-defined strain/variety within a species. */
@@ -971,6 +973,28 @@ export interface HAStatus {
 }
 
 export type HAUpdateTarget = 'core' | 'os' | 'supervisor' | 'addon';
+
+// --- Tailscale remote access (admin) ---
+
+export type TailscaleState = 'stopped' | 'starting' | 'needs-login' | 'running' | 'error';
+
+export interface TailscaleStatus {
+	/** Whether remote access is compiled/wired into this build. */
+	available: boolean;
+	enabled: boolean;
+	state: TailscaleState;
+	hostname: string;
+	/** Login URL to authorize the node into the user's tailnet (while needs-login). */
+	authUrl?: string;
+	/** Remote HTTPS URL once running. */
+	url?: string;
+	dnsName?: string;
+	controlUrl?: string;
+	/** Node-key expiry (ISO); the node becomes unreachable after this. */
+	keyExpiry?: string;
+	keyExpired: boolean;
+	error?: string;
+}
 
 // --- External integrations (kept separate from physical device bindings) ---
 export interface IntegrationConfigField {

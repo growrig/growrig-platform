@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { Environment, EnvironmentKind, Location } from '$lib/types';
 	import { updateEnvironment } from '$lib/api';
 	import { volumeM3 } from '$lib/format';
@@ -100,6 +101,7 @@
 				leafTempOffsetC: env.leafTempOffsetC ?? -2
 			});
 			open = false;
+			toast.success('Environment updated', { description: name.trim() });
 			onSaved?.();
 		} catch (e) {
 			error = errMsg(e, 'Save failed');

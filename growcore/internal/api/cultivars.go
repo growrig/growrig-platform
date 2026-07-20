@@ -16,6 +16,19 @@ func (s *Server) getSpecies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, species.All())
 }
 
+// getSpeciesIcon serves a species' catalog icon.svg (the grow form's species
+// picker artwork). 404 when the species ships no icon.
+func (s *Server) getSpeciesIcon(w http.ResponseWriter, r *http.Request) {
+	raw, err := species.Asset(r.PathValue("id"), "icon.svg")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(raw)
+}
+
 // --- Cultivars ---
 
 func (s *Server) getCultivars(w http.ResponseWriter, r *http.Request) {

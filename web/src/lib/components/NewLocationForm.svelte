@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
 	import { untrack } from 'svelte';
+	import { toast } from '$lib/toast.svelte';
 	import type { GeocodeResult, Location } from '$lib/types';
 	import { geocode, createLocation, updateLocation } from '$lib/api';
 	import MapPin from '@lucide/svelte/icons/map-pin';
@@ -73,6 +74,7 @@
 				address: address.trim()
 			};
 			const loc = editing ? await updateLocation(seed!.id, input) : await createLocation(input);
+			toast.success(editing ? 'Location updated' : 'Location added', { description: loc.name });
 			onSaved?.(loc);
 			if (!editing) {
 				name = '';

@@ -4,6 +4,7 @@
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { preferences } from '$lib/preferences.svelte';
 	import { cn } from './utils';
 
 	interface Props {
@@ -13,7 +14,7 @@
 		/** Extra classes for the input field. */
 		class?: string;
 		/** BCP-47 locale for segment order, month/weekday names. Defaults to the
-		 *  browser's language (falls back to `en` during SSR). */
+		 *  instance locale preference (same as the rest of the app's date formatting). */
 		locale?: string;
 		onValueChange?: (value: string) => void;
 	}
@@ -22,7 +23,7 @@
 		value = $bindable(''),
 		disabled = false,
 		class: className,
-		locale = typeof navigator !== 'undefined' ? navigator.language : 'en',
+		locale = preferences.locale,
 		onValueChange
 	}: Props = $props();
 
@@ -118,7 +119,7 @@
 									{#each weekDates as date (date)}
 										<DatePicker.Cell {date} month={month.value} class="p-0">
 											<DatePicker.Day
-												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 data-[today]:font-medium data-[today]:text-leaf data-[today]:ring-1 data-[today]:ring-inset data-[today]:ring-leaf/50 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-leaf data-[selected]:font-medium data-[selected]:text-rig-950 data-[selected]:ring-0 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
+												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 not-data-[selected]:data-[today]:font-medium not-data-[selected]:data-[today]:text-leaf not-data-[selected]:data-[today]:ring-1 not-data-[selected]:data-[today]:ring-inset not-data-[selected]:data-[today]:ring-leaf/50 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-leaf data-[selected]:font-medium data-[selected]:text-rig-950 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
 											>
 												{date.day}
 											</DatePicker.Day>

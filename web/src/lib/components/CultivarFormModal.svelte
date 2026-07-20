@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { Cultivar, Species } from '$lib/types';
 	import { createCultivar, updateCultivar, cultivarImageURL } from '$lib/api';
 	import { Button, Dialog, Select, fieldClass } from '$lib/components/ui';
@@ -101,6 +102,7 @@
 			};
 			const saved = cultivar ? await updateCultivar(cultivar.id, input) : await createCultivar(input);
 			open = false;
+			toast.success(cultivar ? 'Cultivar updated' : 'Cultivar added', { description: saved.name });
 			onSaved?.(saved);
 		} catch (e) {
 			err = errMsg(e, 'Save failed');

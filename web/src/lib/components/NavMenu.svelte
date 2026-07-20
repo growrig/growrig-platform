@@ -15,6 +15,7 @@
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Tent from '@lucide/svelte/icons/tent';
 	import Wind from '@lucide/svelte/icons/wind';
+	import LayoutList from '@lucide/svelte/icons/layout-list';
 
 	let locations = $state<Location[]>([]);
 	onMount(() => {
@@ -111,7 +112,8 @@
 				/>
 			</NavigationMenu.Trigger>
 			<NavigationMenu.Content class="{panel} p-2">
-				<div class="w-72 max-h-[70vh] overflow-y-auto">
+				<div class="w-72">
+					<div class="max-h-[60vh] overflow-y-auto">
 					{#if !tree.length}
 						<p class="px-3 py-2 text-sm text-rig-500">No environments yet.</p>
 					{:else}
@@ -148,6 +150,12 @@
 							</div>
 						{/each}
 					{/if}
+					</div>
+					<div class="my-1 border-t border-rig-800"></div>
+					<NavigationMenu.Link href="/env" class={panelItem}>
+						<LayoutList size={16} class="text-rig-400" />
+						All environments
+					</NavigationMenu.Link>
 				</div>
 			</NavigationMenu.Content>
 		</NavigationMenu.Item>

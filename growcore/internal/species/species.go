@@ -154,6 +154,10 @@ type Species struct {
 	// so the grow form always has options to show.
 	Media           MediaSpec `json:"media" yaml:"media"`
 	NutrientMethods []string  `json:"nutrientMethods" yaml:"nutrientMethods"`
+	// Icon is the URL of the species' catalog icon (SVG), set when the species
+	// directory ships an icon.svg. Empty when none. Derived from the tree, not
+	// declared in species.yaml.
+	Icon string `json:"icon,omitempty" yaml:"-"`
 }
 
 // StageNames returns the ordered stage names.
@@ -270,6 +274,24 @@ func SourceFS() fs.FS {
 		return sub
 	}
 	return nil
+}
+
+// Asset returns a whitelisted file from a species' catalog directory, read from
+// the same tree the catalog loads from (on-disk in development, else embedded).
+// Only icon.svg is exposed; the id is case-insensitive.
+func Asset(id, name string) ([]byte, error) {
+	if name != "icon.svg" {
+		return nil, fs.ErrNotExist
+	}
+	fsys := SourceFS()
+	if fsys == nil {
+		return nil, fs.ErrNotExist
+	}
+	id = strings.ToLower(strings.TrimSpace(id))
+	if id == "" || strings.ContainsAny(id, "/\\.") {
+		return nil, fs.ErrNotExist
+	}
+	return fs.ReadFile(fsys, id+"/"+name)
 }
 
 // Get returns the species with the given id (case-insensitive).
@@ -426,6 +448,11 @@ func loadTree(fsys fs.FS) ([]Species, error) {
 		sp.ID = e.Name()
 		if sp.Label == "" {
 			sp.Label = strings.Title(e.Name())
+		}
+		// A species that ships an icon.svg gets a served URL; the client renders
+		// it on the grow form's species picker.
+		if _, err := fs.Stat(fsys, e.Name()+"/icon.svg"); err == nil {
+			sp.Icon = "/api/species/" + e.Name() + "/icon"
 		}
 		out = append(out, sp)
 	}

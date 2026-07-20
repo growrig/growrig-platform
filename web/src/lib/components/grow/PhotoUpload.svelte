@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { uploadGrowPhoto } from '$lib/api';
 	import { errMsg } from '$lib/errors';
+	import { toast } from '$lib/toast.svelte';
 	import type { Snippet } from 'svelte';
 	import Camera from '@lucide/svelte/icons/camera';
 
@@ -48,9 +49,11 @@
 		try {
 			const image = await readAsDataURL(file);
 			await uploadGrowPhoto(growId, { image, plantUnitId });
+			toast.success('Photo added');
 			onUploaded?.();
 		} catch (err) {
 			error = errMsg(err, 'Upload failed');
+			toast.error('Photo upload failed', { description: errMsg(err, 'Upload failed') });
 		} finally {
 			busy = false;
 			if (input) input.value = '';

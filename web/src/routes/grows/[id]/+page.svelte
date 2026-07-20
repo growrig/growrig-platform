@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/auth.svelte';
+	import { toast } from '$lib/toast.svelte';
 	import { live } from '$lib/live.svelte';
 	import {
 		getGrow,
@@ -166,7 +167,10 @@
 	}
 
 	onMount(() => {
-		reload();
+		// Opened from the header quick-add (`?action=logcare`).
+		reload().then(() => {
+			if (page.url.searchParams.get('action') === 'logcare') openLogCare();
+		});
 		reloadCare();
 		reloadPhotos();
 		reloadAnalytics();
@@ -210,6 +214,7 @@
 		try {
 			await changeStage(grow.id, stage);
 			stageConfirmOpen = false;
+			toast.success('Stage updated', { description: `${grow.name} · now in ${stage}` });
 			await Promise.all([reload(), reloadAnalytics(), reloadStageEvents(), reloadActivity()]);
 		} catch (e) {
 			err = errMsg(e, 'Failed');
@@ -239,18 +244,23 @@
 		if (!grow || !confirm('Mark this grow as completed?')) return;
 		try {
 			await completeGrow(grow.id);
+			toast.success('Grow completed', { description: grow.name });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not complete grow', { description: errMsg(e, 'Failed') });
 		}
 	}
 	async function destroy() {
 		if (!grow || !confirm('Delete this grow and all its plants? This cannot be undone.')) return;
+		const removed = grow.name;
 		try {
 			await deleteGrow(grow.id);
+			toast.success('Grow deleted', { description: removed });
 			goto('/grows');
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not delete grow', { description: errMsg(e, 'Failed') });
 		}
 	}
 
@@ -285,8 +295,12 @@
 		}
 		mpBusy = true;
 		try {
+			const dest = environments.find((e) => e.id === mpEnv)?.name;
 			await movePlant(movingPlant.id, mpEnv);
 			moveOpen = false;
+			toast.success('Plant moved', {
+				description: dest ? `${plantDisplayName(movingPlant, plantNumbers.get(movingPlant.id))} → ${dest}` : undefined
+			});
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
@@ -336,6 +350,7 @@
 				await repotPlant(editingPlant.id, { size: epPotSize!, unit: epPotUnit, type: epPotType });
 			}
 			editOpen = false;
+			toast.success('Plant updated', { description: plantDisplayName(editingPlant, plantNumbers.get(editingPlant.id)) });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
@@ -348,18 +363,22 @@
 		if (!confirm(`Harvest ${plantDisplayName(plant, plantNumbers.get(plant.id))}?`)) return;
 		try {
 			await harvestPlant(plant.id);
+			toast.success('Plant harvested', { description: plantDisplayName(plant, plantNumbers.get(plant.id)) });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not harvest plant', { description: errMsg(e, 'Failed') });
 		}
 	}
 	async function discard(plant: PlantDetail) {
 		if (!confirm(`Remove ${plantDisplayName(plant, plantNumbers.get(plant.id))}?`)) return;
 		try {
 			await removePlant(plant.id);
+			toast.success('Plant removed', { description: plantDisplayName(plant, plantNumbers.get(plant.id)) });
 			await reload();
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+			toast.error('Could not remove plant', { description: errMsg(e, 'Failed') });
 		}
 	}
 
@@ -406,6 +425,9 @@
 				...(apPotSize && apPotSize > 0 ? { potSize: apPotSize, potUnit: apPotUnit, potType: apPotType } : {})
 			});
 			addingPlants = false;
+			toast.success(apTracking === 'group' ? 'Plant group added' : 'Plant added', {
+				description: apLabel.trim() || undefined
+			});
 			apLabel = '';
 			apCultivar = '';
 			apQuantity = 1;
