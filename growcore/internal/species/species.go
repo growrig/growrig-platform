@@ -50,10 +50,31 @@ type Attribute struct {
 	Unit    string   `json:"unit,omitempty" yaml:"unit,omitempty"`
 }
 
-// Stage is one cultivation phase with its default daily light hours.
+// Stage is one cultivation phase with its default daily light hours and a
+// typical duration in days. TypicalDays is a rough estimate used to project a
+// grow's timeline before it has run its course (an expected finish, the
+// timeline heatmap length); it is 0 for open-ended stages that declare none.
 type Stage struct {
-	Name       string  `json:"name" yaml:"name"`
-	LightHours float64 `json:"lightHours" yaml:"lightHours"`
+	Name        string  `json:"name" yaml:"name"`
+	LightHours  float64 `json:"lightHours" yaml:"lightHours"`
+	TypicalDays int     `json:"typicalDays,omitempty" yaml:"typicalDays,omitempty"`
+	// Optional marks a stage a grower may include or omit for a given grow
+	// (propagation and post-harvest phases). Non-optional stages are always part
+	// of the sequence.
+	Optional bool `json:"optional,omitempty" yaml:"optional,omitempty"`
+	// Default reports whether an optional stage is pre-selected on a new grow. A
+	// nil pointer means "on" — most optional stages default in; a stage sets it
+	// false to stay off unless the grower opts in (e.g. germination). Ignored for
+	// non-optional stages, which are always included.
+	Default *bool `json:"default,omitempty" yaml:"default,omitempty"`
+}
+
+// DefaultOn reports whether the stage is included by default on a new grow.
+func (s Stage) DefaultOn() bool {
+	if !s.Optional {
+		return true
+	}
+	return s.Default == nil || *s.Default
 }
 
 // CareField is a form input a care action may show when logging it. The web
@@ -144,6 +165,40 @@ func (s Species) StageNames() []string {
 	return names
 }
 
+// DefaultStageNames returns the ordered stage names selected by default on a new
+// grow: every non-optional stage plus the optional stages that default in.
+func (s Species) DefaultStageNames() []string {
+	names := make([]string, 0, len(s.Stages))
+	for _, st := range s.Stages {
+		if st.DefaultOn() {
+			names = append(names, st.Name)
+		}
+	}
+	return names
+}
+
+// ResolveStages turns a requested stage selection into a valid, ordered
+// sequence for this species. Non-optional stages are always included; optional
+// stages are included only when named in `requested`. Names not belonging to
+// the species are ignored, and the result keeps the species' canonical order.
+// A nil/empty `requested` yields the species' default sequence.
+func (s Species) ResolveStages(requested []string) []string {
+	if len(requested) == 0 {
+		return s.DefaultStageNames()
+	}
+	want := make(map[string]bool, len(requested))
+	for _, r := range requested {
+		want[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	out := make([]string, 0, len(s.Stages))
+	for _, st := range s.Stages {
+		if !st.Optional || want[st.Name] {
+			out = append(out, st.Name)
+		}
+	}
+	return out
+}
+
 // LightHours maps each stage name to its default daily light hours.
 func (s Species) LightHours() map[string]float64 {
 	m := make(map[string]float64, len(s.Stages))
@@ -151,6 +206,40 @@ func (s Species) LightHours() map[string]float64 {
 		m[st.Name] = st.LightHours
 	}
 	return m
+}
+
+// TypicalDays maps each stage name to its typical duration in days (0 when the
+// stage declares none).
+func (s Species) TypicalDays() map[string]int {
+	m := make(map[string]int, len(s.Stages))
+	for _, st := range s.Stages {
+		m[st.Name] = st.TypicalDays
+	}
+	return m
+}
+
+// EstimatedDays projects a grow's total length by summing the typical duration
+// of each stage in the given sequence. Stages the species doesn't recognise (or
+// that declare no estimate) contribute nothing, so a return of 0 means "no
+// estimate available" — callers should fall back to elapsed time.
+func EstimatedDays(speciesID string, stages []string) int {
+	days := StageTypicalDays(speciesID)
+	total := 0
+	for _, name := range stages {
+		total += days[name]
+	}
+	return total
+}
+
+// StageTypicalDays returns the species' per-stage typical durations (stage name
+// → days), or nil when the species is unknown. Callers project per-phase
+// timelines from it (e.g. predicted stage-switch milestones).
+func StageTypicalDays(speciesID string) map[string]int {
+	s, ok := Get(speciesID)
+	if !ok {
+		return nil
+	}
+	return s.TypicalDays()
 }
 
 //go:embed all:data

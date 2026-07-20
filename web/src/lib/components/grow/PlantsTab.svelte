@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import type { Cultivar, GrowDetail, PlantDetail } from '$lib/types';
 	import { cultivarImageURL } from '$lib/api';
 	import { plantDisplayName, plantNumbersById, daysSince } from '$lib/format';
@@ -112,13 +113,17 @@
 			</thead>
 			<tbody>
 				{#each grow.plants as p (p.id)}
-					<tr class="border-b border-rig-800/60 last:border-0">
-						<td class="px-4 py-2"><a href="/plants/{p.id}" class="font-medium hover:text-leaf">{plantDisplayName(p, plantNumbers.get(p.id))}</a>{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}</td>
+					<tr
+						class="cursor-pointer border-b border-rig-800/60 transition-colors last:border-0 hover:bg-rig-800/40"
+						onclick={() => goto(`/plants/${p.id}`)}
+					>
+						<td class="px-4 py-2"><a href="/plants/{p.id}" class="font-medium hover:text-leaf" onclick={(e) => e.stopPropagation()}>{plantDisplayName(p, plantNumbers.get(p.id))}</a>{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}</td>
 						<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
-						<td class="px-4 py-2 text-rig-300">{#if p.currentEnvironmentId}<a href="/env/{p.currentEnvironmentId}" class="hover:text-leaf hover:underline">{p.currentEnvironmentName || p.currentEnvironmentId}</a>{:else}—{/if}</td>
+						<td class="px-4 py-2 text-rig-300">{#if p.currentEnvironmentId}<a href="/env/{p.currentEnvironmentId}" class="hover:text-leaf hover:underline" onclick={(e) => e.stopPropagation()}>{p.currentEnvironmentName || p.currentEnvironmentId}</a>{:else}—{/if}</td>
 						<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}` : '—'}</td>
 						<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
-						<td class="px-4 py-2 text-right">
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<td class="px-4 py-2 text-right" onclick={(e) => e.stopPropagation()}>
 							<DropdownMenu items={menuFor(p)} align="end" triggerClass="grid h-7 w-7 place-items-center rounded-md text-rig-400 outline-none hover:bg-rig-800 hover:text-rig-100">
 								{#snippet trigger()}<MoreHorizontal size={16} />{/snippet}
 							</DropdownMenu>

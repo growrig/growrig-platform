@@ -51,6 +51,7 @@ import type {
 	PlantUnit,
 	PlantView,
 	Species,
+	StageEvent,
 	StagePresets,
 	Task,
 	TaskStatus,
@@ -330,6 +331,9 @@ export interface GrowInput {
 	species: string;
 	startedAt: string; // YYYY-MM-DD or RFC3339
 	notes: string;
+	/** Which stages the grow runs. Non-optional stages are always included;
+	 *  optional ones only when named. Omit to use the species' default set. */
+	stages?: string[];
 	/** Growing setup (medium, nutrients, default container). Omit to leave an
 	 *  existing grow's setup unchanged on update. */
 	setup?: GrowingSetup;
@@ -346,6 +350,18 @@ export const deleteGrow = (id: string) =>
 
 export const changeStage = (id: string, stage: string) =>
 	json<Grow>(`/api/grows/${encodeURIComponent(id)}/stage`, { method: 'POST', body: JSON.stringify({ stage }) });
+
+/** Recorded stage-entry dates (one per stage the grow has entered). */
+export const getStageEvents = (growID: string) =>
+	json<StageEvent[]>(`/api/grows/${encodeURIComponent(growID)}/stage-events`);
+
+/** Bulk-edit stage-entry dates. Map stage -> `YYYY-MM-DD` ('' clears a date,
+ * reverting the stage to predicted). Stages omitted from the map are untouched. */
+export const updateStageDates = (growID: string, dates: Record<string, string>) =>
+	json<StageEvent[]>(`/api/grows/${encodeURIComponent(growID)}/stage-dates`, {
+		method: 'PUT',
+		body: JSON.stringify({ dates })
+	});
 
 export const completeGrow = (id: string) =>
 	json<Grow>(`/api/grows/${encodeURIComponent(id)}/complete`, { method: 'POST' });

@@ -22,16 +22,35 @@
 		trigger: Snippet;
 		align?: 'start' | 'center' | 'end';
 		triggerClass?: string;
+		/** Open on hover (as well as click). Useful for header menus. */
+		hover?: boolean;
 	}
 
-	let { items, trigger, align = 'end', triggerClass }: Props = $props();
+	let { items, trigger, align = 'end', triggerClass, hover = false }: Props = $props();
 
 	const itemClass =
 		'flex cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40';
+
+	// Hover control: open immediately on enter, close after a short grace period
+	// so moving the pointer across the gap onto the menu doesn't dismiss it.
+	let open = $state(false);
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
+	function openNow() {
+		clearTimeout(closeTimer);
+		open = true;
+	}
+	function scheduleClose() {
+		clearTimeout(closeTimer);
+		closeTimer = setTimeout(() => (open = false), 150);
+	}
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger class={triggerClass}>
+<DropdownMenu.Root bind:open>
+	<DropdownMenu.Trigger
+		class={triggerClass}
+		onpointerenter={hover ? openNow : undefined}
+		onpointerleave={hover ? scheduleClose : undefined}
+	>
 		{@render trigger()}
 	</DropdownMenu.Trigger>
 
@@ -39,6 +58,8 @@
 		<DropdownMenu.Content
 			{align}
 			sideOffset={6}
+			onpointerenter={hover ? openNow : undefined}
+			onpointerleave={hover ? scheduleClose : undefined}
 			class="z-50 min-w-44 overflow-hidden rounded-lg border border-rig-700 bg-rig-900 p-1 shadow-xl outline-none"
 		>
 			{#each items as item (item.label)}

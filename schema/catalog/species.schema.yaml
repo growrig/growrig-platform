@@ -29,6 +29,16 @@ properties:
           type: number
           minimum: 0
           maximum: 24
+        typicalDays:
+          description: Rough typical duration in days, used to project a grow's timeline. Omit for open-ended stages.
+          type: integer
+          minimum: 0
+        optional:
+          description: Whether a grower may include or omit this stage per grow (propagation / post-harvest phases). Non-optional stages are always part of the sequence.
+          type: boolean
+        default:
+          description: For an optional stage, whether it is pre-selected on a new grow. Defaults to true when omitted; ignored for non-optional stages.
+          type: boolean
   cultivarAttributes:
     description: Species-specific fields a cultivar carries; the cultivar form renders them.
     type: array

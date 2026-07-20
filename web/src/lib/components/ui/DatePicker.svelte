@@ -12,6 +12,9 @@
 		disabled?: boolean;
 		/** Extra classes for the input field. */
 		class?: string;
+		/** BCP-47 locale for segment order, month/weekday names. Defaults to the
+		 *  browser's language (falls back to `en` during SSR). */
+		locale?: string;
 		onValueChange?: (value: string) => void;
 	}
 
@@ -19,6 +22,7 @@
 		value = $bindable(''),
 		disabled = false,
 		class: className,
+		locale = typeof navigator !== 'undefined' ? navigator.language : 'en',
 		onValueChange
 	}: Props = $props();
 
@@ -46,6 +50,7 @@
      in sync through `onValueChange` below, which drives our ISO-string prop. -->
 <DatePicker.Root
 	value={dateValue}
+	{locale}
 	weekdayFormat="short"
 	fixedWeeks
 	{disabled}
@@ -74,8 +79,9 @@
 		{/snippet}
 	</DatePicker.Input>
 
-	<DatePicker.Content sideOffset={6} class="z-50">
-		<DatePicker.Calendar
+	<DatePicker.Portal>
+		<DatePicker.Content sideOffset={6} class="z-[60]">
+			<DatePicker.Calendar
 			class="rounded-lg border border-rig-700 bg-rig-900 p-3 shadow-xl"
 		>
 			{#snippet children({ months, weekdays })}
@@ -112,7 +118,7 @@
 									{#each weekDates as date (date)}
 										<DatePicker.Cell {date} month={month.value} class="p-0">
 											<DatePicker.Day
-												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-leaf data-[selected]:font-medium data-[selected]:text-rig-950 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
+												class="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm text-rig-200 hover:bg-rig-800 data-[today]:font-medium data-[today]:text-leaf data-[today]:ring-1 data-[today]:ring-inset data-[today]:ring-leaf/50 data-[disabled]:text-rig-700 data-[outside-month]:text-rig-700 data-[selected]:bg-leaf data-[selected]:font-medium data-[selected]:text-rig-950 data-[selected]:ring-0 data-[unavailable]:text-rig-700 data-[unavailable]:line-through"
 											>
 												{date.day}
 											</DatePicker.Day>
@@ -126,4 +132,5 @@
 			{/snippet}
 		</DatePicker.Calendar>
 	</DatePicker.Content>
+	</DatePicker.Portal>
 </DatePicker.Root>

@@ -98,6 +98,30 @@ body {
 	min-height: 100%;
 }
 
+/* Tailwind v4's preflight resets `button` to `cursor: default`, which strips the
+   pointer cursor from every button-based control: tab bars, Select triggers,
+   dropdown/menu items, switches and calendar cells (all buttons or ARIA widgets
+   under the hood). Restore the v3 behavior — pointer on interactive controls,
+   `not-allowed` when they're disabled. Unlayered so it beats preflight's
+   `@layer base` rule without needing `!important`. */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+[role='tab']:not([aria-disabled='true']),
+[role='option']:not([aria-disabled='true']),
+[role='combobox']:not([aria-disabled='true']),
+[role='menuitem']:not([aria-disabled='true']),
+[role='menuitemcheckbox']:not([aria-disabled='true']),
+[role='switch']:not([aria-disabled='true']),
+summary {
+	cursor: pointer;
+}
+
+button:disabled,
+[disabled],
+[aria-disabled='true'] {
+	cursor: not-allowed;
+}
+
 /* Themed scrollbars everywhere — modals, overflow tables, and the page — so the
    OS scrollbar doesn't clash with the palette. Firefox uses the standard
    properties; Chromium/WebKit use the ::-webkit-scrollbar pseudos. The

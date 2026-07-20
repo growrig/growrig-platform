@@ -1,23 +1,19 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { live } from '$lib/live.svelte';
 	import type {
 		Alert,
 		CareAction,
 		CareHistory,
-		DeviceSeries,
 		GrowAnalytics,
 		GrowDetail,
 		GrowPhoto,
-		Reading,
-		StageLightDefaults,
-		Task,
-		Weather
+		Task
 	} from '$lib/types';
-	import type { StageBand, Annotation } from '$lib/components/timeline/TimelineBody.svelte';
 	import { growPhotoImageURL } from '$lib/api';
 	import { careVisual } from '$lib/care';
-	import { titleCase, vpdZone, toneClass, plantDisplayName, plantNumbersById, daysSince } from '$lib/format';
-	import TimelineChart from '$lib/components/TimelineChart.svelte';
+	import { vpdZone, toneClass, plantDisplayName, plantNumbersById, daysSince } from '$lib/format';
+	import CareHeatmap from './CareHeatmap.svelte';
 	import CareSummary from '$lib/components/CareSummary.svelte';
 	import GrowJourney from './GrowJourney.svelte';
 	import PhotoUpload from './PhotoUpload.svelte';
@@ -33,18 +29,10 @@
 		care: CareHistory | null;
 		careActions: CareAction[];
 		analytics: GrowAnalytics | null;
-		rangeReadings: Reading[];
-		deviceSeries: DeviceSeries[];
-		weatherData?: Weather;
-		defaults: StageLightDefaults;
-		timelineHours: number;
 		alerts: Alert[];
 		tasks: Task[];
-		onRangeChange: (hours: number) => void;
 		onMoveStage: (stage: string) => void;
 		onPhotoUploaded: () => void;
-		onLogCare: () => void;
-		onQuickCare: (key: string) => void;
 	}
 	let {
 		grow,
@@ -53,18 +41,10 @@
 		care,
 		careActions,
 		analytics,
-		rangeReadings,
-		deviceSeries,
-		weatherData,
-		defaults,
-		timelineHours,
 		alerts,
 		tasks,
-		onRangeChange,
 		onMoveStage,
-		onPhotoUploaded,
-		onLogCare,
-		onQuickCare
+		onPhotoUploaded
 	}: Props = $props();
 
 	const latestPhoto = $derived(photos[0]);
@@ -75,30 +55,6 @@
 		const envId = grow.plants.find((p) => p.status === 'active')?.currentEnvironmentId;
 		return envId ? live.snapshot?.environments?.find((e) => e.id === envId) : undefined;
 	});
-
-	const stagePalette = ['#4ade80', '#38bdf8', '#a78bfa', '#f97316', '#f472b6', '#facc15'];
-	const stageBands = $derived.by<StageBand[]>(() => {
-		if (!analytics) return [];
-		const order = grow.stages;
-		return analytics.stageDurations.map((sd) => ({
-			from: new Date(sd.from).getTime(),
-			to: sd.to ? new Date(sd.to).getTime() : Date.now(),
-			label: titleCase(sd.stage),
-			color: stagePalette[Math.max(0, order.indexOf(sd.stage)) % stagePalette.length]
-		}));
-	});
-	const careTotalMl = (apps: { amountMl?: number }[] = []) =>
-		apps.reduce((n, a) => n + (a.amountMl ?? 0), 0);
-	const careAnnotations = $derived.by<Annotation[]>(() =>
-		(care?.events ?? []).map((e) => {
-			const ml = careTotalMl(e.applications);
-			return {
-				t: new Date(e.occurredAt).getTime(),
-				label: `${careVisual(e.type).label}${ml ? ` · ${ml} ml` : ''}`,
-				color: 'var(--color-leaf)'
-			};
-		})
-	);
 
 	const hasToday = $derived(alerts.length > 0 || tasks.length > 0);
 
@@ -159,6 +115,9 @@
 		{/if}
 	</section>
 
+	<!-- Grow timeline (care heatmap, full width) -->
+	<CareHeatmap {grow} events={care?.events ?? []} stages={analytics?.stageDurations ?? []} />
+
 	<!-- Plants -->
 	{#if grow.plants.length}
 		<section>
@@ -180,11 +139,14 @@
 					</thead>
 					<tbody>
 						{#each grow.plants as p (p.id)}
-							<tr class="border-b border-rig-800/60 last:border-0">
-								<td class="px-4 py-2"><a href="/plants/{p.id}" class="font-medium hover:text-rig-50">{plantDisplayName(p, plantNumbers.get(p.id))}</a>{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}</td>
+							<tr
+								class="cursor-pointer border-b border-rig-800/60 transition-colors last:border-0 hover:bg-rig-800/40"
+								onclick={() => goto(`/plants/${p.id}`)}
+							>
+								<td class="px-4 py-2"><a href="/plants/{p.id}" class="font-medium hover:text-rig-50" onclick={(e) => e.stopPropagation()}>{plantDisplayName(p, plantNumbers.get(p.id))}</a>{#if p.tracking === 'group' && p.quantity > 1}<span class="ml-1 text-xs text-rig-500">×{p.quantity}</span>{/if}</td>
 								<td class="px-4 py-2 text-rig-300">{p.cultivar || '—'}</td>
 								<td class="px-4 py-2 capitalize {statusTone(p.status)}">{p.status}</td>
-								<td class="px-4 py-2 text-rig-300">{#if p.currentEnvironmentId}<a href="/env/{p.currentEnvironmentId}" class="hover:text-rig-100 hover:underline">{p.currentEnvironmentName || p.currentEnvironmentId}</a>{:else}—{/if}</td>
+								<td class="px-4 py-2 text-rig-300">{#if p.currentEnvironmentId}<a href="/env/{p.currentEnvironmentId}" class="hover:text-rig-100 hover:underline" onclick={(e) => e.stopPropagation()}>{p.currentEnvironmentName || p.currentEnvironmentId}</a>{:else}—{/if}</td>
 								<td class="px-4 py-2 tabular-nums text-rig-300">{p.currentPot ? `${p.currentPot.size} ${p.currentPot.unit}${p.currentPot.type ? ` ${p.currentPot.type}` : ''}` : '—'}</td>
 								<td class="px-4 py-2 tabular-nums text-rig-400">{daysSince(p.createdAt)}d</td>
 							</tr>
@@ -195,27 +157,14 @@
 		</section>
 	{/if}
 
-	<!-- Grow data: graph + summaries -->
-	<div class="grid gap-6 lg:grid-cols-12">
-		<div class="lg:col-span-8">
-			<TimelineChart
-				readings={rangeReadings}
-				{deviceSeries}
-				controls={env?.controls ?? []}
-				weather={weatherData}
-				schedule={env?.schedule}
-				stage={grow.stage}
-				{defaults}
-				hours={timelineHours}
-				{stageBands}
-				annotations={careAnnotations}
-				{onRangeChange}
-			/>
-		</div>
-		<div class="space-y-6 lg:col-span-4">
+	<!-- Care summaries + environment -->
+	<div class="grid gap-6 lg:grid-cols-2">
+		<div class="space-y-6">
 			{#if care && careActions.length > 0 && grow.plantCount > 0}
-				<CareSummary {care} actions={careActions} canWrite={isAdmin} onQuick={onQuickCare} onLog={onLogCare} />
+				<CareSummary {care} />
 			{/if}
+		</div>
+		<div class="space-y-6">
 			{#if env}
 				<section>
 					<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Environment</h2>

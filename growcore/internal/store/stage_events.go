@@ -25,6 +25,37 @@ func (s *Store) AddStageEvent(growID, stage string, enteredAt time.Time) error {
 	return err
 }
 
+// SetStageDate records (or corrects) the date a grow entered a given stage.
+// Stages are strictly ordered and entered once, so this keeps a single event
+// per (grow, stage): any existing one is replaced.
+func (s *Store) SetStageDate(growID, stage string, enteredAt time.Time) error {
+	if enteredAt.IsZero() {
+		enteredAt = time.Now()
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM stage_events WHERE grow_id = ? AND stage = ?`, growID, stage); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO stage_events (id, grow_id, stage, entered_at) VALUES (?, ?, ?, ?)`,
+		newID("stage"), growID, stage, enteredAt.UnixMilli()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ClearStageDate removes a grow's recorded entry date for a stage (the stage
+// reverts to being predicted). Used both to blank a date and to discard stages
+// that were entered by mistake when reverting.
+func (s *Store) ClearStageDate(growID, stage string) error {
+	_, err := s.db.Exec(`DELETE FROM stage_events WHERE grow_id = ? AND stage = ?`, growID, stage)
+	return err
+}
+
 // StageEvents returns a grow's stage history, oldest first.
 func (s *Store) StageEvents(growID string) ([]StageEvent, error) {
 	rows, err := s.db.Query(

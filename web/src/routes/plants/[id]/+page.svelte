@@ -247,7 +247,7 @@
 		</header>
 
 		<!-- Tabs -->
-		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
+		<div class="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-rig-800">
 			{#each tabs as t (t.id)}
 				<button
 					onclick={() => setTab(t.id)}

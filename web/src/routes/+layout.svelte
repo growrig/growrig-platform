@@ -169,6 +169,7 @@
 							<DropdownMenu
 								items={userMenu}
 								align="end"
+								hover
 								triggerClass="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-rig-300 outline-none transition-colors hover:bg-rig-800/50 hover:text-rig-100"
 							>
 								{#snippet trigger()}
@@ -275,6 +276,11 @@
 				{/snippet}
 			</svelte:boundary>
 		</main>
+		<footer class="mx-auto max-w-5xl px-4 pb-10 pt-2">
+			<div class="border-t border-rig-800/80 pt-6 text-center text-xs text-rig-600">
+				GrowRig
+			</div>
+		</footer>
 		<GrowAIChat />
 	</div>
 {/if}

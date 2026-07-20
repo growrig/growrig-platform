@@ -32,20 +32,29 @@ type growBody struct {
 	Species   string `json:"species"`
 	StartedAt string `json:"startedAt"` // RFC3339 or YYYY-MM-DD; empty = now
 	Notes     string `json:"notes"`
+	// Stages is an optional selection of which stages the grow runs. Non-optional
+	// stages are always included; optional ones (propagation / post-harvest) are
+	// included only when named here. Nil/empty yields the species' default set.
+	Stages []string `json:"stages"`
 	// Growing setup: how the crop is grown (medium, nutrients, default pot). A
 	// nil pointer leaves an existing setup untouched on update.
 	Setup *domain.GrowingSetup `json:"setup"`
 }
 
-// speciesStages validates a species against the predefined presets and returns
-// its (auto-derived) stage sequence. Species is the single source of truth for
-// stages; a grow cannot use an unknown crop family.
-func speciesStages(name string) (key string, stages []string, ok bool) {
+// speciesStages validates a species against the predefined presets and resolves
+// the requested stage selection into an ordered sequence. Species is the single
+// source of truth for stages; a grow cannot use an unknown crop family, and its
+// sequence is always a subset of the species' stages in canonical order.
+func speciesStages(name string, requested []string) (key string, stages []string, ok bool) {
 	sp, found := species.Get(name)
 	if !found {
 		return strings.ToLower(strings.TrimSpace(name)), nil, false
 	}
-	return sp.ID, sp.StageNames(), true
+	resolved := sp.ResolveStages(requested)
+	if len(resolved) == 0 {
+		return sp.ID, nil, false
+	}
+	return sp.ID, resolved, true
 }
 
 func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +67,7 @@ func (s *Server) createGrow(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errBody("name is required"))
 		return
 	}
-	species, stages, ok := speciesStages(b.Species)
+	species, stages, ok := speciesStages(b.Species, b.Stages)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, errBody("species must be one of the predefined crop families"))
 		return
@@ -108,10 +117,30 @@ func (s *Server) updateGrow(w http.ResponseWriter, r *http.Request) {
 		grow.Name = strings.TrimSpace(b.Name)
 		grow.Slug = domain.Slugify(grow.Name)
 	}
-	species, stages, ok := speciesStages(b.Species)
+	species, stages, ok := speciesStages(b.Species, b.Stages)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, errBody("species must be one of the predefined crop families"))
 		return
+	}
+	// Protect recorded history: a stage the grow has already entered (has a
+	// recorded date), and the current stage, cannot be dropped from the sequence.
+	// Callers may only add or remove stages the grow hasn't reached yet.
+	if species == grow.Species {
+		events, err := s.store.StageEvents(grow.ID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		for _, e := range events {
+			if !contains(stages, e.Stage) {
+				writeJSON(w, http.StatusBadRequest, errBody("cannot remove a stage the grow has already entered"))
+				return
+			}
+		}
+		if grow.Status == domain.GrowActive && !contains(stages, grow.Stage) {
+			writeJSON(w, http.StatusBadRequest, errBody("cannot remove the current stage"))
+			return
+		}
 	}
 	grow.Species = species
 	grow.Stages = stages
@@ -162,18 +191,40 @@ func (s *Server) changeStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stage := strings.TrimSpace(b.Stage)
-	if !contains(grow.Stages, stage) {
+	ti := indexOf(grow.Stages, stage)
+	if ti < 0 {
 		writeJSON(w, http.StatusBadRequest, errBody("stage is not part of this grow's sequence"))
 		return
 	}
+	ci := indexOf(grow.Stages, grow.Stage)
+	now := time.Now()
+
+	// Stages are strictly directional, so anything recorded after the target is
+	// either a future stage reached by mistake (a revert) or stale — discard it.
+	for i := ti + 1; i < len(grow.Stages); i++ {
+		_ = s.store.ClearStageDate(grow.ID, grow.Stages[i])
+	}
+	// Ensure the target has an entry date: keep an existing one (reverting to a
+	// stage that really happened) or stamp now for a fresh advance.
+	at := now
+	if events, err := s.store.StageEvents(grow.ID); err == nil {
+		if e, ok := stageEventFor(events, stage); ok {
+			at = e.EnteredAt
+		} else {
+			_ = s.store.SetStageDate(grow.ID, stage, now)
+		}
+	}
 	grow.Stage = stage
-	grow.StageStarted = time.Now()
+	grow.StageStarted = at
 	if err := s.store.SaveGrow(grow); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	_ = s.store.AddStageEvent(grow.ID, stage, grow.StageStarted)
-	s.growActivity(grow.ID, "", "info", "configuration", grow.Name+" advanced to "+stage)
+	verb := "advanced to"
+	if ti < ci {
+		verb = "reverted to"
+	}
+	s.growActivity(grow.ID, "", "info", "configuration", grow.Name+" "+verb+" "+stage)
 	writeJSON(w, http.StatusOK, grow)
 }
 
@@ -214,10 +265,16 @@ type plantDetail struct {
 
 type growDetail struct {
 	domain.Grow
-	StageDays  int           `json:"stageDays"`
-	TotalDays  int           `json:"totalDays"`
-	PlantCount int           `json:"plantCount"`
-	Plants     []plantDetail `json:"plants"`
+	StageDays int `json:"stageDays"`
+	TotalDays int `json:"totalDays"`
+	// EstimatedDays is the grow's projected total length in days, summed from the
+	// typical duration of its stages. 0 when the species carries no estimate.
+	EstimatedDays int `json:"estimatedDays"`
+	// StageEstimates maps each stage name to its typical duration in days, so the
+	// client can project per-phase boundaries (predicted stage-switch milestones).
+	StageEstimates map[string]int `json:"stageEstimates,omitempty"`
+	PlantCount     int            `json:"plantCount"`
+	Plants         []plantDetail  `json:"plants"`
 }
 
 func (s *Server) getGrow(w http.ResponseWriter, r *http.Request) {
@@ -258,10 +315,12 @@ func (s *Server) getGrow(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	detail := growDetail{
-		Grow:      grow,
-		StageDays: domain.DaysSince(grow.StageStarted, now),
-		TotalDays: domain.DaysSince(grow.StartedAt, now),
-		Plants:    []plantDetail{},
+		Grow:          grow,
+		StageDays:      domain.DaysSince(grow.StageStarted, now),
+		TotalDays:      domain.DaysSince(grow.StartedAt, now),
+		EstimatedDays:  species.EstimatedDays(grow.Species, grow.Stages),
+		StageEstimates: species.StageTypicalDays(grow.Species),
+		Plants:         []plantDetail{},
 	}
 	for _, u := range units {
 		if u.Status == domain.PlantActive {
@@ -705,10 +764,14 @@ func (s *Server) environmentNames() (map[string]string, error) {
 }
 
 func contains(list []string, v string) bool {
-	for _, x := range list {
+	return indexOf(list, v) >= 0
+}
+
+func indexOf(list []string, v string) int {
+	for i, x := range list {
 		if x == v {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }

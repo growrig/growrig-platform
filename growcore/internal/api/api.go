@@ -148,6 +148,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/grows/{id}", s.requireAdmin(s.updateGrow))
 	mux.HandleFunc("DELETE /api/grows/{id}", s.requireAdmin(s.deleteGrow))
 	mux.HandleFunc("POST /api/grows/{id}/stage", s.requireAdmin(s.changeStage))
+	mux.HandleFunc("GET /api/grows/{id}/stage-events", s.requireAuth(s.getStageEvents))
+	mux.HandleFunc("PUT /api/grows/{id}/stage-dates", s.requireAdmin(s.putStageDates))
 	mux.HandleFunc("POST /api/grows/{id}/complete", s.requireAdmin(s.completeGrow))
 	mux.HandleFunc("POST /api/grows/{id}/plants", s.requireAdmin(s.createPlants))
 	mux.HandleFunc("GET /api/calendar", s.requireAuth(s.getCalendar))

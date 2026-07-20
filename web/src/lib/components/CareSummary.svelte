@@ -1,21 +1,12 @@
 <script lang="ts">
-	import type { CareAction, CareHistory } from '$lib/types';
-	import { Button } from '$lib/components/ui';
-	import Droplet from '@lucide/svelte/icons/droplet';
+	import type { CareEvent, CareHistory } from '$lib/types';
+	import { careVisual, fmtVolume } from '$lib/care';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
 	interface Props {
 		care: CareHistory;
-		actions: CareAction[];
-		canWrite?: boolean;
-		/** Open the log-care dialog straight into this action (e.g. water/feed all). */
-		onQuick?: (actionKey: string) => void;
-		/** Open the full log-care dialog (action picker). */
-		onLog?: () => void;
 	}
-	let { care, actions, canWrite = false, onQuick, onLog }: Props = $props();
-
-	const label = (key: string) => actions.find((a) => a.key === key)?.label ?? key;
+	let { care }: Props = $props();
 
 	// A compact "2d ago" / "5h ago" / "just now" from an ISO timestamp.
 	function ago(iso: string): string {
@@ -28,51 +19,52 @@
 		return `${Math.floor(h / 24)}d ago`;
 	}
 
-	// Show the most recent action per type, most-recent first. Water and feed
-	// lead since they're the everyday actions.
+	// Secondary line for a care type: recipe, volume, pH — whatever's relevant.
+	function detail(e: CareEvent): string {
+		const bits: string[] = [];
+		if (e.recipeName) bits.push(e.recipeName);
+		const ml = (e.applications ?? []).reduce((s, a) => s + (a.amountMl ?? 0), 0);
+		if (ml > 0) bits.push(fmtVolume(ml));
+		if (e.ph) bits.push(`pH ${e.ph}`);
+		return bits.join(' · ');
+	}
+
+	// The most recent action of each type, most-recent first — one row per type.
 	const lastEntries = $derived(
 		Object.values(care.summary.lastByType).sort(
 			(a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
 		)
 	);
-	const hasWater = $derived(actions.some((a) => a.key === 'water'));
-	const hasFeed = $derived(actions.some((a) => a.key === 'feed'));
 	const skipped = $derived(care.summary.skipped);
 </script>
 
-<section class="rounded-xl border border-rig-800 bg-rig-900/40 p-4">
-	<div class="mb-3 flex items-center justify-between">
-		<h2 class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-rig-400">
-			<Droplet size={14} class="text-sky-400" /> Care
-		</h2>
-		{#if canWrite}
-			<div class="flex flex-wrap gap-2">
-				{#if hasWater}<Button size="sm" variant="secondary" onclick={() => onQuick?.('water')}>Water all</Button>{/if}
-				{#if hasFeed}<Button size="sm" variant="secondary" onclick={() => onQuick?.('feed')}>Feed all</Button>{/if}
-				<Button size="sm" onclick={() => onLog?.()}>Log care</Button>
-			</div>
-		{/if}
-	</div>
+<section>
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-rig-400">Care</h2>
 
 	{#if lastEntries.length === 0}
-		<p class="text-sm text-rig-500">No care logged yet.{#if canWrite} Use the actions above to start the grow journal.{/if}</p>
+		<div class="rounded-xl border border-rig-800 bg-rig-900/40 p-4 text-sm text-rig-500">
+			No care logged yet.
+		</div>
 	{:else}
-		<div class="flex flex-wrap gap-x-6 gap-y-1.5 text-sm">
+		<div class="overflow-hidden rounded-xl border border-rig-800 bg-rig-900/40">
 			{#each lastEntries as e (e.type)}
-				<div class="flex items-baseline gap-1.5">
-					<span class="text-rig-400">Last {label(e.type).toLowerCase()}</span>
-					<span class="font-medium text-rig-100">{ago(e.occurredAt)}</span>
-					{#if e.type === 'water' || e.type === 'feed'}
-						{@const total = (e.applications ?? []).reduce((s, a) => s + (a.amountMl ?? 0), 0)}
-						{#if total > 0}<span class="text-xs text-rig-500">· {total >= 1000 ? `${(total / 1000).toFixed(1)} L` : `${total} ml`}</span>{/if}
-					{/if}
+				{@const v = careVisual(e.type)}
+				<div class="flex items-center gap-3 border-b border-rig-800/60 px-4 py-2.5 last:border-0">
+					<span class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-rig-800 text-rig-300">
+						<v.icon size={15} />
+					</span>
+					<div class="min-w-0 flex-1">
+						<p class="text-sm text-rig-100">{v.label}</p>
+						{#if detail(e)}<p class="truncate text-xs text-rig-500">{detail(e)}</p>{/if}
+					</div>
+					<span class="shrink-0 text-xs tabular-nums text-rig-500">{ago(e.occurredAt)}</span>
 				</div>
 			{/each}
 		</div>
 	{/if}
 
 	{#if skipped.length > 0}
-		<div class="mt-3 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+		<div class="mt-2 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
 			<TriangleAlert size={14} class="mt-0.5 shrink-0" />
 			<span>
 				{skipped.length === 1 ? `${skipped[0].plantLabel} was` : `${skipped.length} plants were`}

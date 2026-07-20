@@ -10,6 +10,7 @@
 		getEnvironments,
 		getStagePresets,
 		changeStage,
+		getStageEvents,
 		completeGrow,
 		deleteGrow,
 		createPlant,
@@ -22,16 +23,11 @@
 		getRecipes,
 		getCare,
 		getCareConfig,
-		getLocations,
-		getLightingDefaults,
 		getGrowPhotos,
 		getGrowAnalytics,
 		getActivity,
 		getAlerts,
-		getTasks,
-		historyRange,
-		deviceHistory,
-		weather
+		getTasks
 	} from '$lib/api';
 	import type {
 		Activity,
@@ -39,24 +35,21 @@
 		Cultivar,
 		CareActionDef,
 		CareHistory,
-		DeviceSeries,
 		Environment,
 		FeedingRecipe,
 		GrowAnalytics,
 		GrowDetail,
 		GrowPhoto,
-		Location,
 		PlantDetail,
 		PotUnit,
-		Reading,
+		StageEvent,
 		StagePresets,
 		Task,
-		TrackingMode,
-		Weather
+		TrackingMode
 	} from '$lib/types';
-	import { defaultPlantLabel, plantDisplayName, plantNumbersById } from '$lib/format';
-	import { resolveLocationId } from '$lib/location';
+	import { defaultPlantLabel, plantDisplayName, plantNumbersById, titleCase } from '$lib/format';
 	import GrowFormModal from '$lib/components/GrowFormModal.svelte';
+	import StageDatesModal from '$lib/components/StageDatesModal.svelte';
 	import LogCareModal from '$lib/components/LogCareModal.svelte';
 	import CareSettingsModal from '$lib/components/CareSettingsModal.svelte';
 	import { Button, Dialog, Select } from '$lib/components/ui';
@@ -93,17 +86,10 @@
 	// profile data
 	let photos = $state<GrowPhoto[]>([]);
 	let analytics = $state<GrowAnalytics | null>(null);
+	let stageEvents = $state<StageEvent[]>([]);
 	let activity = $state<Activity[]>([]);
 	let alerts = $state<Alert[]>([]);
 	let tasks = $state<Task[]>([]);
-
-	// timeline (grow's primary environment)
-	let rangeReadings = $state<Reading[]>([]);
-	let deviceSeries = $state<DeviceSeries[]>([]);
-	let weatherData = $state<Weather | undefined>();
-	let locations = $state<Location[]>([]);
-	let lightingDefaults = $state<Record<string, number>>({});
-	let timelineHours = $state(168);
 
 	let editing = $state(false);
 
@@ -132,7 +118,6 @@
 		goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
-	const primaryEnvId = $derived(grow?.plants.find((p) => p.status === 'active')?.currentEnvironmentId ?? '');
 
 	async function reloadCare() {
 		if (!id) return;
@@ -156,6 +141,9 @@
 	function reloadAnalytics() {
 		if (id) getGrowAnalytics(id).then((a) => (analytics = a)).catch(() => {});
 	}
+	function reloadStageEvents() {
+		if (id) getStageEvents(id).then((e) => (stageEvents = e)).catch(() => {});
+	}
 	function reloadActivity() {
 		if (id) getActivity({ growId: id, limit: 100 }).then((p) => (activity = p.items)).catch(() => {});
 	}
@@ -177,54 +165,17 @@
 		}
 	}
 
-	async function refreshHistory() {
-		if (!primaryEnvId) {
-			rangeReadings = [];
-			deviceSeries = [];
-			return;
-		}
-		try {
-			[rangeReadings, deviceSeries] = await Promise.all([
-				historyRange(primaryEnvId, timelineHours, 500),
-				deviceHistory(primaryEnvId, timelineHours, 500)
-			]);
-		} catch {
-			/* keep last */
-		}
-	}
-	function onRangeChange(h: number) {
-		timelineHours = h;
-		refreshHistory();
-	}
-	// Refetch history when the primary environment resolves/changes.
-	$effect(() => {
-		primaryEnvId;
-		refreshHistory();
-	});
-	// Weather for the primary environment's location.
-	$effect(() => {
-		const env = live.snapshot?.environments?.find((e) => e.id === primaryEnvId);
-		const locId = resolveLocationId(env, live.snapshot?.environments ?? []);
-		const loc = locations.find((l) => l.id === locId);
-		if (!loc) {
-			weatherData = undefined;
-			return;
-		}
-		weather(loc.lat, loc.lon).then((w) => (weatherData = w)).catch(() => {});
-	});
-
 	onMount(() => {
 		reload();
 		reloadCare();
 		reloadPhotos();
 		reloadAnalytics();
+		reloadStageEvents();
 		reloadActivity();
 		reloadAttention();
 		getEnvironments().then((e) => (environments = e)).catch(() => {});
 		getStagePresets().then((p) => (presets = p)).catch(() => {});
 		getCultivars().then((c) => (cultivars = c)).catch(() => {});
-		getLocations().then((l) => (locations = l)).catch(() => {});
-		getLightingDefaults().then((d) => (lightingDefaults = d)).catch(() => {});
 	});
 
 	// --- care logging ---
@@ -242,14 +193,47 @@
 	}
 
 	// --- stage / lifecycle ---
-	async function advanceStage(stage: string) {
+	// A stage change is easy to trigger by accident (a stray click on the stage
+	// picker), so route it through a confirmation before committing.
+	let pendingStage = $state<string | null>(null);
+	let stageConfirmOpen = $state(false);
+	let stageBusy = $state(false);
+	function advanceStage(stage: string) {
 		if (!grow || stage === grow.stage) return;
+		pendingStage = stage;
+		stageConfirmOpen = true;
+	}
+	async function confirmStageChange() {
+		if (!grow || !pendingStage) return;
+		const stage = pendingStage;
+		stageBusy = true;
 		try {
 			await changeStage(grow.id, stage);
-			await Promise.all([reload(), reloadAnalytics(), reloadActivity()]);
+			stageConfirmOpen = false;
+			await Promise.all([reload(), reloadAnalytics(), reloadStageEvents(), reloadActivity()]);
 		} catch (e) {
 			err = errMsg(e, 'Failed');
+		} finally {
+			stageBusy = false;
 		}
+	}
+
+	// Reverting to an earlier stage discards the stages entered past it, since
+	// stages are strictly directional. Surface which ones in the confirmation.
+	const revertedStages = $derived.by(() => {
+		if (!grow || !pendingStage) return [] as string[];
+		const ti = grow.stages.indexOf(pendingStage);
+		const ci = grow.stages.indexOf(grow.stage);
+		if (ti < 0 || ti >= ci) return [] as string[];
+		return grow.stages.slice(ti + 1, ci + 1);
+	});
+
+	// --- stage dates editor ---
+	let stageDatesOpen = $state(false);
+	function onStageDatesSaved(events: StageEvent[]) {
+		stageEvents = events;
+		// Editing dates can shift StageStarted, so refresh the grow too.
+		Promise.all([reload(), reloadAnalytics()]);
 	}
 	async function complete() {
 		if (!grow || !confirm('Mark this grow as completed?')) return;
@@ -455,7 +439,7 @@
 			{onPhotoUploaded}
 		/>
 
-		<div class="flex gap-1 overflow-x-auto border-b border-rig-800">
+		<div class="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-rig-800">
 			{#each tabs as t (t.id)}
 				<button
 					onclick={() => setTab(t.id)}
@@ -474,18 +458,10 @@
 				{care}
 				{careActions}
 				{analytics}
-				{rangeReadings}
-				{deviceSeries}
-				{weatherData}
-				defaults={lightingDefaults}
-				{timelineHours}
 				alerts={growAlerts}
 				tasks={growTasks}
-				{onRangeChange}
 				onMoveStage={advanceStage}
 				{onPhotoUploaded}
-				onLogCare={() => openLogCare()}
-				onQuickCare={(key) => openLogCare(key)}
 			/>
 		{:else if activeTab === 'plants'}
 			<PlantsTab
@@ -501,7 +477,7 @@
 				onLogCare={(pid) => openLogCare(undefined, [pid])}
 			/>
 		{:else if activeTab === 'plan'}
-			<PlanTab {grow} {isAdmin} {analytics} {careDefs} onAdvance={advanceStage} onCareSettings={() => (careSettingsOpen = true)} />
+			<PlanTab {grow} {isAdmin} {analytics} {careDefs} onAdvance={advanceStage} onEditStages={() => (stageDatesOpen = true)} onCareSettings={() => (careSettingsOpen = true)} />
 		{:else if activeTab === 'analytics'}
 			<AnalyticsTab {grow} {analytics} {photos} />
 		{:else if activeTab === 'timeline'}
@@ -530,6 +506,37 @@
 			onLogged={onCareLogged}
 		/>
 		<CareSettingsModal bind:open={careSettingsOpen} growId={grow.id} actions={careDefs} onSaved={(a) => (careDefs = a)} />
+
+		<StageDatesModal bind:open={stageDatesOpen} {grow} events={stageEvents} onSaved={onStageDatesSaved} />
+
+		<Dialog
+			bind:open={stageConfirmOpen}
+			title={revertedStages.length ? 'Revert stage?' : 'Change stage?'}
+			description={revertedStages.length
+				? 'Stages are directional, so going back discards the stages entered past this one.'
+				: 'This records the stage transition and reshapes the timeline. You can correct the date later.'}
+		>
+			<div class="space-y-4">
+				<p class="text-sm text-rig-200">
+					Move <span class="font-medium">{grow.name}</span> from
+					<span class="font-medium text-rig-100">{titleCase(grow.stage)}</span> to
+					<span class="font-medium text-leaf">{pendingStage ? titleCase(pendingStage) : ''}</span>?
+				</p>
+				{#if revertedStages.length}
+					<div class="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+						This deletes the recorded {revertedStages.length === 1 ? 'stage' : 'stages'}
+						<span class="font-medium">{revertedStages.map(titleCase).join(', ')}</span>
+						and {revertedStages.length === 1 ? 'its date' : 'their dates'}. This can't be undone.
+					</div>
+				{/if}
+				<div class="flex justify-end gap-2 border-t border-rig-800 pt-4">
+					<Button variant="ghost" onclick={() => (stageConfirmOpen = false)} disabled={stageBusy}>Cancel</Button>
+					<Button onclick={confirmStageChange} disabled={stageBusy}>
+						{revertedStages.length ? 'Revert' : 'Move'} to {pendingStage ? titleCase(pendingStage) : ''}
+					</Button>
+				</div>
+			</div>
+		</Dialog>
 
 		<Dialog bind:open={moveOpen} title="Change location" description="Move this plant to another environment. Its placement history is kept.">
 			<div class="space-y-4">

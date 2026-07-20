@@ -152,6 +152,12 @@ export interface PlantView extends PlantUnit {
 export interface GrowDetail extends Grow {
 	stageDays: number;
 	totalDays: number;
+	/** Projected total length in days, summed from the species' per-stage typical
+	 *  durations. 0 when the species carries no estimate. */
+	estimatedDays: number;
+	/** Per-stage typical duration in days (stage name → days), for projecting
+	 *  per-phase boundaries and predicted stage-switch milestones. */
+	stageEstimates?: Record<string, number>;
 	plantCount: number;
 	plants: PlantDetail[];
 }
@@ -411,6 +417,13 @@ export interface SpeciesAttribute {
 export interface SpeciesStage {
 	name: string;
 	lightHours: number;
+	typicalDays?: number;
+	/** Whether a grower may include or omit this stage per grow (propagation /
+	 *  post-harvest phases). Non-optional stages are always in the sequence. */
+	optional?: boolean;
+	/** For an optional stage, whether it is pre-selected on a new grow.
+	 *  Undefined means on; ignored for non-optional stages. */
+	default?: boolean;
 }
 
 /** A form field a care action may show when logging it. */
